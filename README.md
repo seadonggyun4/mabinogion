@@ -186,7 +186,7 @@ cargo bench
 
 ## License
 
-MIT OR Apache-2.0 (your choice)
+Licensed under the Apache License, Version 2.0.
 
 ---
 
