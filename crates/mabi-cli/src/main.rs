@@ -8,6 +8,34 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
+/// ASCII Art Logo (Orange colored)
+const LOGO: &str = "\x1b[38;5;208m
+                             .:.
+                           **=:=**.   *++**:
+                          *=     :*+       *=
+                          *:       -*=     +*
+                          :.  .**    +=   :*:
+                            .+*.        .*+
+                           +*.        .*+
+               -*+==+*:   +:   +*    +*.   *+    *****.
+              +*.     +*.      .*.   *-     -*=      .*+
+              *+       .*+     *+    +*       +*:     :*
+               =   -*:   :*****:      -**+**    +*   .*+
+                 -*+                                +*.
+               :*+                                +*:
+              +*.   ++    +****:      .+***+:   :*-   :
+              *:     -*+       **    +*.    +*.       +*
+              +*.      +*:     .*.   *.      .*+      *+
+               .+****    +*    **    *+   :+   :*+--+*=
+                             =*=        .*+
+                           =*=        .*+.
+                          *+   =+    **.  .:
+                         +*     =*-       .*.
+                         -*.      +*.     =*
+                          -*++++.  .**=:=**
+                                      .:.
+\x1b[0m";
+
 /// Mabinogion - Industrial protocol simulation tool
 #[derive(Parser)]
 #[command(
@@ -16,7 +44,8 @@ use std::time::Duration;
     about = "Industrial protocol simulator for testing and development",
     long_about = "Mabinogion is a high-performance simulator for industrial protocols including \
                   Modbus TCP/RTU, OPC UA, BACnet/IP, and KNXnet/IP. It supports scenario-based \
-                  simulation, chaos engineering, and stress testing."
+                  simulation, chaos engineering, and stress testing.",
+    before_help = LOGO
 )]
 struct Cli {
     /// Verbosity level (-v, -vv, -vvv)
