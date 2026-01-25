@@ -12,6 +12,7 @@
   <em>"Spawn protocols at will"</em>
 </p>
 
+[![Crates.io](https://img.shields.io/crates/v/mabi-core.svg)](https://crates.io/crates/mabi-core)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Powered by Rust](https://img.shields.io/badge/Powered%20by-Rust-orange.svg)](https://www.rust-lang.org/)
 
@@ -70,15 +71,46 @@ events:
 
 ---
 
-## Quick Start
+## Installation
 
-### Installation
+### For Simulator Users (Recommended)
+
+**Just one command** - all simulator features included:
 
 ```bash
 cargo install mabi-cli
 ```
 
-### Basic Usage
+This installs the `mabi` CLI with **all protocols** (Modbus, OPC UA, BACnet, KNX), scenario engine, and chaos engineering built-in. No additional packages required.
+
+### For Library Developers (Optional)
+
+If you want to build your own tools using Mabinogion as a library:
+
+```toml
+[dependencies]
+mabi-core = "1.0"        # Core abstractions (required)
+mabi-modbus = "1.0"      # Modbus TCP/RTU (optional)
+mabi-opcua = "1.0"       # OPC UA (optional)
+mabi-bacnet = "1.0"      # BACnet/IP (optional)
+mabi-knx = "1.0"         # KNXnet/IP (optional)
+mabi-scenario = "1.0"    # Scenario engine (optional)
+mabi-chaos = "1.0"       # Chaos engineering (optional)
+```
+
+```rust
+use mabi_core::prelude::*;
+
+fn main() {
+    let protocol = Protocol::ModbusTcp;
+    let value = Value::float(23.5);
+    println!("Protocol: {:?}, Value: {:?}", protocol, value);
+}
+```
+
+---
+
+## Quick Start
 
 ```bash
 # Start Modbus TCP server
@@ -134,7 +166,6 @@ mabinogion/
 │   ├── mabi-knx/        # KNXnet/IP simulator
 │   ├── mabi-scenario/   # Scenario engine
 │   ├── mabi-chaos/      # Chaos engineering
-│   ├── mabi-web/        # Web API
 │   └── mabi-cli/        # CLI (mabi)
 ├── scenarios/           # Scenario files
 └── tests/               # Integration/E2E tests
@@ -142,18 +173,31 @@ mabinogion/
 
 ---
 
+## Crates
+
+| Crate | crates.io | Description |
+|-------|-----------|-------------|
+| [mabi-core](https://crates.io/crates/mabi-core) | [![](https://img.shields.io/crates/v/mabi-core.svg)](https://crates.io/crates/mabi-core) | Core abstractions and utilities |
+| [mabi-modbus](https://crates.io/crates/mabi-modbus) | [![](https://img.shields.io/crates/v/mabi-modbus.svg)](https://crates.io/crates/mabi-modbus) | Modbus TCP/RTU simulator |
+| [mabi-opcua](https://crates.io/crates/mabi-opcua) | [![](https://img.shields.io/crates/v/mabi-opcua.svg)](https://crates.io/crates/mabi-opcua) | OPC UA server simulator |
+| [mabi-bacnet](https://crates.io/crates/mabi-bacnet) | [![](https://img.shields.io/crates/v/mabi-bacnet.svg)](https://crates.io/crates/mabi-bacnet) | BACnet/IP simulator |
+| [mabi-knx](https://crates.io/crates/mabi-knx) | [![](https://img.shields.io/crates/v/mabi-knx.svg)](https://crates.io/crates/mabi-knx) | KNXnet/IP simulator |
+| [mabi-scenario](https://crates.io/crates/mabi-scenario) | [![](https://img.shields.io/crates/v/mabi-scenario.svg)](https://crates.io/crates/mabi-scenario) | Scenario engine |
+| [mabi-chaos](https://crates.io/crates/mabi-chaos) | [![](https://img.shields.io/crates/v/mabi-chaos.svg)](https://crates.io/crates/mabi-chaos) | Chaos engineering |
+| [mabi-cli](https://crates.io/crates/mabi-cli) | [![](https://img.shields.io/crates/v/mabi-cli.svg)](https://crates.io/crates/mabi-cli) | CLI tool |
+
 ## Documentation
 
-| Crate | Description |
-|-------|-------------|
-| [mabi-cli](docs/cli/README.md) | Command-line interface reference |
-| [mabi-core](docs/core/README.md) | Core abstractions, engine, metrics, and utilities |
-| [mabi-modbus](docs/modbus-simulator/README.md) | Modbus TCP/RTU protocol simulator |
-| [mabi-opcua](docs/opcua-simulator/README.md) | OPC UA server simulator |
-| [mabi-bacnet](docs/bacnet-simulator/README.md) | BACnet/IP protocol simulator |
-| [mabi-knx](docs/knx-simulator/README.md) | KNXnet/IP protocol simulator |
-| [mabi-scenario](docs/scenario-engine/README.md) | Scenario engine for time-based simulation orchestration |
-| [mabi-chaos](docs/chaos-engine/README.md) | Chaos engineering framework for fault injection |
+| Crate | Docs |
+|-------|------|
+| mabi-core | [docs.rs](https://docs.rs/mabi-core) |
+| mabi-modbus | [docs.rs](https://docs.rs/mabi-modbus) |
+| mabi-opcua | [docs.rs](https://docs.rs/mabi-opcua) |
+| mabi-bacnet | [docs.rs](https://docs.rs/mabi-bacnet) |
+| mabi-knx | [docs.rs](https://docs.rs/mabi-knx) |
+| mabi-scenario | [docs.rs](https://docs.rs/mabi-scenario) |
+| mabi-chaos | [docs.rs](https://docs.rs/mabi-chaos) |
+| mabi-cli | [docs.rs](https://docs.rs/mabi-cli) |
 
 ---
 
