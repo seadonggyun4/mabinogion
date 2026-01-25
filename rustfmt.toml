@@ -1,0 +1,59 @@
+# rustfmt configuration for mabinogion
+# https://rust-lang.github.io/rustfmt/
+#
+# NOTE: This configuration is optimized for stable Rust channel.
+# Nightly-only options are commented out for reference.
+
+edition = "2021"
+
+# Line width
+max_width = 100
+
+# Indentation
+tab_spaces = 4
+hard_tabs = false
+
+# Imports (stable options only)
+reorder_imports = true
+reorder_modules = true
+
+# Match formatting (stable options)
+# match_arm_blocks = true  # nightly only
+# match_block_trailing_comma = true  # nightly only
+
+# Use field init shorthand
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# Newline style
+newline_style = "Auto"
+
+# =============================================================================
+# Nightly-only options (uncomment when using nightly rustfmt)
+# =============================================================================
+# comment_width = 100
+# wrap_comments = true
+# imports_granularity = "Module"
+# group_imports = "StdExternalCrate"
+# fn_params_layout = "Tall"
+# fn_single_line = false
+# control_brace_style = "AlwaysSameLine"
+# force_multiline_blocks = false
+# match_arm_leading_pipes = "Never"
+# struct_lit_single_line = true
+# enum_discrim_align_threshold = 20
+# format_code_in_doc_comments = true
+# format_macro_matchers = true
+# format_strings = false
+# normalize_comments = false
+# normalize_doc_attributes = true
+# overflow_delimited_expr = false
+# remove_nested_parens = true
+# short_array_element_width_threshold = 10
+# skip_children = false
+# space_after_colon = true
+# space_before_colon = false
+# spaces_around_ranges = false
+# trailing_comma = "Vertical"
+# trailing_semicolon = true
+# where_single_line = false

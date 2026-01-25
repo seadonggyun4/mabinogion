@@ -1,0 +1,65 @@
+# Clippy configuration for mabinogion
+# https://doc.rust-lang.org/clippy/configuration.html
+
+# Complexity thresholds
+cognitive-complexity-threshold = 25
+too-many-arguments-threshold = 10
+type-complexity-threshold = 250
+too-many-lines-threshold = 200
+
+# Collection size thresholds
+trivial-copy-size-limit = 16
+pass-by-value-size-limit = 256
+large-error-threshold = 256
+single-char-binding-names-threshold = 4
+vec-box-size-threshold = 4096
+
+# Documentation
+doc-valid-idents = [
+    "KNX",
+    "KNXnet",
+    "BACnet",
+    "OPC",
+    "MSTP",
+    "TCP",
+    "UDP",
+    "RTU",
+    "IP",
+    "TRAP",
+    "HVAC",
+    "BBMD",
+    "BVLC",
+    "NPDU",
+    "APDU",
+    "COV",
+    "DPT",
+]
+
+# Module structure
+msrv = "1.75"
+
+# Async
+future-size-threshold = 16384
+
+# Naming conventions
+allowed-prefixes = ["from_", "into_", "to_", "as_", "with_", "is_", "has_", "get_", "set_"]
+
+# Disallowed patterns
+disallowed-names = ["foo", "bar", "baz", "quux"]
+
+# Standard library features
+array-size-threshold = 512_000
+stack-size-threshold = 512_000
+
+# Enum variant count
+enum-variant-size-threshold = 200
+
+# Allow certain patterns in tests
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true
+
+# Error messages
+avoid-breaking-exported-api = true
+enforce-iter-loop-reborrow = false

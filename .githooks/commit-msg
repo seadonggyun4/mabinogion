@@ -1,0 +1,85 @@
+#!/bin/bash
+#
+# Commit-msg hook for trap-simulator
+#
+# Validates commit message format follows conventional commits.
+# Format: <type>(<scope>): <description>
+#
+# Types: feat, fix, perf, refactor, test, docs, chore, ci, build, style
+# Scopes: core, modbus, opcua, bacnet, knx, scenario, chaos, web
+
+set -e
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Skip merge commits
+if echo "$COMMIT_MSG" | grep -qE "^Merge "; then
+    exit 0
+fi
+
+# Skip revert commits
+if echo "$COMMIT_MSG" | grep -qE "^Revert "; then
+    exit 0
+fi
+
+# Valid types
+TYPES="feat|fix|perf|refactor|test|docs|chore|ci|build|style"
+
+# Valid scopes
+SCOPES="core|modbus|opcua|bacnet|knx|scenario|chaos|web|deps|ci"
+
+# Regex pattern for conventional commits
+# Format: type(scope): description
+# or:    type: description
+PATTERN="^($TYPES)(\(($SCOPES)\))?!?: .{1,100}$"
+
+# Get first line of commit message
+FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
+
+# Check if commit message matches pattern
+if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    echo -e "${RED}✗ Invalid commit message format!${NC}"
+    echo ""
+    echo "Your commit message:"
+    echo "  $FIRST_LINE"
+    echo ""
+    echo "Expected format:"
+    echo "  <type>(<scope>): <description>"
+    echo ""
+    echo "Valid types: $TYPES"
+    echo "Valid scopes: $SCOPES"
+    echo ""
+    echo "Examples:"
+    echo "  feat(modbus): add RTU server support"
+    echo "  fix(core): resolve memory leak in engine"
+    echo "  docs: update README installation guide"
+    echo "  chore(deps): bump tokio to 1.35"
+    echo ""
+    exit 1
+fi
+
+# Check description length (should be concise)
+DESCRIPTION_LENGTH=$(echo "$FIRST_LINE" | sed -E 's/^[^:]+: //' | wc -c)
+if [ "$DESCRIPTION_LENGTH" -gt 72 ]; then
+    echo -e "${YELLOW}⚠ Warning: Commit description is longer than 72 characters${NC}"
+    echo "  Consider making it more concise."
+fi
+
+# Check for imperative mood (warning only)
+# Common non-imperative patterns
+NON_IMPERATIVE="(added|adding|fixed|fixing|removed|removing|updated|updating|changed|changing)"
+DESCRIPTION=$(echo "$FIRST_LINE" | sed -E 's/^[^:]+: //')
+if echo "$DESCRIPTION" | grep -qiE "^$NON_IMPERATIVE"; then
+    echo -e "${YELLOW}⚠ Warning: Use imperative mood in commit message${NC}"
+    echo "  Instead of 'added feature' use 'add feature'"
+fi
+
+echo -e "${GREEN}✓ Commit message format OK${NC}"
+exit 0
