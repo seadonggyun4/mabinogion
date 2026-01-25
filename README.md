@@ -1,3 +1,7 @@
+<div align="center">
+  <img width="500px" alt="Truthound Banner" src="https://github.com/user-attachments/assets/34faf6ca-1ae7-4989-9468-1ea00eb00345" />
+</div>
+
 <h1 align="center">Mabinogion</h1>
 
 <p align="center">
