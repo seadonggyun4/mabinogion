@@ -5,11 +5,11 @@
 <h1 align="center">Mabinogion</h1>
 
 <p align="center">
-  <strong>Industrial Protocol Simulator</strong>
+  <strong>Where all industrial protocols are born and tested</strong>
 </p>
 
 <p align="center">
-  <em>Where all industrial protocols are born and tested</em>
+  <em>"Spawn protocols at will"</em>
 </p>
 
 <p align="center">
