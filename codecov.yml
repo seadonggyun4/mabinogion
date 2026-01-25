@@ -1,0 +1,79 @@
+# Codecov Configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+codecov:
+  require_ci_to_pass: yes
+  notify:
+    wait_for_ci: yes
+
+coverage:
+  precision: 2
+  round: down
+  range: "60...90"
+
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+        informational: false
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no
+
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: no
+  require_base: no
+  require_head: yes
+
+ignore:
+  - "benches/**/*"
+  - "tests/**/*"
+  - "**/tests.rs"
+  - "**/tests/**"
+  - "examples/**/*"
+
+flags:
+  core:
+    paths:
+      - crates/trap-sim-core/
+    carryforward: true
+  modbus:
+    paths:
+      - crates/trap-sim-modbus/
+    carryforward: true
+  opcua:
+    paths:
+      - crates/trap-sim-opcua/
+    carryforward: true
+  bacnet:
+    paths:
+      - crates/trap-sim-bacnet/
+    carryforward: true
+  knx:
+    paths:
+      - crates/trap-sim-knx/
+    carryforward: true
+  scenario:
+    paths:
+      - crates/trap-sim-scenario/
+    carryforward: true
+  chaos:
+    paths:
+      - crates/trap-sim-chaos/
+    carryforward: true
+  web:
+    paths:
+      - crates/trap-sim-web/
+    carryforward: true
