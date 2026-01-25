@@ -5,11 +5,11 @@
 <h1 align="center">Mabinogion</h1>
 
 <p align="center">
-  <strong>Where all industrial protocols are born and tested</strong>
+  <strong>Industrial Protocol Simulator Server</strong>
 </p>
 
 <p align="center">
-  <em>"Spawn protocols at will"</em>
+  <em>Test your client software with virtual devices — no real hardware required</em>
 </p>
 
 [![Crates.io](https://img.shields.io/crates/v/mabi-core.svg)](https://crates.io/crates/mabi-core)
@@ -18,29 +18,65 @@
 
 ---
 
-## A Name Inspired by Mythology
+## What is Mabinogion?
 
-**Mabinogion** is the name of a collection of Welsh mythological tales. These ancient legends tell of magical forges where the weapons of gods were created and heroes were tested through trials.
+**Mabinogion** is an industrial protocol simulator server written in Rust. It creates virtual devices that speak real industrial protocols, allowing you to develop and test client software without physical hardware.
 
-Our **Mabinogion** follows the same philosophy:
+### Why Use It?
 
-- **A Place of Birth**: Where industrial protocol clients first meet the world
-- **A Space for Trials**: Where they are tested under extreme loads, edge cases, and chaos
-- **A Crucible of Growth**: Where tens of thousands of virtual devices and millions of data points converge
+- **No Hardware Required**: Simulate PLCs, sensors, and building automation systems
+- **Realistic Testing**: Virtual devices respond exactly like real equipment
+- **Scale Testing**: Spawn 10,000+ devices to stress test your client
+- **Chaos Engineering**: Inject network delays, packet loss, and device failures
 
-Just as a hero's sword is tempered in the forge of mythology, your protocol clients are forged in Mabinogion.
+### Supported Protocols
+
+| Protocol | Use Case |
+|----------|----------|
+| **Modbus TCP/RTU** | Factory automation, PLCs, sensors |
+| **OPC UA** | Industrial IoT, SCADA systems |
+| **BACnet/IP** | Building automation (HVAC, lighting) |
+| **KNXnet/IP** | Smart home/building systems |
+
+---
+
+## The Name
+
+**Mabinogion** comes from Welsh mythology — ancient tales of magical forges where legendary weapons were crafted.
+
+Your protocol clients are forged here too.
 
 > *And yes, I spent way too many hours playing [Mabinogi](https://mabinogi.nexon.com/page/main/index.asp) back in the day.*
+
+---
+
+## Quick Example
+
+```bash
+# Start a Modbus server with 10 virtual devices
+mabi modbus --port 5020 --devices 10
+
+# Connect with any Modbus client
+mbpoll -a 1 -r 1 -c 10 -p 5020 127.0.0.1
+```
+
+That's it. Your client now talks to virtual PLCs.
+
 ---
 
 ## Features
 
-### Large-Scale Simulation
+### Virtual Device Simulation
+- Create virtual industrial devices that respond to real protocol requests
+- Read/write registers, coils, and data points
+- Each device maintains its own state
+
+### Large-Scale Testing
 - **10,000+** concurrent virtual devices
 - **1,000,000+** real-time data points
 - **100,000 msg/s** message throughput
 
-### Multi-Protocol Support
+### Protocol Support
 | Protocol | Features |
 |----------|----------|
 | **Modbus TCP/RTU** | Read/Write Coils, Registers, Multi-unit support |
@@ -52,7 +88,6 @@ Just as a hero's sword is tempered in the forge of mythology, your protocol clie
 - Network latency and packet loss simulation
 - Device failure and recovery scenarios
 - Protocol error injection
-- Connection drop and reconnection testing
 
 ### Scenario-Based Testing
 ```yaml
