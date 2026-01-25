@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <em>Test your client software with virtual devices — no real hardware required</em>
+  <em>"Spawn protocols at will"</em>
 </p>
 
 [![Crates.io](https://img.shields.io/crates/v/mabi-core.svg)](https://crates.io/crates/mabi-core)
