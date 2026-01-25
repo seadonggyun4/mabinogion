@@ -145,6 +145,21 @@ mabinogion/
 
 ---
 
+## Documentation
+
+| Crate | Description |
+|-------|-------------|
+| [mabi-cli](docs/cli/README.md) | Command-line interface reference |
+| [mabi-core](docs/core/README.md) | Core abstractions, engine, metrics, and utilities |
+| [mabi-modbus](docs/modbus-simulator/README.md) | Modbus TCP/RTU protocol simulator |
+| [mabi-opcua](docs/opcua-simulator/README.md) | OPC UA server simulator |
+| [mabi-bacnet](docs/bacnet-simulator/README.md) | BACnet/IP protocol simulator |
+| [mabi-knx](docs/knx-simulator/README.md) | KNXnet/IP protocol simulator |
+| [mabi-scenario](docs/scenario-engine/README.md) | Scenario engine for time-based simulation orchestration |
+| [mabi-chaos](docs/chaos-engine/README.md) | Chaos engineering framework for fault injection |
+
+---
+
 ## Performance Targets
 
 | Metric | Target |
