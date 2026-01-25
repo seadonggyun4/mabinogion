@@ -1,13 +1,17 @@
 [package]
 name = "mabi-cli"
+description = "Mabinogion - Industrial Protocol Simulator CLI"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
-description = "Mabinogion - Industrial Protocol Simulator CLI (internal)"
+homepage.workspace = true
+documentation = "https://docs.rs/mabi-cli"
+readme = "README.md"
+keywords = ["cli", "industrial", "protocol", "simulator", "modbus"]
+categories = ["command-line-utilities", "simulation"]
 
 [[bin]]
 name = "mabi"
@@ -15,13 +19,13 @@ path = "src/main.rs"
 
 [dependencies]
 # Workspace crates
-mabi-core = { path = "../mabi-core" }
-mabi-modbus = { path = "../mabi-modbus" }
-mabi-opcua = { path = "../mabi-opcua" }
-mabi-bacnet = { path = "../mabi-bacnet" }
-mabi-knx = { path = "../mabi-knx" }
-mabi-scenario = { path = "../mabi-scenario" }
-mabi-chaos = { path = "../mabi-chaos" }
+mabi-core = { version = "1.0.0", path = "../mabi-core" }
+mabi-modbus = { version = "1.0.0", path = "../mabi-modbus" }
+mabi-opcua = { version = "1.0.0", path = "../mabi-opcua" }
+mabi-bacnet = { version = "1.0.0", path = "../mabi-bacnet" }
+mabi-knx = { version = "1.0.0", path = "../mabi-knx" }
+mabi-scenario = { version = "1.0.0", path = "../mabi-scenario" }
+mabi-chaos = { version = "1.0.0", path = "../mabi-chaos" }
 
 # Async runtime
 tokio.workspace = true

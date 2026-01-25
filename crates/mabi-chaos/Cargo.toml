@@ -7,10 +7,14 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+homepage.workspace = true
+documentation = "https://docs.rs/mabi-chaos"
+readme = "README.md"
+keywords = ["chaos-engineering", "fault-injection", "testing", "resilience", "simulation"]
+categories = ["simulation", "development-tools::testing"]
 
 [dependencies]
-mabi-core = { path = "../mabi-core" }
+mabi-core = { version = "1.0.0", path = "../mabi-core" }
 
 tokio = { workspace = true }
 async-trait = { workspace = true }

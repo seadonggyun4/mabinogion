@@ -9,11 +9,10 @@ members = [
     "crates/mabi-scenario",
     "crates/mabi-chaos",
     "crates/mabi-cli",
-    "crates/mabinogion",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.75"
 authors = ["Seo Dong Gyun <seadonggyun@gmail.com>"]
@@ -103,3 +102,10 @@ strip = true
 
 [profile.bench]
 debug = true
+
+# cargo-workspaces configuration
+[workspace.metadata.workspaces]
+# Publish all crates together
+allow_branch = "main"
+# Version all crates together
+independent = false

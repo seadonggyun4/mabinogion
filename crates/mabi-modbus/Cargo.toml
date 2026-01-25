@@ -7,10 +7,14 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+homepage.workspace = true
+documentation = "https://docs.rs/mabi-modbus"
+readme = "README.md"
+keywords = ["modbus", "protocol", "simulator", "industrial", "plc"]
+categories = ["simulation", "network-programming"]
 
 [dependencies]
-mabi-core = { path = "../mabi-core" }
+mabi-core = { version = "1.0.0", path = "../mabi-core" }
 
 # Async
 tokio = { workspace = true }

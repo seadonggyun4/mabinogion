@@ -7,7 +7,11 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+homepage.workspace = true
+documentation = "https://docs.rs/mabi-opcua"
+readme = "README.md"
+keywords = ["opcua", "opc-ua", "protocol", "simulator", "industrial"]
+categories = ["simulation", "network-programming"]
 
 [features]
 default = []
@@ -15,7 +19,7 @@ default = []
 full = []
 
 [dependencies]
-mabi-core = { path = "../mabi-core" }
+mabi-core = { version = "1.0.0", path = "../mabi-core" }
 
 # Async
 tokio = { workspace = true }

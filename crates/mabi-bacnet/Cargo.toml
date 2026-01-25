@@ -7,10 +7,14 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+homepage.workspace = true
+documentation = "https://docs.rs/mabi-bacnet"
+readme = "README.md"
+keywords = ["bacnet", "protocol", "simulator", "building-automation", "hvac"]
+categories = ["simulation", "network-programming"]
 
 [dependencies]
-mabi-core = { path = "../mabi-core" }
+mabi-core = { version = "1.0.0", path = "../mabi-core" }
 
 # Async
 tokio = { workspace = true }
