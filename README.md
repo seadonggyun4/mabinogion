@@ -1,9 +1,14 @@
-# Mabinogion
-
-> **"Where all industrial protocols are born and tested"**
+<h1 align="center">Mabinogion</h1>
 
 <p align="center">
-  <strong>Industrial Protocol Simulator</strong><br><br>
+  <strong>Industrial Protocol Simulator</strong>
+</p>
+
+<p align="center">
+  <em>Where all industrial protocols are born and tested</em>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Modbus_TCP%2FRTU-000000?style=for-the-badge&logoColor=white" alt="Modbus TCP/RTU">
   <img src="https://img.shields.io/badge/OPC_UA-000000?style=for-the-badge&logoColor=white" alt="OPC UA">
   <img src="https://img.shields.io/badge/BACnet%2FIP-000000?style=for-the-badge&logoColor=white" alt="BACnet/IP">
