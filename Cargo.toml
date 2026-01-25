@@ -8,7 +8,6 @@ members = [
     "crates/mabi-knx",
     "crates/mabi-scenario",
     "crates/mabi-chaos",
-    "crates/mabi-web",
     "crates/mabi-cli",
 ]
 
@@ -67,10 +66,6 @@ socket2 = { version = "0.5", features = ["all"] }
 # Protocol libraries
 tokio-modbus = "0.11"
 
-# Web
-axum = { version = "0.7", features = ["ws", "macros"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 
 # Testing
 criterion = { version = "0.5", features = ["async_tokio"] }
