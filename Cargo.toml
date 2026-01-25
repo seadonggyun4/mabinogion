@@ -1,0 +1,105 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mabi-core",
+    "crates/mabi-modbus",
+    "crates/mabi-opcua",
+    "crates/mabi-bacnet",
+    "crates/mabi-knx",
+    "crates/mabi-scenario",
+    "crates/mabi-chaos",
+    "crates/mabi-web",
+    "crates/mabi-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["Sylvex Team <team@sylvex.io>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sylvex/mabinogion"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full", "tracing"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging & Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time", "registry"] }
+tracing-appender = "0.2"
+time = { version = "0.3", features = ["formatting", "macros"] }
+
+# Metrics
+prometheus = "0.13"
+metrics = "0.22"
+metrics-exporter-prometheus = "0.13"
+
+# Concurrency
+dashmap = "5.5"
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+# Random & Statistics
+rand = "0.8"
+rand_distr = "0.4"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Networking
+bytes = "1.5"
+socket2 = { version = "0.5", features = ["all"] }
+
+# Protocol libraries
+tokio-modbus = "0.11"
+
+# Web
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+
+# Testing
+criterion = { version = "0.5", features = ["async_tokio"] }
+proptest = "1.4"
+fake = { version = "2.9", features = ["derive"] }
+tempfile = "3.17"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+derive_builder = "0.12"
+strum = { version = "0.25", features = ["derive"] }
+num-traits = "0.2"
+num-derive = "0.4"
+num_cpus = "1.16"
+once_cell = "1.19"
+
+# Unix/Platform
+nix = { version = "0.27", features = ["term", "fs"] }
+libc = "0.2"
+
+# File Watching
+notify = { version = "6.1", default-features = false, features = ["macos_kqueue"] }
+notify-debouncer-mini = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench]
+debug = true

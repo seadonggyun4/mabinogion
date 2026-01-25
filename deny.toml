@@ -1,0 +1,143 @@
+# cargo-deny configuration for mabinogion
+# https://embarkstudios.github.io/cargo-deny/
+#
+# Run with: cargo deny check
+
+[graph]
+# Targets to check
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+# ============================================================================
+# Advisories - Security vulnerability database checks
+# ============================================================================
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+
+# How to handle vulnerabilities
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+
+# Ignore specific advisories (with justification)
+ignore = [
+    # Example: "RUSTSEC-2020-0001"  # Reason for ignoring
+]
+
+# ============================================================================
+# Licenses - Allowed and denied licenses
+# ============================================================================
+[licenses]
+# Confidence threshold for license detection
+confidence-threshold = 0.8
+
+# Allow these licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Unicode-DFS-2016",
+]
+
+# Deny these licenses explicitly
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+]
+
+# Copyleft licenses require explicit approval
+copyleft = "warn"
+
+# How to handle unlicensed crates
+unlicensed = "deny"
+
+# Crate-specific license exceptions
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 },
+]
+
+[[licenses.clarify]]
+name = "webpki"
+expression = "ISC"
+license-files = [
+    { path = "LICENSE", hash = 0x001c7e6c },
+]
+
+# Private crates that don't need license checks
+[licenses.private]
+ignore = true
+registries = []
+
+# ============================================================================
+# Bans - Crate bans and restrictions
+# ============================================================================
+[bans]
+# Lint level for multiple versions of the same crate
+multiple-versions = "warn"
+
+# Lint level for wildcard dependencies
+wildcards = "deny"
+
+# Allow specific crates to be used despite bans
+allow = []
+
+# Deny specific crates
+deny = [
+    # Unmaintained or problematic crates
+    { name = "openssl", wrappers = ["native-tls"] },
+]
+
+# Skip specific crates in duplicate detection
+skip = []
+
+# Skip checking tree for specific crates
+skip-tree = []
+
+# Highlight duplicate crates
+highlight = "all"
+
+# Allow workspace dependencies
+allow-build-scripts = [
+    "proc-macro2",
+    "syn",
+    "quote",
+]
+
+# ============================================================================
+# Sources - Allowed crate sources
+# ============================================================================
+[sources]
+# Lint level for unknown registries
+unknown-registry = "deny"
+
+# Lint level for unknown git sources
+unknown-git = "warn"
+
+# Allow crates from these registries
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# Allow crates from these git repositories
+allow-git = []
+
+# Organization-specific overrides
+[sources.allow-org]
+github = ["sylvex"]
