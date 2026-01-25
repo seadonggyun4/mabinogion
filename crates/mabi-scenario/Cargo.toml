@@ -1,11 +1,13 @@
 [package]
 name = "mabi-scenario"
-description = "Mabinogion - Scenario engine"
+description = "Mabinogion - Scenario engine for time-based simulation orchestration"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 mabi-core = { path = "../mabi-core" }

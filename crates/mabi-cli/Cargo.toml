@@ -6,7 +6,8 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Mabinogion - Industrial Protocol Simulator CLI"
+publish = false
+description = "Mabinogion - Industrial Protocol Simulator CLI (internal)"
 
 [[bin]]
 name = "mabi"

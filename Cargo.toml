@@ -9,15 +9,20 @@ members = [
     "crates/mabi-scenario",
     "crates/mabi-chaos",
     "crates/mabi-cli",
+    "crates/mabinogion",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
-authors = ["Sylvex Team <team@sylvex.io>"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/sylvex/mabinogion"
+authors = ["Seo Dong Gyun <seadonggyun@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/seadonggyun4/mabinogion"
+homepage = "https://github.com/seadonggyun4/mabinogion"
+documentation = "https://docs.rs/mabinogion"
+keywords = ["industrial", "protocol", "simulator", "modbus", "opcua"]
+categories = ["simulation", "network-programming", "development-tools::testing"]
 
 [workspace.dependencies]
 # Async runtime
