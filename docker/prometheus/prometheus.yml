@@ -1,0 +1,55 @@
+# =============================================================================
+# Prometheus Configuration for TRAP Simulator
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'mabinogion'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # OTSIM Simulator metrics
+  - job_name: 'mabinogion'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['simulator:9090']
+    metric_relabel_configs:
+      # Add instance label for multi-instance deployments
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+        replacement: '${1}'
+
+  # OTSIM Simulator detailed metrics (less frequent)
+  - job_name: 'mabinogion-detailed'
+    scrape_interval: 30s
+    metrics_path: /metrics/detailed
+    static_configs:
+      - targets: ['simulator:9090']
+
+  # Node exporter (if running)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
