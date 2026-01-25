@@ -113,6 +113,9 @@ fn main() {
 ## Quick Start
 
 ```bash
+# See what awaits you
+mabi
+
 # Start Modbus TCP server
 mabi modbus --port 502 --devices 10 --points 100
 
@@ -188,16 +191,16 @@ mabinogion/
 
 ## Documentation
 
-| Crate | Docs |
-|-------|------|
-| mabi-core | [docs.rs](https://docs.rs/mabi-core) |
-| mabi-modbus | [docs.rs](https://docs.rs/mabi-modbus) |
-| mabi-opcua | [docs.rs](https://docs.rs/mabi-opcua) |
-| mabi-bacnet | [docs.rs](https://docs.rs/mabi-bacnet) |
-| mabi-knx | [docs.rs](https://docs.rs/mabi-knx) |
-| mabi-scenario | [docs.rs](https://docs.rs/mabi-scenario) |
-| mabi-chaos | [docs.rs](https://docs.rs/mabi-chaos) |
-| mabi-cli | [docs.rs](https://docs.rs/mabi-cli) |
+| Module | Guide | API Reference |
+|--------|-------|---------------|
+| Core | [docs/core](./docs/core/README.md) | [docs.rs](https://docs.rs/mabi-core) |
+| Modbus | [docs/modbus-simulator](./docs/modbus-simulator/README.md) | [docs.rs](https://docs.rs/mabi-modbus) |
+| OPC UA | [docs/opcua-simulator](./docs/opcua-simulator/README.md) | [docs.rs](https://docs.rs/mabi-opcua) |
+| BACnet | [docs/bacnet-simulator](./docs/bacnet-simulator/README.md) | [docs.rs](https://docs.rs/mabi-bacnet) |
+| KNX | [docs/knx-simulator](./docs/knx-simulator/README.md) | [docs.rs](https://docs.rs/mabi-knx) |
+| Scenario | [docs/scenario-engine](./docs/scenario-engine/README.md) | [docs.rs](https://docs.rs/mabi-scenario) |
+| Chaos | [docs/chaos-engine](./docs/chaos-engine/README.md) | [docs.rs](https://docs.rs/mabi-chaos) |
+| CLI | [docs/cli](./docs/cli/README.md) | [docs.rs](https://docs.rs/mabi-cli) |
 
 ---
 
