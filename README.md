@@ -33,6 +33,7 @@ Our **Mabinogion** follows the same philosophy:
 
 Just as a hero's sword is tempered in the forge of mythology, your protocol clients are forged in Mabinogion.
 
+> *And yes, I spent way too many hours playing [Mabinogi](https://mabinogi.nexon.com/page/main/index.asp) back in the day.*
 ---
 
 ## Features
