@@ -3,14 +3,22 @@
 //! Provides subcommands for each supported protocol.
 
 use crate::context::CliContext;
-use crate::error::{CliError, CliResult};
-use crate::output::{OutputFormat, StatusType, TableBuilder};
+use crate::error::CliResult;
+use crate::output::{StatusType, TableBuilder};
 use crate::runner::{Command, CommandOutput};
 use async_trait::async_trait;
 use mabi_core::prelude::*;
-use serde::Serialize;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+
+// Protocol-specific imports
+use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2, ModbusDevice, ModbusDeviceConfig};
+use mabi_opcua::{OpcUaServer, OpcUaServerConfig};
+use mabi_bacnet::prelude::{BACnetServer, ServerConfig as BacnetServerConfig, ObjectRegistry, AnalogInput, AnalogOutput, BinaryInput, BinaryOutput};
+use mabi_knx::{KnxServer, KnxServerConfig, IndividualAddress};
 
 /// Base trait for protocol-specific commands.
 #[async_trait]
@@ -44,6 +52,10 @@ pub struct ModbusCommand {
     rtu_mode: bool,
     /// Serial port for RTU mode.
     serial_port: Option<String>,
+    /// Server instance (for shutdown).
+    server: Arc<Mutex<Option<Arc<ModbusTcpServerV2>>>>,
+    /// Server task handle.
+    server_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl ModbusCommand {
@@ -54,6 +66,8 @@ impl ModbusCommand {
             points_per_device: 100,
             rtu_mode: false,
             serial_port: None,
+            server: Arc::new(Mutex::new(None)),
+            server_task: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -109,7 +123,6 @@ impl Command for ModbusCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        // Display configuration first
         {
             let output = ctx.output();
             if self.rtu_mode {
@@ -124,15 +137,11 @@ impl Command for ModbusCommand {
             }
             output.kv("Devices", self.devices);
             output.kv("Points per Device", self.points_per_device);
-
-            let total_points = self.devices * self.points_per_device;
-            output.kv("Total Points", total_points);
+            output.kv("Total Points", self.devices * self.points_per_device);
         }
 
-        // Start server
         self.start_server(ctx).await?;
 
-        // Display status table
         let colors_enabled = ctx.colors_enabled();
         let table = TableBuilder::new(colors_enabled)
             .header(["Unit ID", "Holding Regs", "Input Regs", "Coils", "Discrete", "Status"])
@@ -150,8 +159,6 @@ impl Command for ModbusCommand {
         table.print();
 
         ctx.output().info("Press Ctrl+C to stop");
-
-        // Wait for shutdown
         ctx.shutdown_signal().notified().await;
 
         self.stop_server(ctx).await?;
@@ -179,7 +186,46 @@ impl ProtocolCommand for ModbusCommand {
         let output = ctx.output();
         let spinner = output.spinner("Starting Modbus server...");
 
-        // TODO: Integrate with actual Modbus server from mabi-modbus
+        let config = ServerConfigV2 {
+            bind_address: self.bind_addr,
+            ..Default::default()
+        };
+
+        let server = Arc::new(ModbusTcpServerV2::new(config));
+
+        for i in 0..self.devices {
+            let unit_id = (i + 1) as u8;
+            let points = (self.points_per_device / 4) as u16;
+            let device_config = ModbusDeviceConfig {
+                unit_id,
+                name: format!("Device-{}", unit_id),
+                holding_registers: points,
+                input_registers: points,
+                coils: points,
+                discrete_inputs: points,
+                response_delay_ms: 0,
+            };
+            let device = ModbusDevice::new(device_config);
+            server.add_device(device);
+        }
+
+        {
+            let mut server_guard = self.server.lock().await;
+            *server_guard = Some(server.clone());
+        }
+
+        let server_clone = server.clone();
+        let task = tokio::spawn(async move {
+            if let Err(e) = server_clone.run().await {
+                tracing::error!("Modbus server error: {}", e);
+            }
+        });
+
+        {
+            let mut task_guard = self.server_task.lock().await;
+            *task_guard = Some(task);
+        }
+
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         spinner.finish_with_message(format!("Modbus server started on {}", self.bind_addr));
@@ -187,7 +233,14 @@ impl ProtocolCommand for ModbusCommand {
     }
 
     async fn stop_server(&self, _ctx: &mut CliContext) -> CliResult<()> {
-        // TODO: Stop actual server
+        if let Some(server) = self.server.lock().await.as_ref() {
+            server.shutdown();
+        }
+
+        if let Some(task) = self.server_task.lock().await.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), task).await;
+        }
+
         Ok(())
     }
 }
@@ -202,6 +255,10 @@ pub struct OpcuaCommand {
     endpoint_path: String,
     nodes: usize,
     security_mode: String,
+    /// Server instance (for shutdown).
+    server: Arc<Mutex<Option<Arc<OpcUaServer>>>>,
+    /// Server task handle.
+    server_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl OpcuaCommand {
@@ -211,6 +268,8 @@ impl OpcuaCommand {
             endpoint_path: "/".into(),
             nodes: 1000,
             security_mode: "None".into(),
+            server: Arc::new(Mutex::new(None)),
+            server_task: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -260,7 +319,6 @@ impl Command for OpcuaCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        // Display configuration first
         {
             let output = ctx.output();
             output.header("OPC UA Simulator");
@@ -305,14 +363,58 @@ impl ProtocolCommand for OpcuaCommand {
         let output = ctx.output();
         let spinner = output.spinner("Starting OPC UA server...");
 
-        // TODO: Integrate with actual OPC UA server
+        let config = OpcUaServerConfig {
+            endpoint_url: format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path),
+            server_name: "Mabinogion OPC UA Simulator".to_string(),
+            max_subscriptions: 1000,
+            max_monitored_items: 10000,
+            ..Default::default()
+        };
+
+        let server = Arc::new(OpcUaServer::new(config).map_err(|e| {
+            crate::error::CliError::ExecutionFailed {
+                message: format!("Failed to create OPC UA server: {}", e)
+            }
+        })?);
+
+        // Add sample nodes
+        for i in 0..self.nodes.min(100) {
+            let node_id = format!("ns=2;i={}", 1000 + i);
+            let _ = server.add_variable(node_id, format!("Variable_{}", i), (i as f64) * 0.1);
+        }
+
+        {
+            let mut server_guard = self.server.lock().await;
+            *server_guard = Some(server.clone());
+        }
+
+        let server_clone = server.clone();
+        let task = tokio::spawn(async move {
+            if let Err(e) = server_clone.start().await {
+                tracing::error!("OPC UA server error: {}", e);
+            }
+        });
+
+        {
+            let mut task_guard = self.server_task.lock().await;
+            *task_guard = Some(task);
+        }
+
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        spinner.finish_with_message("OPC UA server started");
+        spinner.finish_with_message(format!("OPC UA server started on {}", self.bind_addr));
         Ok(())
     }
 
     async fn stop_server(&self, _ctx: &mut CliContext) -> CliResult<()> {
+        if let Some(server) = self.server.lock().await.as_ref() {
+            let _ = server.stop().await;
+        }
+
+        if let Some(task) = self.server_task.lock().await.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), task).await;
+        }
+
         Ok(())
     }
 }
@@ -327,6 +429,10 @@ pub struct BacnetCommand {
     device_instance: u32,
     objects: usize,
     bbmd_enabled: bool,
+    /// Server instance (for shutdown).
+    server: Arc<Mutex<Option<Arc<BACnetServer>>>>,
+    /// Server task handle.
+    server_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl BacnetCommand {
@@ -336,6 +442,8 @@ impl BacnetCommand {
             device_instance: 1234,
             objects: 100,
             bbmd_enabled: false,
+            server: Arc::new(Mutex::new(None)),
+            server_task: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -385,7 +493,6 @@ impl Command for BacnetCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        // Display configuration first
         {
             let output = ctx.output();
             output.header("BACnet/IP Simulator");
@@ -431,14 +538,65 @@ impl ProtocolCommand for BacnetCommand {
         let output = ctx.output();
         let spinner = output.spinner("Starting BACnet server...");
 
-        // TODO: Integrate with actual BACnet server
+        let config = BacnetServerConfig::new(self.device_instance)
+            .with_bind_addr(self.bind_addr)
+            .with_device_name("Mabinogion BACnet Simulator");
+
+        // Create object registry with sample objects
+        let registry = ObjectRegistry::new();
+
+        let objects_per_type = self.objects / 4;
+        for i in 0..objects_per_type {
+            let ai = AnalogInput::new((i + 1) as u32, format!("AI_{}", i + 1));
+            registry.register(Arc::new(ai));
+        }
+        for i in 0..objects_per_type {
+            let ao = AnalogOutput::new((i + 1) as u32, format!("AO_{}", i + 1));
+            registry.register(Arc::new(ao));
+        }
+        for i in 0..objects_per_type {
+            let bi = BinaryInput::new((i + 1) as u32, format!("BI_{}", i + 1));
+            registry.register(Arc::new(bi));
+        }
+        for i in 0..objects_per_type {
+            let bo = BinaryOutput::new((i + 1) as u32, format!("BO_{}", i + 1));
+            registry.register(Arc::new(bo));
+        }
+
+        let server = Arc::new(BACnetServer::new(config, registry));
+
+        {
+            let mut server_guard = self.server.lock().await;
+            *server_guard = Some(server.clone());
+        }
+
+        let server_clone = server.clone();
+        let task = tokio::spawn(async move {
+            if let Err(e) = server_clone.run().await {
+                tracing::error!("BACnet server error: {}", e);
+            }
+        });
+
+        {
+            let mut task_guard = self.server_task.lock().await;
+            *task_guard = Some(task);
+        }
+
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        spinner.finish_with_message("BACnet server started");
+        spinner.finish_with_message(format!("BACnet server started on {}", self.bind_addr));
         Ok(())
     }
 
     async fn stop_server(&self, _ctx: &mut CliContext) -> CliResult<()> {
+        if let Some(server) = self.server.lock().await.as_ref() {
+            server.shutdown();
+        }
+
+        if let Some(task) = self.server_task.lock().await.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), task).await;
+        }
+
         Ok(())
     }
 }
@@ -452,6 +610,10 @@ pub struct KnxCommand {
     bind_addr: SocketAddr,
     individual_address: String,
     group_objects: usize,
+    /// Server instance (for shutdown).
+    server: Arc<Mutex<Option<Arc<KnxServer>>>>,
+    /// Server task handle.
+    server_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl KnxCommand {
@@ -460,6 +622,8 @@ impl KnxCommand {
             bind_addr: "0.0.0.0:3671".parse().unwrap(),
             individual_address: "1.1.1".into(),
             group_objects: 100,
+            server: Arc::new(Mutex::new(None)),
+            server_task: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -504,7 +668,6 @@ impl Command for KnxCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        // Display configuration first
         {
             let output = ctx.output();
             output.header("KNXnet/IP Simulator");
@@ -547,14 +710,61 @@ impl ProtocolCommand for KnxCommand {
         let output = ctx.output();
         let spinner = output.spinner("Starting KNX server...");
 
-        // TODO: Integrate with actual KNX server
+        // Parse individual address
+        let individual_address: IndividualAddress = self.individual_address.parse()
+            .map_err(|_| crate::error::CliError::ExecutionFailed {
+                message: format!("Invalid individual address: {}", self.individual_address)
+            })?;
+
+        let config = KnxServerConfig {
+            bind_addr: self.bind_addr,
+            individual_address,
+            max_connections: 10,
+            ..Default::default()
+        };
+
+        let server = Arc::new(KnxServer::new(config));
+
+        {
+            let mut server_guard = self.server.lock().await;
+            *server_guard = Some(server.clone());
+        }
+
+        let server_clone = server.clone();
+        let task = tokio::spawn(async move {
+            if let Err(e) = server_clone.start().await {
+                tracing::error!("KNX server error: {}", e);
+            }
+        });
+
+        {
+            let mut task_guard = self.server_task.lock().await;
+            *task_guard = Some(task);
+        }
+
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        spinner.finish_with_message("KNX server started");
+        spinner.finish_with_message(format!("KNX server started on {}", self.bind_addr));
         Ok(())
     }
 
     async fn stop_server(&self, _ctx: &mut CliContext) -> CliResult<()> {
+        // Take server out to call stop (KnxServer::stop has Send issues with parking_lot)
+        let server_opt = self.server.lock().await.take();
+        if let Some(server) = server_opt {
+            // Use spawn_blocking to handle the non-Send future
+            let _ = tokio::task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async {
+                    let _ = server.stop().await;
+                })
+            }).await;
+        }
+
+        if let Some(task) = self.server_task.lock().await.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), task).await;
+        }
+
         Ok(())
     }
 }
