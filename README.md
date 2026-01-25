@@ -12,12 +12,8 @@
   <em>"Spawn protocols at will"</em>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Modbus_TCP%2FRTU-000000?style=for-the-badge&logoColor=white" alt="Modbus TCP/RTU">
-  <img src="https://img.shields.io/badge/OPC_UA-000000?style=for-the-badge&logoColor=white" alt="OPC UA">
-  <img src="https://img.shields.io/badge/BACnet%2FIP-000000?style=for-the-badge&logoColor=white" alt="BACnet/IP">
-  <img src="https://img.shields.io/badge/KNXnet%2FIP-000000?style=for-the-badge&logoColor=white" alt="KNXnet/IP">
-</p>
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Powered by Rust](https://img.shields.io/badge/Powered%20by-Rust-orange.svg)](https://www.rust-lang.org/)
 
 ---
 
