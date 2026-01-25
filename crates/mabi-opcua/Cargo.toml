@@ -1,0 +1,63 @@
+[package]
+name = "mabi-opcua"
+description = "Mabinogion - OPC UA server simulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Enable full OPC UA server implementation (requires opcua crate)
+full = []
+
+[dependencies]
+mabi-core = { path = "../mabi-core" }
+
+# Async
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Concurrency
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+crossbeam = { workspace = true }
+rayon = "1.10"
+num_cpus = "1.16"
+
+# Time
+chrono = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+bytes = { workspace = true }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+lru = "0.12"
+
+# Metrics
+prometheus = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+criterion = { workspace = true }
+tempfile = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "opcua_bench"
+harness = false

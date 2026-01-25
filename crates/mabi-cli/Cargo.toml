@@ -1,0 +1,63 @@
+[package]
+name = "mabi-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mabinogion - Industrial Protocol Simulator CLI"
+
+[[bin]]
+name = "mabi"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+mabi-core = { path = "../mabi-core" }
+mabi-modbus = { path = "../mabi-modbus" }
+mabi-opcua = { path = "../mabi-opcua" }
+mabi-bacnet = { path = "../mabi-bacnet" }
+mabi-knx = { path = "../mabi-knx" }
+mabi-scenario = { path = "../mabi-scenario" }
+mabi-chaos = { path = "../mabi-chaos" }
+
+# Async runtime
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
+# CLI framework
+clap = { version = "4.4", features = ["derive", "env", "wrap_help", "color"] }
+clap_complete = "4.4"
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Terminal UI
+console = "0.15"
+indicatif = "0.17"
+dialoguer = "0.11"
+comfy-table = "7.1"
+
+# Utilities
+chrono.workspace = true
+humantime = "2.1"
+humansize = "2.1"
+ctrlc = "3.4"
+
+[dev-dependencies]
+tempfile.workspace = true
+assert_cmd = "2.0"
+predicates = "3.1"

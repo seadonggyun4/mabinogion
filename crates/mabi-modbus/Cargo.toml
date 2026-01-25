@@ -1,0 +1,57 @@
+[package]
+name = "mabi-modbus"
+description = "Mabinogion - Modbus TCP/RTU simulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mabi-core = { path = "../mabi-core" }
+
+# Async
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Modbus
+tokio-modbus = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Concurrency
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+
+# Utilities
+bytes = { workspace = true }
+chrono = { workspace = true }
+num_cpus = "1.16"
+hostname = "0.4"
+humantime-serde = "1.1"
+serde_yaml = { workspace = true }
+
+# Platform-specific (for RTU/serial simulation)
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+criterion = { workspace = true }
+rand = { workspace = true }
+tempfile = "3.10"
+
+[[bench]]
+name = "scalability_bench"
+harness = false
