@@ -15,6 +15,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mabi-cli.svg)](https://crates.io/crates/mabi-cli)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Powered by Rust](https://img.shields.io/badge/Powered%20by-Rust-orange.svg)](https://www.rust-lang.org/)
+[![Downloads](https://img.shields.io/crates/d/mabi-cli.svg?color=brightgreen)](https://crates.io/crates/mabi-cli)
 
 ---
 
