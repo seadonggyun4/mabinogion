@@ -247,6 +247,19 @@ impl TableBuilder {
         self
     }
 
+    /// Add a dim summary/ellipsis row spanning all columns.
+    pub fn summary_row(mut self, message: &str, col_count: usize) -> Self {
+        let mut cells = vec![Cell::new(message)];
+        for _ in 1..col_count {
+            cells.push(Cell::new(""));
+        }
+        if self.colors {
+            cells[0] = Cell::new(message).fg(Color::DarkGrey);
+        }
+        self.table.add_row(cells);
+        self
+    }
+
     /// Build and return the table.
     pub fn build(self) -> Table {
         self.table
@@ -255,6 +268,69 @@ impl TableBuilder {
     /// Print the table.
     pub fn print(self) {
         println!("{}", self.table);
+    }
+}
+
+// =============================================================================
+// Paginated Table
+// =============================================================================
+
+/// Renders a large number of rows with automatic pagination.
+///
+/// When `total <= max_visible`, all rows are shown. Otherwise, the first
+/// `head_count` rows, a summary row ("... N more ..."), and the last
+/// `tail_count` rows are displayed.
+pub struct PaginatedTable {
+    max_visible: usize,
+    head_count: usize,
+    tail_count: usize,
+}
+
+impl Default for PaginatedTable {
+    fn default() -> Self {
+        Self {
+            max_visible: 20,
+            head_count: 10,
+            tail_count: 5,
+        }
+    }
+}
+
+impl PaginatedTable {
+    /// Create with custom thresholds.
+    pub fn new(max_visible: usize, head_count: usize, tail_count: usize) -> Self {
+        Self { max_visible, head_count, tail_count }
+    }
+
+    /// Render rows into the given `TableBuilder`.
+    ///
+    /// `row_fn(index)` returns `(cells, status)` for the row at `index` (0-based).
+    /// `col_count` is the number of columns (used for the summary row span).
+    pub fn render<F>(self, mut builder: TableBuilder, total: usize, col_count: usize, row_fn: F) -> TableBuilder
+    where
+        F: Fn(usize) -> (Vec<String>, StatusType),
+    {
+        if total <= self.max_visible {
+            for i in 0..total {
+                let (cells, status) = row_fn(i);
+                builder = builder.status_row(cells, status);
+            }
+        } else {
+            for i in 0..self.head_count {
+                let (cells, status) = row_fn(i);
+                builder = builder.status_row(cells, status);
+            }
+            let omitted = total - self.head_count - self.tail_count;
+            builder = builder.summary_row(
+                &format!("... {} more devices ...", omitted),
+                col_count,
+            );
+            for i in (total - self.tail_count)..total {
+                let (cells, status) = row_fn(i);
+                builder = builder.status_row(cells, status);
+            }
+        }
+        builder
     }
 }
 

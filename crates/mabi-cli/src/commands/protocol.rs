@@ -4,10 +4,11 @@
 
 use crate::context::CliContext;
 use crate::error::CliResult;
-use crate::output::{StatusType, TableBuilder};
+use crate::output::{OutputFormat, PaginatedTable, StatusType, TableBuilder};
 use crate::runner::{Command, CommandOutput};
 use async_trait::async_trait;
 use mabi_core::prelude::*;
+use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -123,46 +124,122 @@ impl Command for ModbusCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        {
-            let output = ctx.output();
-            if self.rtu_mode {
-                output.header("Modbus RTU Simulator");
-                output.kv(
-                    "Serial Port",
-                    self.serial_port.as_deref().unwrap_or("N/A"),
-                );
-            } else {
-                output.header("Modbus TCP Simulator");
-                output.kv("Bind Address", self.bind_addr);
+        let format = ctx.output().format();
+        let is_quiet = ctx.is_quiet();
+        let is_verbose = ctx.is_verbose();
+        let is_debug = ctx.is_debug();
+
+        if !is_quiet {
+            if matches!(format, OutputFormat::Table) {
+                let output = ctx.output();
+                if self.rtu_mode {
+                    output.header("Modbus RTU Simulator");
+                    output.kv(
+                        "Serial Port",
+                        self.serial_port.as_deref().unwrap_or("N/A"),
+                    );
+                } else {
+                    output.header("Modbus TCP Simulator");
+                    output.kv("Bind Address", self.bind_addr);
+                }
+                output.kv("Devices", self.devices);
+                output.kv("Points per Device", self.points_per_device);
+                output.kv("Total Points", self.devices * self.points_per_device);
             }
-            output.kv("Devices", self.devices);
-            output.kv("Points per Device", self.points_per_device);
-            output.kv("Total Points", self.devices * self.points_per_device);
+        }
+
+        // Verbose: show extra configuration details
+        if is_verbose {
+            ctx.vprintln(format!("  Protocol Mode: {}", if self.rtu_mode { "RTU" } else { "TCP" }));
+            ctx.vprintln(format!("  Points Distribution: {} per register type", self.points_per_device / 4));
+        }
+
+        // Debug: dump full configuration
+        if is_debug {
+            ctx.dprintln(format!("Bind address: {}", self.bind_addr));
+            ctx.dprintln(format!("RTU mode: {}, Serial: {:?}", self.rtu_mode, self.serial_port));
+            ctx.dprintln(format!("Devices: {}, Points/device: {}", self.devices, self.points_per_device));
         }
 
         self.start_server(ctx).await?;
 
-        let colors_enabled = ctx.colors_enabled();
-        let table = TableBuilder::new(colors_enabled)
-            .header(["Unit ID", "Holding Regs", "Input Regs", "Coils", "Discrete", "Status"])
-            .status_row(
-                [
-                    "1",
-                    &(self.points_per_device / 4).to_string(),
-                    &(self.points_per_device / 4).to_string(),
-                    &(self.points_per_device / 4).to_string(),
-                    &(self.points_per_device / 4).to_string(),
-                    "Online",
-                ],
-                StatusType::Success,
-            );
-        table.print();
+        let points_per_type = self.points_per_device / 4;
 
-        ctx.output().info("Press Ctrl+C to stop");
+        if !is_quiet {
+            match format {
+                OutputFormat::Table => {
+                    let colors_enabled = ctx.colors_enabled();
+                    let builder = TableBuilder::new(colors_enabled)
+                        .header(["Unit ID", "Holding Regs", "Input Regs", "Coils", "Discrete", "Status"]);
+
+                    let devices = self.devices;
+                    let pts = points_per_type.to_string();
+                    let table = PaginatedTable::default().render(builder, devices, 6, |i| {
+                        let unit_id = (i + 1).to_string();
+                        (
+                            vec![unit_id, pts.clone(), pts.clone(), pts.clone(), pts.clone(), "Online".into()],
+                            StatusType::Success,
+                        )
+                    });
+                    table.print();
+                }
+                _ => {
+                    #[derive(Serialize)]
+                    struct ModbusServerInfo {
+                        protocol: String,
+                        bind_address: String,
+                        devices: usize,
+                        points_per_device: usize,
+                        total_points: usize,
+                        rtu_mode: bool,
+                        serial_port: Option<String>,
+                        device_list: Vec<ModbusDeviceInfo>,
+                        status: String,
+                    }
+                    #[derive(Serialize)]
+                    struct ModbusDeviceInfo {
+                        unit_id: usize,
+                        holding_registers: usize,
+                        input_registers: usize,
+                        coils: usize,
+                        discrete_inputs: usize,
+                        status: String,
+                    }
+                    let device_list: Vec<ModbusDeviceInfo> = (0..self.devices)
+                        .map(|i| ModbusDeviceInfo {
+                            unit_id: i + 1,
+                            holding_registers: points_per_type,
+                            input_registers: points_per_type,
+                            coils: points_per_type,
+                            discrete_inputs: points_per_type,
+                            status: "Online".into(),
+                        })
+                        .collect();
+                    let info = ModbusServerInfo {
+                        protocol: if self.rtu_mode { "Modbus RTU".into() } else { "Modbus TCP".into() },
+                        bind_address: self.bind_addr.to_string(),
+                        devices: self.devices,
+                        points_per_device: self.points_per_device,
+                        total_points: self.devices * self.points_per_device,
+                        rtu_mode: self.rtu_mode,
+                        serial_port: self.serial_port.clone(),
+                        device_list,
+                        status: "Online".into(),
+                    };
+                    let _ = ctx.output().write(&info);
+                }
+            }
+        }
+
+        if !is_quiet {
+            ctx.output().info("Press Ctrl+C to stop");
+        }
         ctx.shutdown_signal().notified().await;
 
         self.stop_server(ctx).await?;
-        ctx.output().success("Modbus simulator stopped");
+        if !is_quiet {
+            ctx.output().success("Modbus simulator stopped");
+        }
 
         Ok(CommandOutput::quiet_success())
     }
@@ -319,31 +396,94 @@ impl Command for OpcuaCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        {
-            let output = ctx.output();
-            output.header("OPC UA Simulator");
-            output.kv("Endpoint", format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path));
-            output.kv("Nodes", self.nodes);
-            output.kv("Security Mode", &self.security_mode);
+        let format = ctx.output().format();
+        let is_quiet = ctx.is_quiet();
+        let is_verbose = ctx.is_verbose();
+        let is_debug = ctx.is_debug();
+
+        if !is_quiet {
+            if matches!(format, OutputFormat::Table) {
+                let output = ctx.output();
+                output.header("OPC UA Simulator");
+                output.kv("Endpoint", format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path));
+                output.kv("Nodes", self.nodes);
+                output.kv("Security Mode", &self.security_mode);
+            }
+        }
+
+        // Verbose: show extra details
+        if is_verbose {
+            ctx.vprintln(format!("  Bind Address: {}", self.bind_addr));
+            ctx.vprintln(format!("  Endpoint Path: {}", self.endpoint_path));
+            ctx.vprintln(format!("  Max Subscriptions: 1000"));
+            ctx.vprintln(format!("  Max Monitored Items: 10000"));
+        }
+
+        // Debug: dump full configuration
+        if is_debug {
+            ctx.dprintln(format!("Full endpoint URL: opc.tcp://{}{}", self.bind_addr, self.endpoint_path));
+            ctx.dprintln(format!("Node count: {}", self.nodes));
+            ctx.dprintln(format!("Security mode: {}", self.security_mode));
+            ctx.dprintln(format!("Sample nodes created: {}", self.nodes.min(100)));
         }
 
         self.start_server(ctx).await?;
 
-        let colors_enabled = ctx.colors_enabled();
-        let table = TableBuilder::new(colors_enabled)
-            .header(["Namespace", "Nodes", "Subscriptions", "Status"])
-            .status_row(["0", "Standard", "0", "Ready"], StatusType::Info)
-            .status_row(
-                ["1", &self.nodes.to_string(), "0", "Online"],
-                StatusType::Success,
-            );
-        table.print();
+        if !is_quiet {
+            match format {
+                OutputFormat::Table => {
+                    let colors_enabled = ctx.colors_enabled();
+                    let table = TableBuilder::new(colors_enabled)
+                        .header(["Namespace", "Nodes", "Subscriptions", "Status"])
+                        .status_row(["0", "Standard", "0", "Ready"], StatusType::Info)
+                        .status_row(
+                            ["1", &self.nodes.to_string(), "0", "Online"],
+                            StatusType::Success,
+                        );
+                    table.print();
+                }
+                _ => {
+                    #[derive(Serialize)]
+                    struct OpcuaServerInfo {
+                        protocol: String,
+                        endpoint: String,
+                        nodes: usize,
+                        security_mode: String,
+                        namespaces: Vec<NamespaceInfo>,
+                        status: String,
+                    }
+                    #[derive(Serialize)]
+                    struct NamespaceInfo {
+                        index: u32,
+                        nodes: String,
+                        subscriptions: u32,
+                        status: String,
+                    }
+                    let info = OpcuaServerInfo {
+                        protocol: "OPC UA".into(),
+                        endpoint: format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path),
+                        nodes: self.nodes,
+                        security_mode: self.security_mode.clone(),
+                        namespaces: vec![
+                            NamespaceInfo { index: 0, nodes: "Standard".into(), subscriptions: 0, status: "Ready".into() },
+                            NamespaceInfo { index: 1, nodes: self.nodes.to_string(), subscriptions: 0, status: "Online".into() },
+                        ],
+                        status: "Online".into(),
+                    };
+                    let _ = ctx.output().write(&info);
+                }
+            }
+        }
 
-        ctx.output().info("Press Ctrl+C to stop");
+        if !is_quiet {
+            ctx.output().info("Press Ctrl+C to stop");
+        }
         ctx.shutdown_signal().notified().await;
 
         self.stop_server(ctx).await?;
-        ctx.output().success("OPC UA simulator stopped");
+        if !is_quiet {
+            ctx.output().success("OPC UA simulator stopped");
+        }
 
         Ok(CommandOutput::quiet_success())
     }
@@ -493,32 +633,99 @@ impl Command for BacnetCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        {
-            let output = ctx.output();
-            output.header("BACnet/IP Simulator");
-            output.kv("Bind Address", self.bind_addr);
-            output.kv("Device Instance", self.device_instance);
-            output.kv("Objects", self.objects);
-            output.kv("BBMD", if self.bbmd_enabled { "Enabled" } else { "Disabled" });
+        let format = ctx.output().format();
+        let is_quiet = ctx.is_quiet();
+        let is_verbose = ctx.is_verbose();
+        let is_debug = ctx.is_debug();
+
+        if !is_quiet {
+            if matches!(format, OutputFormat::Table) {
+                let output = ctx.output();
+                output.header("BACnet/IP Simulator");
+                output.kv("Bind Address", self.bind_addr);
+                output.kv("Device Instance", self.device_instance);
+                output.kv("Objects", self.objects);
+                output.kv("BBMD", if self.bbmd_enabled { "Enabled" } else { "Disabled" });
+            }
+        }
+
+        // Verbose: show extra details
+        if is_verbose {
+            let per_type = self.objects / 4;
+            ctx.vprintln(format!("  Objects per Type: {} (AI: {}, AO: {}, BI: {}, BO: {})", per_type, per_type, per_type, per_type, per_type));
+            ctx.vprintln(format!("  Device Name: Mabinogion BACnet Simulator"));
+        }
+
+        // Debug: dump full configuration
+        if is_debug {
+            ctx.dprintln(format!("Bind address: {}", self.bind_addr));
+            ctx.dprintln(format!("Device instance: {}", self.device_instance));
+            ctx.dprintln(format!("Total objects: {}, BBMD: {}", self.objects, self.bbmd_enabled));
         }
 
         self.start_server(ctx).await?;
 
-        let colors_enabled = ctx.colors_enabled();
-        let table = TableBuilder::new(colors_enabled)
-            .header(["Object Type", "Count", "Status"])
-            .status_row(["Device", "1", "Online"], StatusType::Success)
-            .status_row(["Analog Input", &(self.objects / 4).to_string(), "Active"], StatusType::Success)
-            .status_row(["Analog Output", &(self.objects / 4).to_string(), "Active"], StatusType::Success)
-            .status_row(["Binary Input", &(self.objects / 4).to_string(), "Active"], StatusType::Success)
-            .status_row(["Binary Output", &(self.objects / 4).to_string(), "Active"], StatusType::Success);
-        table.print();
+        let per_type = self.objects / 4;
 
-        ctx.output().info("Press Ctrl+C to stop");
+        if !is_quiet {
+            match format {
+                OutputFormat::Table => {
+                    let colors_enabled = ctx.colors_enabled();
+                    let table = TableBuilder::new(colors_enabled)
+                        .header(["Object Type", "Count", "Status"])
+                        .status_row(["Device", "1", "Online"], StatusType::Success)
+                        .status_row(["Analog Input", &per_type.to_string(), "Active"], StatusType::Success)
+                        .status_row(["Analog Output", &per_type.to_string(), "Active"], StatusType::Success)
+                        .status_row(["Binary Input", &per_type.to_string(), "Active"], StatusType::Success)
+                        .status_row(["Binary Output", &per_type.to_string(), "Active"], StatusType::Success);
+                    table.print();
+                }
+                _ => {
+                    #[derive(Serialize)]
+                    struct BacnetServerInfo {
+                        protocol: String,
+                        bind_address: String,
+                        device_instance: u32,
+                        objects: usize,
+                        bbmd_enabled: bool,
+                        object_types: Vec<ObjectTypeInfo>,
+                        status: String,
+                    }
+                    #[derive(Serialize)]
+                    struct ObjectTypeInfo {
+                        object_type: String,
+                        count: usize,
+                        status: String,
+                    }
+                    let info = BacnetServerInfo {
+                        protocol: "BACnet/IP".into(),
+                        bind_address: self.bind_addr.to_string(),
+                        device_instance: self.device_instance,
+                        objects: self.objects,
+                        bbmd_enabled: self.bbmd_enabled,
+                        object_types: vec![
+                            ObjectTypeInfo { object_type: "Device".into(), count: 1, status: "Online".into() },
+                            ObjectTypeInfo { object_type: "Analog Input".into(), count: per_type, status: "Active".into() },
+                            ObjectTypeInfo { object_type: "Analog Output".into(), count: per_type, status: "Active".into() },
+                            ObjectTypeInfo { object_type: "Binary Input".into(), count: per_type, status: "Active".into() },
+                            ObjectTypeInfo { object_type: "Binary Output".into(), count: per_type, status: "Active".into() },
+                        ],
+                        status: "Online".into(),
+                    };
+                    let _ = ctx.output().write(&info);
+                }
+            }
+        }
+
+        if !is_quiet {
+            ctx.output().info("Press Ctrl+C to stop");
+        }
         ctx.shutdown_signal().notified().await;
 
         self.stop_server(ctx).await?;
-        ctx.output().success("BACnet simulator stopped");
+        if !is_quiet {
+            ctx.output().success("BACnet simulator stopped");
+        }
 
         Ok(CommandOutput::quiet_success())
     }
@@ -668,29 +875,88 @@ impl Command for KnxCommand {
     }
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
-        {
-            let output = ctx.output();
-            output.header("KNXnet/IP Simulator");
-            output.kv("Bind Address", self.bind_addr);
-            output.kv("Individual Address", &self.individual_address);
-            output.kv("Group Objects", self.group_objects);
+        let format = ctx.output().format();
+        let is_quiet = ctx.is_quiet();
+        let is_verbose = ctx.is_verbose();
+        let is_debug = ctx.is_debug();
+
+        if !is_quiet {
+            if matches!(format, OutputFormat::Table) {
+                let output = ctx.output();
+                output.header("KNXnet/IP Simulator");
+                output.kv("Bind Address", self.bind_addr);
+                output.kv("Individual Address", &self.individual_address);
+                output.kv("Group Objects", self.group_objects);
+            }
+        }
+
+        // Verbose: show extra details
+        if is_verbose {
+            ctx.vprintln(format!("  Max Connections: 10"));
+            ctx.vprintln(format!("  Services: Core, Device Management, Tunneling"));
+        }
+
+        // Debug: dump full configuration
+        if is_debug {
+            ctx.dprintln(format!("Bind address: {}", self.bind_addr));
+            ctx.dprintln(format!("Individual address: {}", self.individual_address));
+            ctx.dprintln(format!("Group objects: {}", self.group_objects));
         }
 
         self.start_server(ctx).await?;
 
-        let colors_enabled = ctx.colors_enabled();
-        let table = TableBuilder::new(colors_enabled)
-            .header(["Service", "Status"])
-            .status_row(["Core", "Ready"], StatusType::Success)
-            .status_row(["Device Management", "Ready"], StatusType::Success)
-            .status_row(["Tunneling", "Ready"], StatusType::Success);
-        table.print();
+        if !is_quiet {
+            match format {
+                OutputFormat::Table => {
+                    let colors_enabled = ctx.colors_enabled();
+                    let table = TableBuilder::new(colors_enabled)
+                        .header(["Service", "Status"])
+                        .status_row(["Core", "Ready"], StatusType::Success)
+                        .status_row(["Device Management", "Ready"], StatusType::Success)
+                        .status_row(["Tunneling", "Ready"], StatusType::Success);
+                    table.print();
+                }
+                _ => {
+                    #[derive(Serialize)]
+                    struct KnxServerInfo {
+                        protocol: String,
+                        bind_address: String,
+                        individual_address: String,
+                        group_objects: usize,
+                        services: Vec<ServiceInfo>,
+                        status: String,
+                    }
+                    #[derive(Serialize)]
+                    struct ServiceInfo {
+                        service: String,
+                        status: String,
+                    }
+                    let info = KnxServerInfo {
+                        protocol: "KNXnet/IP".into(),
+                        bind_address: self.bind_addr.to_string(),
+                        individual_address: self.individual_address.clone(),
+                        group_objects: self.group_objects,
+                        services: vec![
+                            ServiceInfo { service: "Core".into(), status: "Ready".into() },
+                            ServiceInfo { service: "Device Management".into(), status: "Ready".into() },
+                            ServiceInfo { service: "Tunneling".into(), status: "Ready".into() },
+                        ],
+                        status: "Online".into(),
+                    };
+                    let _ = ctx.output().write(&info);
+                }
+            }
+        }
 
-        ctx.output().info("Press Ctrl+C to stop");
+        if !is_quiet {
+            ctx.output().info("Press Ctrl+C to stop");
+        }
         ctx.shutdown_signal().notified().await;
 
         self.stop_server(ctx).await?;
-        ctx.output().success("KNX simulator stopped");
+        if !is_quiet {
+            ctx.output().success("KNX simulator stopped");
+        }
 
         Ok(CommandOutput::quiet_success())
     }

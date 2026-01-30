@@ -404,6 +404,8 @@ let result = history.read_aggregate(
 | `Sign` | Message signing only |
 | `SignAndEncrypt` | Both signing and encryption |
 
+The CLI enforces strict validation of the `--security` parameter via a `ValueEnum` constraint. Only the three modes listed above are accepted; invalid values are rejected at the argument parsing layer prior to server initialization. The matching is case-insensitive (e.g., `sign`, `Sign`, and `SIGN` are all accepted).
+
 ### User Authentication
 
 | Type | Description |

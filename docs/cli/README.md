@@ -52,12 +52,17 @@ All commands accept the following global options:
 
 ### Verbosity Levels
 
-| Level | Flag | Log Level |
-|-------|------|-----------|
-| Default | (none) | Warn |
-| Verbose | `-v` | Info |
-| Debug | `-vv` | Debug |
-| Trace | `-vvv` | Trace |
+The verbosity system operates at two layers: **log level** (tracing output) and **command output** (protocol server startup diagnostics). All protocol commands (`modbus`, `opcua`, `bacnet`, `knx`) respond to verbosity flags as follows:
+
+| Level | Flag | Log Level | Command Output Behavior |
+|-------|------|-----------|------------------------|
+| Quiet | `-q` / `--quiet` | Error only | All header, table, and info messages suppressed |
+| Default | (none) | Warn | Standard header, key-value summary, and status table |
+| Verbose | `-v` | Info | Additional configuration details (e.g., bind address, subscription limits, object distribution) |
+| Debug | `-vv` | Debug | Full configuration dump with `[DEBUG]` prefix |
+| Trace | `-vvv` | Trace | Framework-level trace logging |
+
+When `--quiet` is active, the server starts and awaits shutdown without producing any terminal output. This is suitable for automated test harnesses and CI environments where only the exit code is meaningful.
 
 ## Commands
 
@@ -110,10 +115,10 @@ mabi modbus [OPTIONS]
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--port` | `-p` | u16 | 502 | TCP port to bind |
+| `--port` | `-p` | u16 | 502 | TCP port to bind (1–65535) |
 | `--bind` | | string | 0.0.0.0 | Bind address |
-| `--devices` | `-d` | usize | 1 | Number of unit IDs to simulate |
-| `--points` | | usize | 100 | Data points per device |
+| `--devices` | `-d` | usize | 1 | Number of unit IDs to simulate (≥ 1) |
+| `--points` | | usize | 100 | Data points per device (≥ 1) |
 | `--rtu` | | flag | false | Enable RTU mode (serial) |
 | `--serial` | | string | none | Serial port path (required for RTU) |
 
@@ -144,10 +149,10 @@ mabi opcua [OPTIONS]
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--port` | `-p` | u16 | 4840 | TCP port to bind |
+| `--port` | `-p` | u16 | 4840 | TCP port to bind (1–65535) |
 | `--endpoint` | | string | / | Endpoint path |
-| `--nodes` | `-n` | usize | 1000 | Number of nodes to create |
-| `--security` | | string | None | Security mode: `None`, `Sign`, `SignAndEncrypt` |
+| `--nodes` | `-n` | usize | 1000 | Number of nodes to create (≥ 1) |
+| `--security` | | enum | `None` | Security mode (case-insensitive): `None`, `Sign`, `SignAndEncrypt` |
 
 #### Examples
 
@@ -176,9 +181,9 @@ mabi bacnet [OPTIONS]
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--port` | `-p` | u16 | 47808 | UDP port to bind |
+| `--port` | `-p` | u16 | 47808 | UDP port to bind (1–65535) |
 | `--instance` | `-i` | u32 | 1234 | BACnet device instance number |
-| `--objects` | `-o` | usize | 100 | Number of BACnet objects |
+| `--objects` | `-o` | usize | 100 | Number of BACnet objects (≥ 1) |
 | `--bbmd` | | flag | false | Enable BBMD functionality |
 
 #### Examples
@@ -208,9 +213,9 @@ mabi knx [OPTIONS]
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--port` | `-p` | u16 | 3671 | UDP port to bind |
+| `--port` | `-p` | u16 | 3671 | UDP port to bind (1–65535) |
 | `--address` | `-a` | string | 1.1.1 | Individual address (format: X.X.X) |
-| `--groups` | `-g` | usize | 100 | Number of group objects |
+| `--groups` | `-g` | usize | 100 | Number of group objects (≥ 1) |
 
 #### Examples
 
@@ -349,14 +354,131 @@ Supported protocols:
 
 ## Output Formats
 
-The `--format` option controls output rendering:
+The `--format` option controls output rendering across all commands. For protocol server commands (`modbus`, `opcua`, `bacnet`, `knx`), the format determines how the server startup information is presented:
 
 | Format | Description |
 |--------|-------------|
-| `table` | Human-readable table with UTF-8 box characters |
-| `json` | Pretty-printed JSON |
-| `yaml` | YAML structured output |
-| `compact` | Single-line JSON (no formatting) |
+| `table` | Human-readable header with key-value pairs and UTF-8 box-character status table (default) |
+| `json` | Pretty-printed JSON with structured server metadata (protocol, endpoint, status, nested objects) |
+| `yaml` | YAML structured output with identical schema to JSON |
+| `compact` | Single-line JSON without whitespace formatting, suitable for log ingestion pipelines |
+
+### Protocol Command Output Structure
+
+When a non-table format is selected, protocol commands emit a serializable structure containing the full server configuration and status. Each protocol defines its own schema appropriate to the protocol semantics.
+
+#### Modbus JSON Output
+
+`mabi modbus --port 5020 --devices 3 --points 100 --format json` produces:
+
+```json
+{
+  "protocol": "Modbus TCP",
+  "bind_address": "0.0.0.0:5020",
+  "devices": 3,
+  "points_per_device": 100,
+  "total_points": 300,
+  "rtu_mode": false,
+  "serial_port": null,
+  "device_list": [
+    {
+      "unit_id": 1,
+      "holding_registers": 25,
+      "input_registers": 25,
+      "coils": 25,
+      "discrete_inputs": 25,
+      "status": "Online"
+    },
+    {
+      "unit_id": 2,
+      "holding_registers": 25,
+      "input_registers": 25,
+      "coils": 25,
+      "discrete_inputs": 25,
+      "status": "Online"
+    },
+    {
+      "unit_id": 3,
+      "holding_registers": 25,
+      "input_registers": 25,
+      "coils": 25,
+      "discrete_inputs": 25,
+      "status": "Online"
+    }
+  ],
+  "status": "Online"
+}
+```
+
+The `device_list` array enumerates every simulated unit with per-register-type point counts, enabling programmatic consumption by external test harnesses. Points are distributed uniformly across the four register types (holding, input, coils, discrete).
+
+#### OPC UA JSON Output
+
+`mabi opcua --format json --nodes 5` produces:
+
+```json
+{
+  "protocol": "OPC UA",
+  "endpoint": "opc.tcp://0.0.0.0:4840/",
+  "nodes": 5,
+  "security_mode": "None",
+  "namespaces": [
+    { "index": 0, "nodes": "Standard", "subscriptions": 0, "status": "Ready" },
+    { "index": 1, "nodes": "5", "subscriptions": 0, "status": "Online" }
+  ],
+  "status": "Online"
+}
+```
+
+The `list` command similarly emits structured output for device and protocol enumeration.
+
+### Table Output Pagination
+
+When the `table` format renders a large number of rows (e.g., devices or objects), the CLI applies automatic pagination via the `PaginatedTable` component to maintain terminal readability:
+
+| Condition | Rendering Behavior |
+|-----------|-------------------|
+| Total rows ≤ 20 | All rows are displayed in full |
+| Total rows > 20 | First 10 rows, a dim summary row (`... N more devices ...`), and the last 5 rows |
+
+The pagination thresholds (max visible: 20, head: 10, tail: 5) are configurable at the call site, allowing protocol-specific tuning. This truncation is purely presentational; the underlying server instantiates all requested devices regardless of display limits. For complete enumeration, use `--format json` or `--format yaml`.
+
+Example with 25 devices (`mabi modbus --devices 25 --points 100`):
+
+```
+┌─────────┬──────────────┬────────────┬───────┬──────────┬────────┐
+│ Unit ID ┆ Holding Regs ┆ Input Regs ┆ Coils ┆ Discrete ┆ Status │
+╞═════════╪══════════════╪════════════╪═══════╪══════════╪════════╡
+│ 1       ┆ 25           ┆ 25         ┆ 25    ┆ 25       ┆ Online │
+│ 2       ┆ 25           ┆ 25         ┆ 25    ┆ 25       ┆ Online │
+│ ...     ┆              ┆            ┆       ┆          ┆        │
+│ 10      ┆ 25           ┆ 25         ┆ 25    ┆ 25       ┆ Online │
+│ ... 10 more devices ...                                          │
+│ 21      ┆ 25           ┆ 25         ┆ 25    ┆ 25       ┆ Online │
+│ ...     ┆              ┆            ┆       ┆          ┆        │
+│ 25      ┆ 25           ┆ 25         ┆ 25    ┆ 25       ┆ Online │
+└─────────┴──────────────┴────────────┴───────┴──────────┴────────┘
+```
+
+## Input Validation
+
+All protocol commands enforce argument constraints at parse time via clap `value_parser` functions defined in `src/validation.rs`. Invalid values are rejected before any server initialization occurs, ensuring deterministic early failure with a descriptive error message and exit code 2.
+
+### Constraint Summary
+
+| Constraint | Affected Options | Rationale |
+|------------|-----------------|-----------|
+| Port ∈ [1, 65535] | `--port` (all protocols) | Port 0 triggers OS ephemeral port assignment, yielding a non-deterministic bind address that external clients cannot connect to. This is incompatible with the simulator's role as a known-address test endpoint. |
+| Count ≥ 1 | `--devices`, `--points`, `--nodes`, `--objects`, `--groups` | A zero-count resource produces a server with no simulatable entities. This invariant violation is caught at the CLI boundary rather than propagated to protocol-layer initialization. |
+
+### Extensibility
+
+The `validation` module exposes `value_parser`-compatible functions with the signature `fn(&str) -> Result<T, String>`. Adding a new constraint requires:
+
+1. Defining a validator function in `src/validation.rs`
+2. Annotating the target `#[arg]` with `value_parser = new_validator`
+
+This design decouples validation logic from both the argument definition layer (clap) and the command execution layer, permitting reuse across protocol commands without duplication.
 
 ## Exit Codes
 
@@ -387,6 +509,8 @@ The CLI implements a command pattern with the following components:
 | `CommandRunner` | Execution lifecycle management |
 | `CliContext` | Shared state and configuration |
 | `OutputWriter` | Multi-format output rendering |
+| `TableBuilder` | Fluent API for UTF-8 box-character table construction |
+| `PaginatedTable` | Protocol-agnostic row pagination with configurable head/tail thresholds |
 
 ### Key Abstractions
 
@@ -422,4 +546,5 @@ Command (trait)
 | `src/context.rs` | CLI context and state |
 | `src/output.rs` | Output formatting |
 | `src/runner.rs` | Command execution framework |
+| `src/validation.rs` | Reusable argument validators |
 | `src/error.rs` | Error types and handling |

@@ -4,6 +4,7 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use mabi_cli::prelude::*;
+use mabi_cli::validation::{parse_nonzero_count, parse_port};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -145,7 +146,7 @@ struct RunArgs {
 #[derive(Args)]
 struct ModbusArgs {
     /// Port to bind to
-    #[arg(short, long, default_value = "502")]
+    #[arg(short, long, default_value = "502", value_parser = parse_port)]
     port: u16,
 
     /// Bind address
@@ -153,11 +154,11 @@ struct ModbusArgs {
     bind: String,
 
     /// Number of devices (unit IDs) to simulate
-    #[arg(short, long, default_value = "1")]
+    #[arg(short, long, default_value = "1", value_parser = parse_nonzero_count)]
     devices: usize,
 
     /// Number of points per device
-    #[arg(long, default_value = "100")]
+    #[arg(long, default_value = "100", value_parser = parse_nonzero_count)]
     points: usize,
 
     /// Use RTU mode (requires --serial)
@@ -172,7 +173,7 @@ struct ModbusArgs {
 #[derive(Args)]
 struct OpcuaArgs {
     /// Port to bind to
-    #[arg(short, long, default_value = "4840")]
+    #[arg(short, long, default_value = "4840", value_parser = parse_port)]
     port: u16,
 
     /// Endpoint path
@@ -180,18 +181,18 @@ struct OpcuaArgs {
     endpoint: String,
 
     /// Number of nodes to create
-    #[arg(short, long, default_value = "1000")]
+    #[arg(short, long, default_value = "1000", value_parser = parse_nonzero_count)]
     nodes: usize,
 
     /// Security mode (None, Sign, SignAndEncrypt)
-    #[arg(long, default_value = "None")]
-    security: String,
+    #[arg(long, value_enum, default_value = "none", ignore_case = true)]
+    security: SecurityModeArg,
 }
 
 #[derive(Args)]
 struct BacnetArgs {
     /// Port to bind to
-    #[arg(short, long, default_value = "47808")]
+    #[arg(short, long, default_value = "47808", value_parser = parse_port)]
     port: u16,
 
     /// Device instance number
@@ -199,7 +200,7 @@ struct BacnetArgs {
     instance: u32,
 
     /// Number of objects to create
-    #[arg(short, long, default_value = "100")]
+    #[arg(short, long, default_value = "100", value_parser = parse_nonzero_count)]
     objects: usize,
 
     /// Enable BBMD functionality
@@ -210,7 +211,7 @@ struct BacnetArgs {
 #[derive(Args)]
 struct KnxArgs {
     /// Port to bind to
-    #[arg(short, long, default_value = "3671")]
+    #[arg(short, long, default_value = "3671", value_parser = parse_port)]
     port: u16,
 
     /// Individual address (e.g., "1.1.1")
@@ -218,7 +219,7 @@ struct KnxArgs {
     address: String,
 
     /// Number of group objects
-    #[arg(short, long, default_value = "100")]
+    #[arg(short, long, default_value = "100", value_parser = parse_nonzero_count)]
     groups: usize,
 }
 
@@ -254,6 +255,29 @@ struct ListArgs {
     /// Maximum number of items to show
     #[arg(short, long)]
     limit: Option<usize>,
+}
+
+/// OPC UA security mode argument.
+#[derive(ValueEnum, Clone, Copy, Debug, Default)]
+enum SecurityModeArg {
+    /// No security
+    #[default]
+    None,
+    /// Messages are signed
+    Sign,
+    /// Messages are signed and encrypted
+    #[value(name = "SignAndEncrypt")]
+    SignAndEncrypt,
+}
+
+impl std::fmt::Display for SecurityModeArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::Sign => write!(f, "Sign"),
+            Self::SignAndEncrypt => write!(f, "SignAndEncrypt"),
+        }
+    }
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Default)]
@@ -363,7 +387,7 @@ async fn main() -> ExitCode {
                 .with_port(args.port)
                 .with_endpoint(args.endpoint)
                 .with_nodes(args.nodes)
-                .with_security(args.security);
+                .with_security(args.security.to_string());
 
             runner.run_with_shutdown(&cmd).await
         }
