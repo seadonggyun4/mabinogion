@@ -30,18 +30,7 @@
 - **Scale Testing**: Spawn 10,000+ devices to stress test your client
 - **Chaos Engineering**: Inject network delays, packet loss, and device failures
 
-### Supported Protocols
-
-| Protocol | Use Case |
-|----------|----------|
-| **Modbus TCP/RTU** | Factory automation, PLCs, sensors |
-| **OPC UA** | Industrial IoT, SCADA systems |
-| **BACnet/IP** | Building automation (HVAC, lighting) |
-| **KNXnet/IP** | Smart home/building systems |
-
----
-
-## The Name
+### The Name
 
 **Mabinogion** comes from Welsh mythology — ancient tales of magical forges where legendary weapons were crafted.
 
@@ -61,67 +50,19 @@ mabi modbus --port 5020 --devices 10
 mbpoll -a 1 -r 1 -c 10 -p 5020 127.0.0.1
 ```
 
-That's it. Your client now talks to virtual PLCs.
-
----
-
-## Features
-
-### Virtual Device Simulation
-- Create virtual industrial devices that respond to real protocol requests
-- Read/write registers, coils, and data points
-- Each device maintains its own state
-
-### Large-Scale Testing
-- **10,000+** concurrent virtual devices
-- **1,000,000+** real-time data points
-- **100,000 msg/s** message throughput
-
-### Protocol Support
-| Protocol | Features |
-|----------|----------|
-| **Modbus TCP/RTU** | Read/Write Coils, Registers, Multi-unit support |
-| **OPC UA** | Subscriptions, History, Security, Address Space |
-| **BACnet/IP** | Property R/W, COV Subscriptions, BBMD, Discovery |
-| **KNXnet/IP** | Tunneling, Group Addressing, DPT support |
-
-### Chaos Engineering
-- Network latency and packet loss simulation
-- Device failure and recovery scenarios
-- Protocol error injection
-
-### Scenario-Based Testing
-```yaml
-name: stress_test_scenario
-devices:
-  - id: plc-001
-    protocol: modbus_tcp
-    points: 1000
-events:
-  - name: high_load
-    trigger: "0 */5 * * * *"
-    actions:
-      - inject_latency: 100ms
-      - corrupt_responses: 5%
-```
-
 ---
 
 ## Installation
 
 ### For Simulator Users (Recommended)
 
-**Just one command** - all simulator features included:
-
 ```bash
 cargo install mabi-cli
 ```
 
-This installs the `mabi` CLI with **all protocols** (Modbus, OPC UA, BACnet, KNX), scenario engine, and chaos engineering built-in. No additional packages required.
+All protocols, scenario engine, and chaos engineering built-in.
 
 ### For Library Developers (Optional)
-
-If you want to build your own tools using Mabinogion as a library:
 
 ```toml
 [dependencies]
@@ -134,62 +75,66 @@ mabi-scenario = "1.0"    # Scenario engine (optional)
 mabi-chaos = "1.0"       # Chaos engineering (optional)
 ```
 
-```rust
-use mabi_core::prelude::*;
-
-fn main() {
-    let protocol = Protocol::ModbusTcp;
-    let value = Value::float(23.5);
-    println!("Protocol: {:?}, Value: {:?}", protocol, value);
-}
-```
-
 ---
 
 ## Quick Start
 
 ```bash
-# See what awaits you
-mabi
-
-# Start Modbus TCP server
 mabi modbus --port 502 --devices 10 --points 100
-
-# Start OPC UA server
 mabi opcua --port 4840 --nodes 1000
-
-# Start BACnet/IP server
 mabi bacnet --port 47808 --instance 1234
-
-# Start KNXnet/IP server
 mabi knx --port 3671 --address 1.1.1
-```
-
-### Running Scenarios
-
-```bash
-# Run simulator with scenario file
-mabi run scenario.yaml
-
-# Run at 2x speed for 10 minutes
 mabi run scenario.yaml --time-scale 2.0 --duration 10m
-
-# Validation only (dry-run)
-mabi run scenario.yaml --dry-run
 ```
 
-### Resource Queries
+---
 
-```bash
-# List supported protocols
-mabi list protocols
+## Documentation
 
-# List devices (JSON output)
-mabi list devices --format json
+All detailed documentation lives in the [`docs/`](./docs/) directory. Each module has a comprehensive guide covering architecture, API reference, configuration, and usage examples.
 
-# List devices for specific protocol
-mabi list devices --protocol modbus
-```
+### Protocol Simulators
+
+| Protocol | Use Case | Key Features | Guide |
+|----------|----------|--------------|-------|
+| **Modbus TCP/RTU** | Factory automation, PLCs, sensors | TCP/RTU dual mode, handler registry, sparse registers, multi-unit, fault injection | [docs/modbus-simulator](./docs/modbus-simulator/README.md) |
+| **OPC UA** | Industrial IoT, SCADA systems | Address space, subscriptions, historical access, 22+ aggregates, security policies | [docs/opcua-simulator](./docs/opcua-simulator/README.md) |
+| **BACnet/IP** | Building automation (HVAC, lighting) | 9 object types, COV subscriptions, priority array, BBMD, APDU segmentation | [docs/bacnet-simulator](./docs/bacnet-simulator/README.md) |
+| **KNXnet/IP** | Smart home/building systems | Tunneling, 25+ datapoint types, group addressing, DPT codec system | [docs/knx-simulator](./docs/knx-simulator/README.md) |
+
+### Core & Infrastructure
+
+| Module | Description | Key Features | Guide |
+|--------|-------------|--------------|-------|
+| **Core** | Common abstractions and utilities | Device trait, SimulatorEngine, factory system, metrics, capabilities, lifecycle | [docs/core](./docs/core/README.md) |
+| **Scenario Engine** | Declarative time-based simulation | 9 pattern types, event triggers/actions, time scaling, YAML schema, replay | [docs/scenario-engine](./docs/scenario-engine/README.md) |
+| **Chaos Engine** | Fault injection framework | Network/device/protocol faults, latency models, scheduler, middleware, config | [docs/chaos-engine](./docs/chaos-engine/README.md) |
+| **CLI** | Command-line interface | All commands, global options, output formats, exit codes, validation | [docs/cli](./docs/cli/README.md) |
+
+### API Reference
+
+| Crate | crates.io | docs.rs |
+|-------|-----------|---------|
+| [mabi-core](https://crates.io/crates/mabi-core) | [![](https://img.shields.io/crates/v/mabi-core.svg)](https://crates.io/crates/mabi-core) | [docs.rs](https://docs.rs/mabi-core) |
+| [mabi-modbus](https://crates.io/crates/mabi-modbus) | [![](https://img.shields.io/crates/v/mabi-modbus.svg)](https://crates.io/crates/mabi-modbus) | [docs.rs](https://docs.rs/mabi-modbus) |
+| [mabi-opcua](https://crates.io/crates/mabi-opcua) | [![](https://img.shields.io/crates/v/mabi-opcua.svg)](https://crates.io/crates/mabi-opcua) | [docs.rs](https://docs.rs/mabi-opcua) |
+| [mabi-bacnet](https://crates.io/crates/mabi-bacnet) | [![](https://img.shields.io/crates/v/mabi-bacnet.svg)](https://crates.io/crates/mabi-bacnet) | [docs.rs](https://docs.rs/mabi-bacnet) |
+| [mabi-knx](https://crates.io/crates/mabi-knx) | [![](https://img.shields.io/crates/v/mabi-knx.svg)](https://crates.io/crates/mabi-knx) | [docs.rs](https://docs.rs/mabi-knx) |
+| [mabi-scenario](https://crates.io/crates/mabi-scenario) | [![](https://img.shields.io/crates/v/mabi-scenario.svg)](https://crates.io/crates/mabi-scenario) | [docs.rs](https://docs.rs/mabi-scenario) |
+| [mabi-chaos](https://crates.io/crates/mabi-chaos) | [![](https://img.shields.io/crates/v/mabi-chaos.svg)](https://crates.io/crates/mabi-chaos) | [docs.rs](https://docs.rs/mabi-chaos) |
+| [mabi-cli](https://crates.io/crates/mabi-cli) | [![](https://img.shields.io/crates/v/mabi-cli.svg)](https://crates.io/crates/mabi-cli) | [docs.rs](https://docs.rs/mabi-cli) |
+
+---
+
+## Performance Targets
+
+| Metric | Target |
+|--------|--------|
+| Concurrent Devices | 10,000+ |
+| Data Points | 1,000,000+ |
+| Message Throughput | 100,000 msg/s |
+| Memory (10K devices) | < 2GB |
+| Latency (p99) | < 10ms |
 
 ---
 
@@ -206,85 +151,24 @@ mabinogion/
 │   ├── mabi-scenario/   # Scenario engine
 │   ├── mabi-chaos/      # Chaos engineering
 │   └── mabi-cli/        # CLI (mabi)
+├── docs/                # Detailed documentation
 ├── scenarios/           # Scenario files
 └── tests/               # Integration/E2E tests
 ```
 
 ---
 
-## Crates
-
-| Crate | crates.io | Description |
-|-------|-----------|-------------|
-| [mabi-core](https://crates.io/crates/mabi-core) | [![](https://img.shields.io/crates/v/mabi-core.svg)](https://crates.io/crates/mabi-core) | Core abstractions and utilities |
-| [mabi-modbus](https://crates.io/crates/mabi-modbus) | [![](https://img.shields.io/crates/v/mabi-modbus.svg)](https://crates.io/crates/mabi-modbus) | Modbus TCP/RTU simulator |
-| [mabi-opcua](https://crates.io/crates/mabi-opcua) | [![](https://img.shields.io/crates/v/mabi-opcua.svg)](https://crates.io/crates/mabi-opcua) | OPC UA server simulator |
-| [mabi-bacnet](https://crates.io/crates/mabi-bacnet) | [![](https://img.shields.io/crates/v/mabi-bacnet.svg)](https://crates.io/crates/mabi-bacnet) | BACnet/IP simulator |
-| [mabi-knx](https://crates.io/crates/mabi-knx) | [![](https://img.shields.io/crates/v/mabi-knx.svg)](https://crates.io/crates/mabi-knx) | KNXnet/IP simulator |
-| [mabi-scenario](https://crates.io/crates/mabi-scenario) | [![](https://img.shields.io/crates/v/mabi-scenario.svg)](https://crates.io/crates/mabi-scenario) | Scenario engine |
-| [mabi-chaos](https://crates.io/crates/mabi-chaos) | [![](https://img.shields.io/crates/v/mabi-chaos.svg)](https://crates.io/crates/mabi-chaos) | Chaos engineering |
-| [mabi-cli](https://crates.io/crates/mabi-cli) | [![](https://img.shields.io/crates/v/mabi-cli.svg)](https://crates.io/crates/mabi-cli) | CLI tool |
-
-## Documentation
-
-| Module | Guide | API Reference |
-|--------|-------|---------------|
-| Core | [docs/core](./docs/core/README.md) | [docs.rs](https://docs.rs/mabi-core) |
-| Modbus | [docs/modbus-simulator](./docs/modbus-simulator/README.md) | [docs.rs](https://docs.rs/mabi-modbus) |
-| OPC UA | [docs/opcua-simulator](./docs/opcua-simulator/README.md) | [docs.rs](https://docs.rs/mabi-opcua) |
-| BACnet | [docs/bacnet-simulator](./docs/bacnet-simulator/README.md) | [docs.rs](https://docs.rs/mabi-bacnet) |
-| KNX | [docs/knx-simulator](./docs/knx-simulator/README.md) | [docs.rs](https://docs.rs/mabi-knx) |
-| Scenario | [docs/scenario-engine](./docs/scenario-engine/README.md) | [docs.rs](https://docs.rs/mabi-scenario) |
-| Chaos | [docs/chaos-engine](./docs/chaos-engine/README.md) | [docs.rs](https://docs.rs/mabi-chaos) |
-| CLI | [docs/cli](./docs/cli/README.md) | [docs.rs](https://docs.rs/mabi-cli) |
-
----
-
-## Performance Targets
-
-| Metric | Target |
-|--------|--------|
-| Concurrent Devices | 10,000+ |
-| Data Points | 1,000,000+ |
-| Message Throughput | 100,000 msg/s |
-| Memory (10K devices) | < 2GB |
-| Latency (p99) | < 10ms |
-
----
-
 ## Development
 
-### Build
-
 ```bash
-cargo build --workspace
+cargo build --workspace          # Build
+cargo test --workspace           # Full test suite
+cargo test --test integration_tests   # Integration tests
+cargo test --test e2e_protocol_tests  # E2E tests
+cargo bench                      # Benchmarks
 ```
 
-### Testing
-
-```bash
-# Full test suite
-cargo test --workspace
-
-# Integration tests
-cargo test --test integration_tests
-
-# E2E tests
-cargo test --test e2e_protocol_tests
-```
-
-### Benchmarks
-
-```bash
-cargo bench
-```
-
----
-
-## Requirements
-
-- Rust 1.75 or higher
-- Tokio async runtime
+**Requirements**: Rust 1.75+, Tokio async runtime
 
 ---
 
