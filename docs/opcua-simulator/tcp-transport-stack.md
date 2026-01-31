@@ -321,7 +321,7 @@ pub struct ServiceContextTemplate {
 | 함수 | 용도 |
 |------|------|
 | `build_opn_response()` | OpenSecureChannelResponse 인코딩 |
-| `build_service_fault()` | ServiceFault 응답 생성 |
+| `build_service_fault()` | ServiceFault 응답 생성 (raw `NodeId + ResponseHeader` 형식) |
 | `encode_error()` | 에러 메시지 인코딩 |
 
 ### Transport Metrics (`metrics.rs`)
@@ -451,6 +451,28 @@ pub struct ServiceResponse {
     pub body: Vec<u8>,
 }
 ```
+
+#### 디스패치 메시지 인코딩 형식
+
+OPC UA Part 6에 따라, MSG 메시지 내부의 서비스 요청/응답은 **ExtensionObject가 아닌** raw `NodeId + body` 형식으로 인코딩됩니다.
+
+```text
+서비스 요청 페이로드:
+┌──────────────────────────────────────────┐
+│  NodeId (request type_id)                │  ← e.g., i=428 (GetEndpoints)
+│  RequestHeader + request body bytes      │  ← 핸들러에 전달되는 body
+└──────────────────────────────────────────┘
+
+서비스 응답 페이로드:
+┌──────────────────────────────────────────┐
+│  NodeId (response type_id)               │  ← e.g., i=431 (GetEndpointsResponse)
+│  ResponseHeader + response body bytes    │  ← 핸들러가 생성한 body
+└──────────────────────────────────────────┘
+```
+
+`dispatch()` 메서드는 페이로드에서 `NodeId`를 디코딩하여 핸들러를 찾고, NodeId 이후의 나머지 바이트를 `request_body`로 핸들러에 전달합니다. 응답도 동일하게 `NodeId + body`를 직접 연결하여 반환합니다.
+
+> **주의**: ExtensionObject (`NodeId + encoding_byte + length + body`) 형식은 `AdditionalHeader` 등의 내부 필드에만 사용되며, 최상위 서비스 메시지 래핑에는 사용되지 않습니다. 이 구분은 OPC UA Part 6, Section 6.7.3에 정의되어 있습니다.
 
 ### 서비스 핸들러 목록
 
@@ -609,7 +631,7 @@ OPC UA Client
          ▼
 ┌─────────────────┐
 │  Service        │  ← ServiceRegistry.dispatch()
-│  Registry       │     ExtensionObject → type_id → Handler
+│  Registry       │     NodeId → type_id → Handler
 └────────┬────────┘
          ▼
 ┌─────────────────┐
