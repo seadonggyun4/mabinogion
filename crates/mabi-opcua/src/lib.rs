@@ -79,6 +79,7 @@
 //! - [`device`]: Device trait implementation
 //! - [`factory`]: Device factory for creating OPC UA devices
 
+pub mod codec;
 pub mod config;
 pub mod device;
 pub mod error;
@@ -87,6 +88,9 @@ pub mod nodes;
 pub mod security;
 pub mod server;
 pub mod services;
+pub mod transport;
+pub mod channel;
+pub mod service;
 pub mod types;
 
 // Re-exports for convenience

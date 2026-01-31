@@ -24,13 +24,14 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::config::OpcUaServerConfig;
 use crate::error::{OpcUaError, OpcUaResult};
@@ -39,11 +40,14 @@ use crate::nodes::{
     NodePrefetcher, PrefetchConfig,
 };
 use crate::security::{SecurityManager, SecurityManagerConfig};
+use crate::service::registry::ServiceRegistry;
 use crate::services::{
     HistoryStore, HistoryStoreConfig,
     SessionManager, SessionManagerConfig,
     SubscriptionManager, SubscriptionManagerConfig,
 };
+use crate::transport::connection::ServiceContextTemplate;
+use crate::transport::tcp_listener::{OpcUaTcpListener, TcpTransportConfig};
 use crate::types::{DataValue, NodeId, Variant};
 
 /// Server state enumeration.
@@ -399,7 +403,7 @@ impl OpcUaServer {
     // Server Lifecycle
     // =========================================================================
 
-    /// Start the server.
+    /// Start the server — initializes background tasks and starts the TCP listener.
     #[instrument(skip(self))]
     pub async fn start(&self) -> OpcUaResult<()> {
         // Check current state
@@ -422,6 +426,15 @@ impl OpcUaServer {
         // Start background tasks
         self.start_background_tasks().await;
 
+        // Start TCP listener in a background task
+        let tcp_listener = self.create_tcp_listener()?;
+        let shutdown = self.shutdown.clone();
+        tokio::spawn(async move {
+            if let Err(e) = tcp_listener.run().await {
+                warn!(error = %e, "TCP listener error");
+            }
+        });
+
         // Update state
         *self.state.write() = ServerState::Running;
 
@@ -435,7 +448,7 @@ impl OpcUaServer {
         Ok(())
     }
 
-    /// Run the server (blocking).
+    /// Run the server (blocking) — starts the server and waits for shutdown.
     #[instrument(skip(self))]
     pub async fn run(&self) -> OpcUaResult<()> {
         self.start().await?;
@@ -446,6 +459,42 @@ impl OpcUaServer {
         }
 
         self.stop().await
+    }
+
+    /// Create the TCP listener with service registry and context.
+    fn create_tcp_listener(&self) -> OpcUaResult<OpcUaTcpListener> {
+        // Parse bind address from endpoint URL
+        let bind_address = parse_endpoint_url(&self.config.endpoint_url)?;
+
+        // Build service registry with all handlers
+        let mut registry = ServiceRegistry::new();
+        crate::service::discovery::register_handlers(&mut registry);
+        crate::service::session::register_handlers(&mut registry);
+        crate::service::attribute::register_handlers(&mut registry);
+        crate::service::browse::register_handlers(&mut registry);
+        crate::service::subscription::register_handlers(&mut registry);
+        crate::service::monitored_item::register_handlers(&mut registry);
+
+        info!(handlers = registry.handler_count(), "Registered service handlers");
+
+        // Build shared context template
+        let context = Arc::new(ServiceContextTemplate {
+            session_manager: self.session_manager.clone(),
+            address_space: self.address_space.clone(),
+            subscription_manager: self.subscription_manager.clone(),
+            history_store: self.history_store.clone(),
+            security_manager: self.security_manager.clone(),
+            server_config: Arc::new(self.config.clone()),
+        });
+
+        let tcp_config = TcpTransportConfig {
+            bind_address,
+            max_connections: 1000,
+            connection_timeout: Duration::from_secs(60),
+            server_buffer_size: 65535,
+        };
+
+        Ok(OpcUaTcpListener::new(tcp_config, Arc::new(registry), context))
     }
 
     /// Stop the server.
@@ -568,6 +617,23 @@ impl OpcUaServer {
 
         debug!("Background tasks started");
     }
+}
+
+/// Parse an OPC UA endpoint URL (e.g., "opc.tcp://0.0.0.0:4840/") into a SocketAddr.
+fn parse_endpoint_url(url: &str) -> OpcUaResult<SocketAddr> {
+    // Strip protocol prefix
+    let addr_part = url
+        .strip_prefix("opc.tcp://")
+        .unwrap_or(url);
+    // Strip trailing path
+    let addr_part = addr_part.split('/').next().unwrap_or(addr_part);
+
+    addr_part.parse::<SocketAddr>().map_err(|e| {
+        OpcUaError::Server(format!(
+            "Failed to parse endpoint URL '{}' as socket address: {}",
+            url, e
+        ))
+    })
 }
 
 /// Builder for OPC UA server.
