@@ -11,7 +11,6 @@ use tracing::{debug, warn};
 
 use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::types::NodeId;
 use crate::nodes::AddressSpace;
@@ -96,30 +95,28 @@ impl ServiceRegistry {
         payload: &[u8],
         context: &ServiceContext,
     ) -> OpcUaResult<Vec<u8>> {
-        // Decode the ExtensionObject wrapper to get the type_id
+        // OPC UA binary protocol: service messages are encoded as
+        // NodeId (type_id) + body (NOT wrapped in ExtensionObject).
         let mut buf = Bytes::copy_from_slice(payload);
-        let ext_obj = ExtensionObject::decode(&mut buf)?;
+        let type_id = NodeId::decode(&mut buf)?;
 
-        let type_id = &ext_obj.type_id;
         debug!(type_id = %type_id, "Dispatching service request");
 
-        let handler = self.handlers.get(type_id).ok_or_else(|| {
+        let handler = self.handlers.get(&type_id).ok_or_else(|| {
             warn!(type_id = %type_id, "Service not supported");
             OpcUaError::ServiceNotSupported {
                 service_id: type_id.to_string(),
             }
         })?;
 
-        let request_body = ext_obj.body.as_deref().unwrap_or(&[]);
+        // Remaining bytes after NodeId are the request body
+        let request_body = buf.as_ref();
         let response = handler.handle(request_body, context).await?;
 
-        // Wrap the response in an ExtensionObject
-        let response_ext = ExtensionObject {
-            type_id: response.type_id,
-            body: Some(response.body),
-        };
+        // Encode response as: NodeId (type_id) + body (no ExtensionObject wrapper)
         let mut out = BytesMut::new();
-        response_ext.encode(&mut out)?;
+        response.type_id.encode(&mut out)?;
+        out.extend_from_slice(&response.body);
         Ok(out.to_vec())
     }
 

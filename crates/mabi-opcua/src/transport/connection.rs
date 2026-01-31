@@ -311,20 +311,13 @@ fn build_opn_response(
 fn build_service_fault(request_id: u32, status: StatusCode) -> OpcUaResult<Vec<u8>> {
     let mut buf = BytesMut::new();
 
-    // ServiceFault type id = 397
-    let ext = ExtensionObject {
-        type_id: NodeId::numeric(0, 397),
-        body: {
-            let mut body = BytesMut::new();
-            crate::service::discovery::ResponseHeader {
-                timestamp: chrono::Utc::now(),
-                request_handle: request_id,
-                service_result: status,
-            }.encode(&mut body)?;
-            Some(body.to_vec())
-        },
-    };
-    ext.encode(&mut buf)?;
+    // ServiceFault type id = 397 — encode as raw NodeId + body (no ExtensionObject wrapper)
+    NodeId::numeric(0, 397).encode(&mut buf)?;
+    crate::service::discovery::ResponseHeader {
+        timestamp: chrono::Utc::now(),
+        request_handle: request_id,
+        service_result: status,
+    }.encode(&mut buf)?;
     Ok(buf.to_vec())
 }
 
