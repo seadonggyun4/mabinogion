@@ -11,6 +11,7 @@ use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
 use crate::codec::data_value::ExtensionObject;
 use crate::error::OpcUaResult;
+use crate::nodes::LocalizedText;
 use crate::types::{NodeId, StatusCode};
 use crate::services::session::UserIdentity;
 use super::discovery::{RequestHeader, ResponseHeader};
@@ -45,15 +46,35 @@ impl ServiceHandler for CreateSessionHandler {
         let header = RequestHeader::decode(&mut buf)?;
         let _additional_header = ExtensionObject::decode(&mut buf)?;
 
-        // CreateSessionRequest fields
-        // ClientDescription (ApplicationDescription) — skip
+        // CreateSessionRequest fields (OPC UA Part 4, 5.6.2)
+        // ClientDescription (ApplicationDescription)
         let _app_uri = String::decode(&mut buf)?;
         let _product_uri = String::decode(&mut buf)?;
-        let _app_name_locale = String::decode(&mut buf)?;  // LocalizedText locale
-        let _app_name_text = String::decode(&mut buf)?;     // LocalizedText text
-        // Actually LocalizedText is encoded with mask byte, let me read properly
-        // For now, skip remaining fields — we only need session_name
-        // This is simplified — a full implementation would parse all fields
+        let _app_name = LocalizedText::decode(&mut buf)?;
+        let _app_type = u32::decode(&mut buf)?;
+        let _gateway_uri = String::decode(&mut buf)?;
+        let _discovery_uri = String::decode(&mut buf)?;
+        // DiscoveryUrls array
+        let discovery_urls_len = i32::decode(&mut buf)?;
+        if discovery_urls_len > 0 {
+            for _ in 0..discovery_urls_len {
+                let _ = String::decode(&mut buf)?;
+            }
+        }
+        // ServerUri
+        let _server_uri = String::decode(&mut buf)?;
+        // EndpointUrl
+        let _endpoint_url = String::decode(&mut buf)?;
+        // SessionName
+        let _session_name_req = String::decode(&mut buf)?;
+        // ClientNonce (ByteString)
+        let _client_nonce = Vec::<u8>::decode(&mut buf)?;
+        // ClientCertificate (ByteString)
+        let _client_cert = Vec::<u8>::decode(&mut buf)?;
+        // RequestedSessionTimeout (Double)
+        let _requested_timeout = f64::decode(&mut buf)?;
+        // MaxResponseMessageSize (UInt32)
+        let _max_response_size = u32::decode(&mut buf)?;
 
         let session_name = format!("Session_{}", chrono::Utc::now().timestamp_millis());
 
@@ -71,9 +92,9 @@ impl ServiceHandler for CreateSessionHandler {
         session_info.authentication_token.encode(&mut out)?;
         // RevisedSessionTimeout (ms)
         out.put_f64_le(60_000.0); // revised session timeout (ms)
-        // ServerNonce (empty)
+        // ServerNonce (empty ByteString)
         out.put_i32_le(0);
-        // ServerCertificate (empty)
+        // ServerCertificate (null ByteString)
         out.put_i32_le(-1);
         // ServerEndpoints array — 1 endpoint
         out.put_i32_le(1);
@@ -91,9 +112,9 @@ impl ServiceHandler for CreateSessionHandler {
         out.put_i32_le(1); // UserIdentityTokens
         "anonymous".to_string().encode(&mut out)?;
         out.put_u32_le(0); // Anonymous
-        out.put_i32_le(-1);
-        out.put_i32_le(-1);
-        out.put_i32_le(-1);
+        out.put_i32_le(-1); // IssuedTokenType (null)
+        out.put_i32_le(-1); // IssuerEndpointUrl (null)
+        out.put_i32_le(-1); // SecurityPolicyUri (null)
         "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary".encode(&mut out)?;
         out.put_u8(0); // SecurityLevel
         // ServerSoftwareCertificates (empty array)
@@ -141,7 +162,7 @@ impl ServiceHandler for ActivateSessionHandler {
         let mut out = BytesMut::new();
         ResponseHeader::good(header.request_handle).encode(&mut out)?;
 
-        // ServerNonce (empty)
+        // ServerNonce (empty ByteString)
         out.put_i32_le(0);
         // Results (empty array) — StatusCode array for each client cert
         out.put_i32_le(0);
