@@ -339,17 +339,48 @@ registry.register(MyCustomDpt);
 | L_Busmon.ind | 0x2B | Bus monitor indication |
 | M_Reset.req | 0xF1 | Reset request |
 
+### cEMI Frame Structure (Wire Format)
+
+```
+Offset: 0    1    2    3    4-5    6-7    8      9+
+Field:  MC   AI   C1   C2   Src    Dst    NPDU   [NPDU Data...]
+                                          Len
+```
+
+- **MC**: Message Code (0x11=L_Data.req, 0x29=L_Data.ind)
+- **AI**: Additional Info Length (typically 0x00)
+- **C1**: Control byte 1 (frame type, priority, repeat)
+- **C2**: Control byte 2 (bit7: 0=Individual, 1=Group addressing, bits 2-0: hop count)
+- **NPDU Len**: NPDU byte count (includes TPCI/APCI)
+- **NPDU Data**: `npdu_len` bytes, first byte is TPCI/APCI
+
+### NPDU / APCI Encoding
+
+The APCI is encoded in the first NPDU byte:
+
+| APCI | Byte1 Value | Byte2 | Description |
+|------|------------|-------|-------------|
+| GroupValueRead | 0x00 | - | npdu_len=1 |
+| GroupValueResponse | 0x40 \| data | data... | npdu_len=1 (small) or 1+N |
+| GroupValueWrite | 0x80 \| data | data... | npdu_len=1 (small) or 1+N |
+
+**Small data (npdu_len=1)**: 6-bit data is packed in the lower 6 bits of the first byte
+**Full data (npdu_len≥2)**: First byte = APCI, subsequent bytes = data
+
+> **Note**: `npdu_len` is a count that includes the TPCI/APCI byte.
+> Exactly `npdu_len` bytes follow after the npdu_len field.
+
 ### APCI Commands
 
-| Command | Description |
-|---------|-------------|
-| GroupValueRead | Request group value |
-| GroupValueResponse | Respond with group value |
-| GroupValueWrite | Write group value |
-| IndividualAddressWrite | Write physical address |
-| IndividualAddressRead | Read physical address |
-| DeviceDescriptorRead | Request device descriptor |
-| Restart | Device restart command |
+| Command | Wire Value | Description |
+|---------|-----------|-------------|
+| GroupValueRead | 0x00 | Request group value |
+| GroupValueResponse | 0x40 | Respond with group value |
+| GroupValueWrite | 0x80 | Write group value |
+| IndividualAddressWrite | - | Write physical address |
+| IndividualAddressRead | - | Read physical address |
+| DeviceDescriptorRead | - | Request device descriptor |
+| Restart | - | Device restart command |
 
 ### Priority Levels
 
@@ -394,7 +425,7 @@ let config = KnxServerConfig {
 | `multicast_addr` | `SocketAddr` | 224.0.23.12:3671 | Multicast address |
 | `individual_address` | `IndividualAddress` | 1.1.0 | Server physical address |
 | `device_name` | `String` | - | Device name (max 30 chars) |
-| `max_connections` | `usize` | 256 | Maximum tunnel connections |
+| `max_connections` | `usize` | 256 | Maximum concurrent tunnel connections |
 | `heartbeat_interval_secs` | `u64` | 60 | Heartbeat interval |
 | `connection_timeout_secs` | `u64` | 120 | Connection timeout |
 | `tunneling_enabled` | `bool` | true | Enable tunneling mode |
@@ -457,17 +488,20 @@ let flags = GroupObjectFlagsConfig {
 ### KnxServer
 
 ```rust
-use mabi_knx::{KnxServer, KnxServerConfig};
+use mabi_knx::{KnxServer, KnxServerConfig, GroupObjectTable, DptId};
 
-// Create and start server
-let server = KnxServer::new(config).await?;
+// Create server
+let config = KnxServerConfig { ... };
+let server = KnxServer::new(config);
+
+// Configure group object table (optional)
+let group_table = Arc::new(GroupObjectTable::new());
+group_table.create(GroupAddress::three_level(1, 0, 0), "Switch", &DptId::new(1, 1))?;
+group_table.create(GroupAddress::three_level(1, 0, 1), "Temp", &DptId::new(9, 1))?;
+let server = Arc::new(server.with_group_objects(group_table));
+
+// Start server
 server.start().await?;
-
-// Check state
-let state = server.state();
-
-// Access group objects
-let table = server.group_object_table();
 
 // Subscribe to events
 let mut rx = server.subscribe_events();
@@ -475,12 +509,35 @@ while let Ok(event) = rx.recv().await {
     match event {
         ServerEvent::ClientConnected { channel_id, address } => { /* ... */ }
         ServerEvent::GroupValueWrite { address, value, source } => { /* ... */ }
+        ServerEvent::GroupValueRead { address, source } => {
+            // Server automatically sends GroupValueResponse
+        }
         _ => {}
     }
 }
 
 // Stop server
 server.stop().await?;
+```
+
+### GroupValueRead/Response Processing Flow
+
+When the server receives a `GroupValueRead` request:
+
+1. Immediately send TunnellingACK
+2. Look up the current value for the address in the group object table
+3. Build a response cEMI frame using `CemiFrame::group_value_response()`
+4. Wrap it in a TunnellingRequest and send to the client
+
+```
+Client                         Server
+  │── TunnellingRequest ──>     │
+  │   (GroupValueRead)          │
+  │                             │
+  │<── TunnellingACK ──────     │  (immediate ACK)
+  │                             │
+  │<── TunnellingRequest ──     │  (GroupValueResponse with data)
+  │   (GroupValueResponse)      │
 ```
 
 ### KnxDevice
