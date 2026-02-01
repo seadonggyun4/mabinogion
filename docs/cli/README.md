@@ -154,17 +154,23 @@ mabi opcua [OPTIONS]
 | `--nodes` | `-n` | usize | 1000 | Number of nodes to create (≥ 1) |
 | `--security` | | enum | `None` | Security mode (case-insensitive): `None`, `Sign`, `SignAndEncrypt` |
 
+#### Node Creation Behavior
+
+Nodes are created in namespace 2 with numeric identifiers starting at `i=1000`. The actual node count is capped at **100** regardless of the `--nodes` value (i.e., `ns=2;i=1000` through `ns=2;i=1099`).
+
+Even-indexed nodes (`i=1000, 1002, 1004, ...`) are **writable** (AccessLevel: ReadWrite). Odd-indexed nodes (`i=1001, 1003, 1005, ...`) are **read-only** (AccessLevel: CurrentRead). All nodes are of type `Double`.
+
 #### Examples
 
 ```bash
 # Start OPC UA server with defaults
 mabi opcua
 
-# Start with 10000 nodes
-mabi opcua --port 4840 --nodes 10000
+# Start with 100 nodes on port 4841
+mabi opcua --port 4841 --nodes 100
 
 # Start with signing security
-mabi opcua --security Sign --nodes 5000
+mabi opcua --security Sign --nodes 100
 ```
 
 ---

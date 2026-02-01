@@ -135,9 +135,12 @@ Seven node classes are supported per the OPC UA specification:
 #### Simple API
 
 ```rust
-server.add_variable(node_id, name, value)?;
+server.add_variable(node_id, name, value)?;          // Read-only variable
+server.add_writable_variable(node_id, name, value)?;  // Read/write variable
 server.add_folder(node_id, name, parent_id)?;
 ```
+
+`add_variable` creates a node with `AccessLevel::CURRENT_READ`. `add_writable_variable` creates a node with `AccessLevel::READ_WRITE`, allowing OPC UA clients to write values via the Write service.
 
 #### Builder Pattern
 
@@ -434,16 +437,19 @@ LRU caching for frequently accessed nodes:
 ### Writing Values
 
 ```rust
-// Write value to node
+// Write value to node (node must have AccessLevel::CURRENT_WRITE)
 server.write_value(&node_id, new_value)?;
 ```
 
 Writing a value:
+- Checks `AccessLevel` — returns `BadNotWritable` (0x803B0000) if the node lacks write permission
 - Updates the node's current value
 - Records the value to history (if historizing is enabled)
 - Notifies subscriptions asynchronously
 - Broadcasts ValueChanged event
 - Records metrics
+
+To create writable nodes, use `server.add_writable_variable()` or the `VariableBuilder::writable()` method.
 
 ### Reading Values
 
@@ -515,7 +521,7 @@ pub enum OpcUaError {
 
 ```rust
 pub use mabi_opcua::{
-    // Server
+    // Server (add_variable, add_writable_variable, add_folder)
     OpcUaServer,
     OpcUaServerBuilder,
     OpcUaServerConfig,
