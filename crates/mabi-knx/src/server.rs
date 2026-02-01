@@ -349,6 +349,7 @@ impl KnxServer {
     ) -> KnxResult<()> {
         let frame = KnxFrame::decode(data)?;
 
+
         trace!(
             service_type = ?frame.service_type,
             from = %addr,
@@ -564,7 +565,9 @@ impl KnxServer {
         let request = TunnellingRequest::decode(data)?;
 
         let connection = match self.connections.get(request.channel_id) {
-            Some(conn) => conn,
+            Some(conn) => {
+                conn
+            }
             None => {
                 let ack = TunnellingAck::error(request.channel_id, request.sequence_counter, 0x21);
                 let frame = KnxFrame::new(ServiceType::TunnellingAck, ack.encode());
@@ -591,7 +594,7 @@ impl KnxServer {
         socket.send_to(&frame.encode(), addr).await?;
 
         // Process cEMI frame
-        self.process_cemi(&request.cemi, &connection).await?;
+        self.process_cemi(socket, addr, &request.cemi, &connection).await?;
 
         Ok(())
     }
@@ -599,16 +602,22 @@ impl KnxServer {
     /// Process cEMI frame.
     async fn process_cemi(
         &self,
+        socket: &UdpSocket,
+        client_addr: SocketAddr,
         cemi: &CemiFrame,
-        _connection: &TunnelConnection,
+        connection: &TunnelConnection,
     ) -> KnxResult<()> {
         if !cemi.apci.is_group_value() {
             return Ok(());
         }
 
         let group_addr = match cemi.destination_group() {
-            Some(addr) => addr,
-            None => return Ok(()),
+            Some(addr) => {
+                addr
+            }
+            None => {
+                return Ok(());
+            }
         };
 
         match cemi.apci {
@@ -645,7 +654,33 @@ impl KnxServer {
                     source: cemi.source,
                 });
 
-                // TODO: Send response via tunnelling
+                // Send GroupValueResponse back via tunnelling
+                let response_data = match self.group_objects.read(&group_addr) {
+                    Ok(data) => {
+                        data
+                    }
+                    Err(e) => {
+                        vec![0u8]
+                    }
+                };
+
+                let response_cemi = CemiFrame::group_value_response(
+                    self.config.individual_address,
+                    group_addr,
+                    response_data,
+                );
+
+                let seq = connection.next_send_sequence();
+                let tunnel_req = TunnellingRequest::new(
+                    connection.channel_id,
+                    seq,
+                    response_cemi,
+                );
+                let frame = KnxFrame::new(ServiceType::TunnellingRequest, tunnel_req.encode());
+                let response_bytes = frame.encode();
+                if let Err(e) = socket.send_to(&response_bytes, client_addr).await {
+                    debug!(error = %e, "Failed to send GroupValueResponse");
+                }
             }
             _ => {}
         }
