@@ -342,7 +342,7 @@ impl BACnetServer {
         let response = match apdu_type {
             ApduType::ConfirmedRequest => {
                 self.metrics.record_confirmed_request();
-                self.process_confirmed_request(apdu, &ctx)?
+                self.process_confirmed_request(apdu, &ctx, packet.source)?
             }
             ApduType::UnconfirmedRequest => {
                 self.metrics.record_unconfirmed_request();
@@ -385,6 +385,7 @@ impl BACnetServer {
         &self,
         apdu: &[u8],
         ctx: &ServiceContext,
+        source: SocketAddr,
     ) -> BacnetResult<Option<(Vec<u8>, SocketAddr)>> {
         if apdu.len() < 4 {
             return Err(BacnetError::Protocol("Confirmed request too short".into()));
@@ -450,7 +451,7 @@ impl BACnetServer {
         };
 
         // Return response (we don't have source address here, caller needs to provide)
-        Ok(Some((response_apdu, "0.0.0.0:0".parse().unwrap())))
+        Ok(Some((response_apdu, source)))
     }
 
     /// Process an unconfirmed request.
