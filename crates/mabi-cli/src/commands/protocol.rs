@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2, ModbusDevice, ModbusDeviceConfig};
 use mabi_opcua::{OpcUaServer, OpcUaServerConfig};
 use mabi_bacnet::prelude::{BACnetServer, ServerConfig as BacnetServerConfig, ObjectRegistry, AnalogInput, AnalogOutput, BinaryInput, BinaryOutput};
-use mabi_knx::{KnxServer, KnxServerConfig, IndividualAddress};
+use mabi_knx::{KnxServer, KnxServerConfig, IndividualAddress, GroupAddress, DptId, GroupObjectTable};
 
 /// Base trait for protocol-specific commands.
 #[async_trait]
@@ -985,11 +985,40 @@ impl ProtocolCommand for KnxCommand {
         let config = KnxServerConfig {
             bind_addr: self.bind_addr,
             individual_address,
-            max_connections: 10,
+            max_connections: 256,
             ..Default::default()
         };
 
-        let server = Arc::new(KnxServer::new(config));
+        // Create group objects based on --groups parameter
+        let group_table = Arc::new(GroupObjectTable::new());
+        let dpt_types = [
+            DptId::new(1, 1),   // Switch (bool)
+            DptId::new(5, 1),   // Scaling (0-100%)
+            DptId::new(9, 1),   // Temperature (float16)
+            DptId::new(9, 4),   // Lux
+            DptId::new(9, 7),   // Humidity
+            DptId::new(12, 1),  // Counter (u32)
+            DptId::new(13, 1),  // Counter signed (i32)
+            DptId::new(14, 56), // Float (f32)
+        ];
+        let dpt_names = [
+            "Switch", "Scaling", "Temperature", "Lux",
+            "Humidity", "Counter", "SignedCounter", "Float",
+        ];
+
+        for i in 0..self.group_objects {
+            let main = ((i / 256) + 1) as u8;
+            let middle = ((i / 8) % 8) as u8;
+            let sub = (i % 256) as u8;
+            let addr = GroupAddress::three_level(main, middle, sub);
+            let dpt_idx = i % dpt_types.len();
+            let name = format!("{}_{}", dpt_names[dpt_idx], i);
+            if let Err(e) = group_table.create(addr, &name, &dpt_types[dpt_idx]) {
+                tracing::warn!("Failed to create group object {}: {}", i, e);
+            }
+        }
+
+        let server = Arc::new(KnxServer::new(config).with_group_objects(group_table));
 
         {
             let mut server_guard = self.server.lock().await;
