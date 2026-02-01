@@ -517,10 +517,19 @@ impl ProtocolCommand for OpcuaCommand {
             }
         })?);
 
-        // Add sample nodes
-        for i in 0..self.nodes.min(100) {
+        // Add sample nodes with diverse types and mixed read-only / writable access.
+        // Even-indexed nodes are writable, odd-indexed are read-only.
+        let node_count = self.nodes.min(100);
+        for i in 0..node_count {
             let node_id = format!("ns=2;i={}", 1000 + i);
-            let _ = server.add_variable(node_id, format!("Variable_{}", i), (i as f64) * 0.1);
+            let name = format!("Variable_{}", i);
+            let value = (i as f64) * 0.1;
+
+            if i % 2 == 0 {
+                let _ = server.add_writable_variable(node_id, name, value);
+            } else {
+                let _ = server.add_variable(node_id, name, value);
+            }
         }
 
         {

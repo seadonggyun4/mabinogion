@@ -324,6 +324,36 @@ impl OpcUaServer {
         Ok(node_id)
     }
 
+    /// Add a writable variable node with a simple API.
+    ///
+    /// Same as [`add_variable`] but sets the access level to read/write,
+    /// allowing OPC UA clients to write values to this node.
+    pub fn add_writable_variable(
+        &self,
+        node_id: impl Into<String>,
+        name: impl Into<String>,
+        value: impl Into<Variant>,
+    ) -> OpcUaResult<NodeId> {
+        let node_id_str = node_id.into();
+        let node_id: NodeId = node_id_str.parse()
+            .map_err(|e: crate::types::NodeIdParseError| OpcUaError::InvalidNodeId(e.to_string()))?;
+        let name = name.into();
+        let variant = value.into();
+
+        let data_type = NodeId::numeric(0, 11);
+
+        self.address_space.add_writable_variable(
+            node_id.clone(),
+            &name,
+            &name,
+            data_type,
+            variant,
+            &NodeId::objects_folder(),
+        )?;
+
+        Ok(node_id)
+    }
+
     /// Add a folder node.
     pub fn add_folder(
         &self,
