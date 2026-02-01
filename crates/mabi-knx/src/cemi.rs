@@ -550,21 +550,21 @@ impl CemiFrame {
         // NPDU
         let apci = self.apci.encode();
 
+        // APCI internal value maps directly to first NPDU wire byte
+        let apci_byte = apci as u8;
+
         if self.data.is_empty() {
-            // No data - APCI only
-            buf.put_u8(1); // Length = 1
-            buf.put_u8((apci >> 8) as u8);
-            buf.put_u8((apci & 0xFF) as u8);
+            // No data - APCI only (e.g., GroupValueRead)
+            buf.put_u8(1); // npdu_len = 1
+            buf.put_u8(apci_byte);
         } else if self.data.len() == 1 && self.data[0] <= 0x3F {
-            // Small data - combine with APCI
-            buf.put_u8(1); // Length = 1
-            buf.put_u8((apci >> 8) as u8);
-            buf.put_u8((apci as u8 & 0xC0) | (self.data[0] & 0x3F));
+            // Small data - embed in low 6 bits of APCI byte
+            buf.put_u8(1); // npdu_len = 1
+            buf.put_u8(apci_byte | (self.data[0] & 0x3F));
         } else {
-            // Full data
+            // Full data: npdu_len = 1 (APCI byte) + data.len()
             buf.put_u8((self.data.len() + 1) as u8);
-            buf.put_u8((apci >> 8) as u8);
-            buf.put_u8(apci as u8);
+            buf.put_u8(apci_byte);
             buf.put_slice(&self.data);
         }
 
@@ -619,26 +619,26 @@ impl CemiFrame {
         let destination = buf.get_u16();
 
         // NPDU
+        // npdu_len counts bytes starting from the TPCI/APCI byte (inclusive)
         let npdu_len = buf.get_u8() as usize;
-        if buf.len() < npdu_len + 1 {
-            return Err(KnxError::frame_too_short(npdu_len + 1, buf.len()));
+        if buf.len() < npdu_len {
+            return Err(KnxError::frame_too_short(npdu_len, buf.len()));
         }
 
-        let apci_high = buf.get_u8();
-        let apci_low = buf.get_u8();
-        let apci_raw = ((apci_high as u16) << 8) | (apci_low as u16);
+        // First NPDU byte: [TPCI(2 bits) | APCI(6 bits)]
+        // For standard data frames (TPCI=00), APCI bits map to:
+        //   0x00 = GroupValueRead, 0x40 = GroupValueResponse, 0x80 = GroupValueWrite
+        // Convert wire byte to internal 10-bit APCI format by using byte value directly
+        let apci_byte1 = buf.get_u8();
+        let apci_raw = apci_byte1 as u16; // maps directly to internal APCI format
         let apci = Apci::decode(apci_raw);
 
-        // Extract data
         let frame_data = if npdu_len <= 1 {
-            // Small data embedded in APCI
-            if apci_low & 0x3F != 0 {
-                vec![apci_low & 0x3F]
-            } else {
-                Vec::new()
-            }
+            // Small data embedded in low 6 bits of first byte
+            let small = apci_byte1 & 0x3F;
+            if small != 0 { vec![small] } else { Vec::new() }
         } else {
-            // Full data following APCI
+            // Remaining npdu_len-1 bytes are data
             buf[..npdu_len - 1].to_vec()
         };
 
