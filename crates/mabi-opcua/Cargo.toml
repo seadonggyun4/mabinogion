@@ -19,7 +19,7 @@ default = []
 full = []
 
 [dependencies]
-mabi-core = { version = "1.0.0", path = "../mabi-core" }
+mabi-core = { version = "1.1.1", path = "../mabi-core" }
 
 # Async
 tokio = { workspace = true }
