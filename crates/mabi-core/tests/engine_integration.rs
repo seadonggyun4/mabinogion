@@ -441,6 +441,7 @@ async fn test_factory_registry_with_engine() {
         address: None,
         points: vec![],
         metadata: Default::default(),
+        tags: Default::default(),
     };
 
     let opcua_config = DeviceConfig {
@@ -451,6 +452,7 @@ async fn test_factory_registry_with_engine() {
         address: None,
         points: vec![],
         metadata: Default::default(),
+        tags: Default::default(),
     };
 
     let modbus_device = registry.create_device(modbus_config).unwrap();

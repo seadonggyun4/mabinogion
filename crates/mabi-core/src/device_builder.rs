@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use crate::config::DeviceConfig;
 use crate::error::{Error, Result};
 use crate::protocol::Protocol;
+use crate::tags::Tags;
 use crate::types::{Address, DataPointDef, DataType};
 
 /// Builder for creating device configurations.
@@ -42,6 +43,7 @@ pub struct DeviceConfigBuilder {
     address: Option<String>,
     points: Vec<DataPointDef>,
     metadata: HashMap<String, String>,
+    tags: Tags,
     validation_enabled: bool,
 }
 
@@ -61,6 +63,7 @@ impl DeviceConfigBuilder {
             address: None,
             points: Vec::new(),
             metadata: HashMap::new(),
+            tags: Tags::new(),
             validation_enabled: true,
         }
     }
@@ -92,6 +95,36 @@ impl DeviceConfigBuilder {
     /// Add multiple metadata entries.
     pub fn with_metadata(mut self, metadata: HashMap<String, String>) -> Self {
         self.metadata.extend(metadata);
+        self
+    }
+
+    /// Set tags for this device.
+    pub fn tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    /// Add a single tag (key-value pair).
+    pub fn tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.tags.insert(key.into(), value.into());
+        self
+    }
+
+    /// Add a label.
+    pub fn label(mut self, label: impl Into<String>) -> Self {
+        self.tags.add_label(label.into());
+        self
+    }
+
+    /// Add multiple labels.
+    pub fn labels<I, S>(mut self, labels: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        for label in labels {
+            self.tags.add_label(label.into());
+        }
         self
     }
 
@@ -164,6 +197,7 @@ impl DeviceConfigBuilder {
                 })
                 .collect(),
             metadata: self.metadata,
+            tags: self.tags,
         })
     }
 }
@@ -366,5 +400,37 @@ mod tests {
 
         assert_eq!(config.id, "dev-001");
         assert_eq!(config.protocol, Protocol::BacnetIp);
+    }
+
+    #[test]
+    fn test_device_config_builder_with_tags() {
+        let config = DeviceConfigBuilder::new("dev-001", "Tagged Device")
+            .protocol(Protocol::ModbusTcp)
+            .tag("location", "building-a")
+            .tag("floor", "3")
+            .label("hvac")
+            .label("critical")
+            .build()
+            .unwrap();
+
+        assert_eq!(config.tags.get("location"), Some("building-a"));
+        assert_eq!(config.tags.get("floor"), Some("3"));
+        assert!(config.tags.has_label("hvac"));
+        assert!(config.tags.has_label("critical"));
+    }
+
+    #[test]
+    fn test_device_config_builder_with_tags_object() {
+        let tags = Tags::new()
+            .with_tag("env", "prod")
+            .with_label("monitored");
+
+        let config = DeviceConfigBuilder::new("dev-002", "Device with Tags")
+            .tags(tags)
+            .build()
+            .unwrap();
+
+        assert_eq!(config.tags.get("env"), Some("prod"));
+        assert!(config.tags.has_label("monitored"));
     }
 }

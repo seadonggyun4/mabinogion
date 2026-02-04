@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use crate::schema::{EventAction, EventTrigger, PatternConfig, Scenario, ScenarioEvent, ScenarioPoint};
+use mabi_core::tags::Tags;
 
 /// Template category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +218,7 @@ fn create_hvac_template() -> Template {
                     phase: (i as f64) * 0.5, // Phase offset per zone
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Supply air temperature - ramp with random noise
@@ -229,6 +231,7 @@ fn create_hvac_template() -> Template {
                     std_dev: 0.5,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Damper position - follows setpoint
@@ -243,6 +246,7 @@ fn create_hvac_template() -> Template {
                     repeat: true,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Fan speed
@@ -255,6 +259,7 @@ fn create_hvac_template() -> Template {
                     step_duration_secs: 900.0, // 15 min steps
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Occupancy
@@ -267,6 +272,7 @@ fn create_hvac_template() -> Template {
                     step_duration_secs: 28800.0, // 8-hour cycle
                 },
                 interval_ms: options.interval_ms * 10, // Less frequent updates
+                device_tags: Tags::new(),
             });
         }
 
@@ -293,6 +299,7 @@ fn create_hvac_template() -> Template {
             time_scale: options.time_scale,
             points,
             events,
+            devices: vec![],
             variables: options.variables,
         }
     })
@@ -324,6 +331,7 @@ fn create_manufacturing_template() -> Template {
                 point_id: "conveyor_speed".to_string(),
                 pattern: PatternConfig::Constant { value: 1.5 }, // m/s
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Part count
@@ -338,6 +346,7 @@ fn create_manufacturing_template() -> Template {
                     repeat: false,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Motor current
@@ -350,6 +359,7 @@ fn create_manufacturing_template() -> Template {
                     std_dev: 0.3,
                 },
                 interval_ms: options.interval_ms / 2,
+                device_tags: Tags::new(),
             });
 
             // Proximity sensor
@@ -363,6 +373,7 @@ fn create_manufacturing_template() -> Template {
                     distribution: "uniform".to_string(),
                 },
                 interval_ms: options.interval_ms / 10,
+                device_tags: Tags::new(),
             });
 
             // Temperature sensor
@@ -377,6 +388,7 @@ fn create_manufacturing_template() -> Template {
                     phase: 0.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
         }
 
@@ -400,6 +412,7 @@ fn create_manufacturing_template() -> Template {
             time_scale: options.time_scale,
             points,
             events,
+            devices: vec![],
             variables: options.variables,
         }
     })
@@ -436,6 +449,7 @@ fn create_energy_template() -> Template {
                     phase: 0.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Voltage
@@ -448,6 +462,7 @@ fn create_energy_template() -> Template {
                     std_dev: 5.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Current
@@ -460,6 +475,7 @@ fn create_energy_template() -> Template {
                     std_dev: 2.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Power factor
@@ -472,6 +488,7 @@ fn create_energy_template() -> Template {
                     std_dev: 0.02,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             // Energy (cumulative)
@@ -486,6 +503,7 @@ fn create_energy_template() -> Template {
                     repeat: false,
                 },
                 interval_ms: options.interval_ms * 10,
+                device_tags: Tags::new(),
             });
         }
 
@@ -496,6 +514,7 @@ fn create_energy_template() -> Template {
             time_scale: options.time_scale,
             points,
             events: vec![],
+            devices: vec![],
             variables: options.variables,
         }
     })
@@ -532,6 +551,7 @@ fn create_water_template() -> Template {
                     phase: (i as f64) * 2.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -543,6 +563,7 @@ fn create_water_template() -> Template {
                     std_dev: 1.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
         }
 
@@ -559,6 +580,7 @@ fn create_water_template() -> Template {
                     step_duration_secs: 1800.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -570,6 +592,7 @@ fn create_water_template() -> Template {
                     std_dev: 0.2,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -581,6 +604,7 @@ fn create_water_template() -> Template {
                     step_duration_secs: 3600.0,
                 },
                 interval_ms: options.interval_ms * 10,
+                device_tags: Tags::new(),
             });
         }
 
@@ -597,6 +621,7 @@ fn create_water_template() -> Template {
                     std_dev: 0.1,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -608,6 +633,7 @@ fn create_water_template() -> Template {
                     std_dev: 0.2,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -619,6 +645,7 @@ fn create_water_template() -> Template {
                     std_dev: 0.1,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
         }
 
@@ -645,6 +672,7 @@ fn create_water_template() -> Template {
             time_scale: options.time_scale,
             points,
             events,
+            devices: vec![],
             variables: options.variables,
         }
     })
@@ -678,6 +706,7 @@ fn create_datacenter_template() -> Template {
                     std_dev: 0.5,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -689,6 +718,7 @@ fn create_datacenter_template() -> Template {
                     std_dev: 1.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -700,6 +730,7 @@ fn create_datacenter_template() -> Template {
                     std_dev: 3.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -713,6 +744,7 @@ fn create_datacenter_template() -> Template {
                     phase: 0.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
         }
 
@@ -732,6 +764,7 @@ fn create_datacenter_template() -> Template {
                     phase: 0.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -743,6 +776,7 @@ fn create_datacenter_template() -> Template {
                     std_dev: 2.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
         }
 
@@ -759,6 +793,7 @@ fn create_datacenter_template() -> Template {
                     std_dev: 1.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
 
             points.push(ScenarioPoint {
@@ -770,6 +805,7 @@ fn create_datacenter_template() -> Template {
                     std_dev: 5.0,
                 },
                 interval_ms: options.interval_ms,
+                device_tags: Tags::new(),
             });
         }
 
@@ -780,6 +816,7 @@ fn create_datacenter_template() -> Template {
             time_scale: options.time_scale,
             points,
             events: vec![],
+            devices: vec![],
             variables: options.variables,
         }
     })

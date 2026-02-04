@@ -8,6 +8,7 @@ use crate::output::{OutputFormat, PaginatedTable, StatusType, TableBuilder};
 use crate::runner::{Command, CommandOutput};
 use async_trait::async_trait;
 use mabi_core::prelude::*;
+use mabi_core::tags::Tags;
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -53,6 +54,8 @@ pub struct ModbusCommand {
     rtu_mode: bool,
     /// Serial port for RTU mode.
     serial_port: Option<String>,
+    /// Device tags.
+    tags: Tags,
     /// Server instance (for shutdown).
     server: Arc<Mutex<Option<Arc<ModbusTcpServerV2>>>>,
     /// Server task handle.
@@ -67,6 +70,7 @@ impl ModbusCommand {
             points_per_device: 100,
             rtu_mode: false,
             serial_port: None,
+            tags: Tags::new(),
             server: Arc::new(Mutex::new(None)),
             server_task: Arc::new(Mutex::new(None)),
         }
@@ -95,6 +99,11 @@ impl ModbusCommand {
     pub fn with_rtu_mode(mut self, serial_port: impl Into<String>) -> Self {
         self.rtu_mode = true;
         self.serial_port = Some(serial_port.into());
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
         self
     }
 }
@@ -281,6 +290,7 @@ impl ProtocolCommand for ModbusCommand {
                 coils: points,
                 discrete_inputs: points,
                 response_delay_ms: 0,
+                tags: self.tags.clone(),
             };
             let device = ModbusDevice::new(device_config);
             server.add_device(device);

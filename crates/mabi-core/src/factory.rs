@@ -12,6 +12,7 @@ use crate::config::DeviceConfig;
 use crate::device::BoxedDevice;
 use crate::error::{Error, Result};
 use crate::protocol::Protocol;
+use crate::tags::Tags;
 
 /// A factory trait for creating devices.
 ///
@@ -445,6 +446,7 @@ mod tests {
             address: None,
             points: vec![],
             metadata: Default::default(),
+            tags: Tags::new(),
         };
 
         let device = registry.create_device(config).unwrap();
@@ -464,6 +466,7 @@ mod tests {
             address: None,
             points: vec![],
             metadata: Default::default(),
+            tags: Tags::new(),
         };
         assert!(factory.validate(&config).is_err());
 
@@ -476,6 +479,7 @@ mod tests {
             address: None,
             points: vec![],
             metadata: Default::default(),
+            tags: Tags::new(),
         };
         assert!(factory.validate(&config).is_err());
     }

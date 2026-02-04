@@ -119,8 +119,18 @@ mabi modbus [OPTIONS]
 | `--bind` | | string | 0.0.0.0 | Bind address |
 | `--devices` | `-d` | usize | 1 | Number of unit IDs to simulate (≥ 1) |
 | `--points` | | usize | 100 | Data points per device (≥ 1) |
+| `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
 | `--rtu` | | flag | false | Enable RTU mode (serial) |
 | `--serial` | | string | none | Serial port path (required for RTU) |
+
+#### Tag Format
+
+Tags can be specified in two formats:
+
+- **Key-value**: `--tag key=value` (e.g., `--tag location=building-a`)
+- **Label**: `--tag label` (e.g., `--tag critical`)
+
+Multiple `--tag` options can be provided to add multiple tags to all devices.
 
 #### Examples
 
@@ -130,6 +140,9 @@ mabi modbus
 
 # Start with 100 devices, 1000 points each
 mabi modbus --port 5020 --devices 100 --points 1000
+
+# Start with tags on all devices
+mabi modbus --port 5020 --devices 10 --tag location=building-a --tag floor=3 --tag hvac
 
 # Start Modbus RTU on serial port
 mabi modbus --rtu --serial /dev/ttyUSB0
@@ -476,6 +489,7 @@ All protocol commands enforce argument constraints at parse time via clap `value
 |------------|-----------------|-----------|
 | Port ∈ [1, 65535] | `--port` (all protocols) | Port 0 triggers OS ephemeral port assignment, yielding a non-deterministic bind address that external clients cannot connect to. This is incompatible with the simulator's role as a known-address test endpoint. |
 | Count ≥ 1 | `--devices`, `--points`, `--nodes`, `--objects`, `--groups` | A zero-count resource produces a server with no simulatable entities. This invariant violation is caught at the CLI boundary rather than propagated to protocol-layer initialization. |
+| Tag format | `--tag` | Must be non-empty; key-value format requires non-empty key (e.g., `=value` is rejected). |
 
 ### Extensibility
 

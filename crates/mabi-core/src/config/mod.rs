@@ -93,6 +93,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::Protocol;
+use crate::tags::Tags;
 
 // Re-export watcher types
 pub use watcher::{
@@ -722,6 +723,10 @@ pub struct DeviceConfig {
     /// Custom metadata.
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+
+    /// Device tags for organization and filtering.
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    pub tags: Tags,
 }
 
 /// Data point configuration.

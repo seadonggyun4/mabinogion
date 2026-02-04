@@ -80,6 +80,7 @@ pub mod prelude;
 pub mod profiling;
 pub mod protocol;
 pub mod simulation;
+pub mod tags;
 pub mod typed_point;
 pub mod types;
 pub mod utils;
@@ -117,6 +118,9 @@ pub use config::{
 
 // Device types
 pub use device::{Device, DeviceInfo, DeviceState};
+
+// Tags
+pub use tags::{Tags, TagsBuilder, Taggable, parse_tag_string, parse_tags};
 
 // Engine types
 pub use engine::{EnginePreset, SimulatorEngine, SimulatorEngineBuilder};

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::protocol::Protocol;
+use crate::tags::Tags;
 use crate::types::{DataPoint, DataPointDef};
 use crate::value::Value;
 
@@ -65,6 +66,9 @@ pub struct DeviceInfo {
     /// Custom metadata.
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+    /// Device tags for organization and filtering.
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    pub tags: Tags,
 }
 
 impl DeviceInfo {
@@ -81,6 +85,7 @@ impl DeviceInfo {
             created_at: now,
             updated_at: now,
             metadata: HashMap::new(),
+            tags: Tags::new(),
         }
     }
 
@@ -93,6 +98,24 @@ impl DeviceInfo {
     /// Add metadata.
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set tags.
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    /// Add a single tag.
+    pub fn with_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.tags.insert(key.into(), value.into());
+        self
+    }
+
+    /// Add a label.
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.tags.add_label(label.into());
         self
     }
 }
@@ -344,6 +367,20 @@ mod tests {
             info.metadata.get("location"),
             Some(&"Building A".to_string())
         );
+    }
+
+    #[test]
+    fn test_device_info_with_tags() {
+        let info = DeviceInfo::new("dev-002", "Tagged Device", Protocol::BacnetIp)
+            .with_tag("zone", "hvac")
+            .with_tag("floor", "3")
+            .with_label("critical")
+            .with_label("monitored");
+
+        assert_eq!(info.tags.get("zone"), Some("hvac"));
+        assert_eq!(info.tags.get("floor"), Some("3"));
+        assert!(info.tags.has_label("critical"));
+        assert!(info.tags.has_label("monitored"));
     }
 
     #[test]

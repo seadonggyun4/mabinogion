@@ -68,7 +68,8 @@ impl ModbusDevice {
             &config.name,
             Protocol::ModbusTcp,
         )
-        .with_metadata("unit_id", config.unit_id.to_string());
+        .with_metadata("unit_id", config.unit_id.to_string())
+        .with_tags(config.tags);
 
         let (event_tx, _) = broadcast::channel(1000);
 

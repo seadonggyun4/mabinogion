@@ -10,6 +10,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use mabi_core::tags::Tags;
+
 use crate::schema::{EventAction, EventTrigger, PatternConfig, Scenario};
 
 /// Validation severity level.
@@ -727,6 +729,7 @@ mod tests {
             description: "A test".to_string(),
             duration_secs: 60,
             time_scale: 1.0,
+            devices: vec![],
             points: vec![
                 ScenarioPoint {
                     id: "temp".to_string(),
@@ -734,6 +737,7 @@ mod tests {
                     point_id: "temperature".to_string(),
                     pattern: PatternConfig::Constant { value: 25.0 },
                     interval_ms: 1000,
+                    device_tags: Tags::new(),
                 },
             ],
             events: vec![],
@@ -784,6 +788,7 @@ mod tests {
             point_id: "temp2".to_string(),
             pattern: PatternConfig::Constant { value: 30.0 },
             interval_ms: 1000,
+            device_tags: Tags::new(),
         });
 
         let validator = ScenarioValidator::new();
@@ -824,6 +829,7 @@ mod tests {
                 delay_ms: 0,
             },
             interval_ms: 1000,
+            device_tags: Tags::new(),
         });
 
         let validator = ScenarioValidator::new();
@@ -848,6 +854,7 @@ mod tests {
                     delay_ms: 0,
                 },
                 interval_ms: 1000,
+                device_tags: Tags::new(),
             },
             ScenarioPoint {
                 id: "b".to_string(),
@@ -860,6 +867,7 @@ mod tests {
                     delay_ms: 0,
                 },
                 interval_ms: 1000,
+                device_tags: Tags::new(),
             },
         ];
 

@@ -20,9 +20,127 @@ The `mabi-core` crate provides the foundational infrastructure for building indu
 | [`logging`](#logging) | Structured logging with tracing integration |
 | [`metrics`](#metrics) | Prometheus-compatible metrics collection |
 | [`protocol`](#protocol) | Protocol definitions (Modbus, OPC UA, BACnet, KNX) |
+| [`tags`](#tags) | Unified device tagging system for organization and filtering |
 | [`types`](#types) | Core data structures for data points, values, and addresses |
 | [`capabilities`](#capabilities) | Protocol capability detection and feature querying |
 | [`utils`](#utilities) | ID generation, retry logic, rate limiting, and time utilities |
+
+## Tags
+
+The `tags` module provides a unified tagging mechanism for organizing and filtering devices across all protocols. Tags support two types of categorization:
+
+- **Key-Value Tags**: Structured metadata (e.g., `location=building-a`, `floor=3`)
+- **Labels**: Set-based tags for grouping (e.g., `production`, `critical`, `hvac`)
+
+### Tags Struct
+
+```rust
+use mabi_core::tags::Tags;
+
+let tags = Tags::new()
+    .with_tag("location", "building-a")
+    .with_tag("floor", "3")
+    .with_label("hvac")
+    .with_label("critical");
+
+assert!(tags.has_label("hvac"));
+assert_eq!(tags.get("location"), Some("building-a"));
+assert!(tags.matches_selector(&[("location", "building-a")]));
+```
+
+### Tags API
+
+| Method | Description |
+|--------|-------------|
+| `new()` | Create empty tags |
+| `from_map(HashMap)` | Create from existing HashMap |
+| `from_pairs(iter)` | Create from key-value pairs |
+| `with_tag(key, value)` | Add key-value tag (builder) |
+| `with_label(label)` | Add label (builder) |
+| `with_labels(iter)` | Add multiple labels (builder) |
+| `with_tags(iter)` | Add multiple key-value tags (builder) |
+| `insert(key, value)` | Add key-value tag (mutable) |
+| `add_label(label)` | Add label (mutable) |
+| `get(key)` | Get tag value by key |
+| `has_label(label)` | Check if label exists |
+| `contains_key(key)` | Check if tag key exists |
+| `remove(key)` | Remove tag by key |
+| `remove_label(label)` | Remove label |
+| `merge(other)` | Merge another Tags into this |
+| `merged_with(other)` | Create merged copy |
+| `matches_selector(&[(&str, &str)])` | Check if all selector pairs match |
+| `has_any_label(iter)` | Check if any specified labels exist |
+| `has_all_labels(iter)` | Check if all specified labels exist |
+| `is_empty()` | Check if tags are empty |
+| `len()` | Total count of tags and labels |
+
+### TagsBuilder
+
+Fluent builder for constructing Tags:
+
+```rust
+use mabi_core::tags::TagsBuilder;
+
+let tags = TagsBuilder::new()
+    .tag("env", "prod")
+    .tag("region", "us-west")
+    .label("monitored")
+    .build();
+```
+
+### Parsing Tag Strings
+
+Parse tags from CLI-style strings (`key=value` or `label`):
+
+```rust
+use mabi_core::tags::{parse_tag_string, parse_tags};
+
+// Single tag
+let (key, value) = parse_tag_string("location=building-a")?;
+assert_eq!(key, "location");
+assert_eq!(value, Some("building-a".to_string()));
+
+// Label (no value)
+let (key, value) = parse_tag_string("critical")?;
+assert_eq!(key, "critical");
+assert_eq!(value, None);
+
+// Multiple tags
+let tags = parse_tags(&["location=building-a", "floor=3", "critical"])?;
+assert_eq!(tags.get("location"), Some("building-a"));
+assert!(tags.has_label("critical"));
+```
+
+### Taggable Trait
+
+Extension trait for types that can have tags:
+
+```rust
+pub trait Taggable {
+    fn tags(&self) -> &Tags;
+    fn tags_mut(&mut self) -> &mut Tags;
+    fn has_tag(&self, key: &str, value: &str) -> bool;
+    fn has_label(&self, label: &str) -> bool;
+}
+```
+
+### Serialization
+
+Tags serialize to JSON/YAML with automatic empty field skipping:
+
+```rust
+let tags = Tags::new()
+    .with_tag("location", "building-a")
+    .with_label("critical");
+
+// Serializes to:
+// {"tags":{"location":"building-a"},"labels":["critical"]}
+
+let empty_tags = Tags::new();
+// Serializes to: {}
+```
+
+---
 
 ## Device Abstraction
 
@@ -503,6 +621,10 @@ let config = DeviceConfigBuilder::new("sensor-001")
     .protocol(Protocol::ModbusTcp)
     .address("192.168.1.100:502")
     .metadata("location", "Building A")
+    .tag("zone", "hvac")
+    .tag("floor", "3")
+    .label("monitored")
+    .label("critical")
     .point(
         DataPointConfigBuilder::new("temperature")
             .name("Room Temperature")
@@ -519,6 +641,15 @@ let config = DeviceConfigBuilder::new("sensor-001")
     )
     .build();
 ```
+
+### Device Builder Tag Methods
+
+| Method | Description |
+|--------|-------------|
+| `tags(Tags)` | Set tags from existing Tags instance |
+| `tag(key, value)` | Add a key-value tag |
+| `label(label)` | Add a label |
+| `labels(iter)` | Add multiple labels |
 
 ## Utilities
 
@@ -581,6 +712,7 @@ This includes:
 - Protocol types: `Protocol`, `Value`, `DataType`, `AccessMode`
 - Data types: `DataPoint`, `DataPointDef`, `Quality`, `Address`
 - Device types: `Device`, `DeviceInfo`, `DeviceState`, `DeviceStatistics`
+- Tags: `Tags`, `TagsBuilder`, `Taggable`, `parse_tag_string`, `parse_tags`
 - Configuration: `EngineConfig`, `DeviceConfig`, all protocol configs
 - Engine: `SimulatorEngine`, `SimulatorEngineBuilder`, `EngineEvent`
 - Factory: `DeviceFactory`, `FactoryRegistry`, `Plugin`, `PluginManager`

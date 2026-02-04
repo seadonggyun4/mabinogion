@@ -95,19 +95,33 @@ The `Scenario` struct serves as the root container for scenario configuration:
 | `description` | `String` | Optional description |
 | `duration_secs` | `u64` | Total duration; 0 indicates infinite |
 | `time_scale` | `f64` | Playback speed multiplier (default: 1.0) |
+| `devices` | `Vec<ScenarioDevice>` | Device definitions with tags |
 | `points` | `Vec<ScenarioPoint>` | Data points to simulate |
 | `events` | `Vec<ScenarioEvent>` | Event triggers and actions |
 | `variables` | `HashMap<String, f64>` | Scenario-level variables |
+
+### ScenarioDevice
+
+Devices can be defined within the scenario with tags for organization:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | Device identifier (required) |
+| `name` | `String` | Device display name |
+| `protocol` | `String` | Protocol type (e.g., `modbus`, `opcua`) |
+| `config` | `HashMap<String, Value>` | Protocol-specific configuration |
+| `tags` | `Tags` | Device tags for organization and filtering |
 
 Each `ScenarioPoint` defines:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `String` | Unique point identifier |
-| `device_id` | `String` | Target device identifier |
+| `device_id` | `String` | Target device identifier (optional if using `device_tags`) |
 | `point_id` | `String` | Point identifier within device |
 | `pattern` | `PatternConfig` | Value generation pattern |
 | `interval_ms` | `u64` | Update frequency in milliseconds (default: 1000) |
+| `device_tags` | `Tags` | Filter by device tags (applies pattern to all matching devices) |
 
 ### Pattern Generator
 
@@ -397,7 +411,36 @@ time_scale: 1.0
 variables:
   setpoint: 25.0
 
+# Device definitions with tags
+devices:
+  - id: hvac-001
+    name: HVAC Unit 1
+    protocol: modbus
+    config:
+      unit_id: 1
+      port: 5020
+    tags:
+      tags:
+        location: building-a
+        floor: "3"
+      labels:
+        - hvac
+        - critical
+
+  - id: hvac-002
+    name: HVAC Unit 2
+    protocol: modbus
+    config:
+      unit_id: 2
+    tags:
+      tags:
+        location: building-a
+        floor: "4"
+      labels:
+        - hvac
+
 points:
+  # Point targeting specific device
   - id: "point_id"
     device_id: "device_id"
     point_id: "point_within_device"
@@ -407,6 +450,18 @@ points:
       amplitude: 5.0
       offset: 22.0
       period_secs: 3600
+
+  # Point targeting all devices matching tags
+  - id: temp_all_hvac
+    point_id: temperature
+    pattern:
+      type: sine
+      amplitude: 2.0
+      offset: 22.0
+      period_secs: 3600
+    device_tags:
+      labels:
+        - hvac
 
 events:
   - name: "event_name"
@@ -420,6 +475,41 @@ events:
         message: "Condition met"
         level: warn
 ```
+
+### Tag-Based Point Targeting
+
+The `device_tags` field enables applying a single point pattern to multiple devices that share common tags:
+
+```yaml
+# Apply temperature pattern to all devices with "hvac" label
+points:
+  - id: hvac_temperature
+    point_id: temperature
+    pattern:
+      type: sine
+      amplitude: 5.0
+      offset: 22.0
+      period_secs: 3600
+    device_tags:
+      labels:
+        - hvac
+
+# Apply setpoint pattern to all devices in building-a
+points:
+  - id: building_a_setpoint
+    point_id: setpoint
+    pattern:
+      type: constant
+      value: 21.0
+    device_tags:
+      tags:
+        location: building-a
+```
+
+When `device_tags` is specified:
+- `device_id` can be empty
+- The pattern applies to all devices whose tags match the specified criteria
+- Both key-value tags and labels can be used for filtering
 
 ---
 

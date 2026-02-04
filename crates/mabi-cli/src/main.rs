@@ -4,7 +4,7 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use mabi_cli::prelude::*;
-use mabi_cli::validation::{parse_nonzero_count, parse_port};
+use mabi_cli::validation::{parse_nonzero_count, parse_port, parse_tag, tags_from_entries, TagEntry};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -172,6 +172,10 @@ struct ModbusArgs {
     /// Serial port for RTU mode
     #[arg(long, requires = "rtu")]
     serial: Option<String>,
+
+    /// Device tags (format: key=value or label, can be repeated)
+    #[arg(long = "tag", value_parser = parse_tag)]
+    tags: Vec<TagEntry>,
 }
 
 #[derive(Args)]
@@ -372,10 +376,13 @@ async fn main() -> ExitCode {
                 }
             };
 
+            let tags = tags_from_entries(&args.tags);
+
             let mut cmd = ModbusCommand::new()
                 .with_bind_addr(addr)
                 .with_devices(args.devices)
-                .with_points(args.points);
+                .with_points(args.points)
+                .with_tags(tags);
 
             if args.rtu {
                 if let Some(serial) = args.serial {

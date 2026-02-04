@@ -3,6 +3,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use mabi_core::tags::Tags;
 use serde::{Deserialize, Serialize};
 
 /// Modbus TCP server configuration.
@@ -109,6 +110,10 @@ pub struct ModbusDeviceConfig {
     /// Response delay in milliseconds (for simulation).
     #[serde(default)]
     pub response_delay_ms: u64,
+
+    /// Device tags for organization and filtering.
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    pub tags: Tags,
 }
 
 fn default_coils() -> u16 {
@@ -137,6 +142,7 @@ impl Default for ModbusDeviceConfig {
             holding_registers: default_holding_registers(),
             input_registers: default_input_registers(),
             response_delay_ms: 0,
+            tags: Tags::new(),
         }
     }
 }
@@ -154,6 +160,24 @@ impl ModbusDeviceConfig {
     /// Set response delay.
     pub fn with_response_delay(mut self, delay_ms: u64) -> Self {
         self.response_delay_ms = delay_ms;
+        self
+    }
+
+    /// Set tags.
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    /// Add a single tag.
+    pub fn with_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.tags.insert(key.into(), value.into());
+        self
+    }
+
+    /// Add a label.
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.tags.add_label(label.into());
         self
     }
 

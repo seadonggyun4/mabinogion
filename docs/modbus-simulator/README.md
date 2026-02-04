@@ -340,6 +340,42 @@ manager.apply_update(ConfigUpdate::UnitEnabled {
 | `RegisterReadAccess` | Control read access for address range |
 | `RegisterWriteAccess` | Control write access for address range |
 
+## Device Tags
+
+Modbus devices support tags for organization and filtering:
+
+```rust
+use mabi_modbus::ModbusDeviceConfig;
+use mabi_core::tags::Tags;
+
+// Using builder pattern
+let config = ModbusDeviceConfig::new(1, "HVAC Unit 1")
+    .with_tag("location", "building-a")
+    .with_tag("floor", "3")
+    .with_label("hvac")
+    .with_label("critical");
+
+// Using Tags directly
+let tags = Tags::new()
+    .with_tag("zone", "production")
+    .with_label("monitored");
+
+let config = ModbusDeviceConfig::new(2, "Sensor 1")
+    .with_tags(tags);
+```
+
+### ModbusDeviceConfig Tag Methods
+
+| Method | Description |
+|--------|-------------|
+| `with_tags(Tags)` | Set tags from existing Tags instance |
+| `with_tag(key, value)` | Add a key-value tag |
+| `with_label(label)` | Add a label |
+
+Tags are propagated to `DeviceInfo` when the device is created, making them accessible via the `Device` trait.
+
+---
+
 ## Fault Injection
 
 ### Response Delay Simulation

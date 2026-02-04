@@ -13,6 +13,7 @@ use mabi_core::{
     error::{Error, Result},
     factory::{DeviceFactory, FactoryMetadata, FactoryRegistry, Plugin},
     protocol::Protocol,
+    tags::Tags,
     types::DataPointDef,
     value::Value,
 };
@@ -539,6 +540,7 @@ pub fn create_opcua_config(
         address: None,
         points,
         metadata: HashMap::new(),
+        tags: Tags::new(),
     }
 }
 
@@ -562,6 +564,7 @@ pub fn create_opcua_config_with_metadata(
         address: None,
         points,
         metadata: meta_map,
+        tags: Tags::new(),
     }
 }
 
@@ -617,6 +620,7 @@ mod tests {
             address: None,
             points: vec![],
             metadata: HashMap::new(),
+            tags: Tags::new(),
         };
         assert!(factory.validate(&config).is_err());
 
@@ -629,6 +633,7 @@ mod tests {
             address: None,
             points: vec![],
             metadata: HashMap::new(),
+            tags: Tags::new(),
         };
         assert!(factory.validate(&config).is_err());
     }

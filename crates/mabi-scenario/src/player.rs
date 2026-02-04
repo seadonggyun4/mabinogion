@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tracing::info;
 
+use mabi_core::tags::Tags;
 use mabi_core::types::DataPointId;
 use mabi_core::value::Value;
 
@@ -244,6 +245,7 @@ mod tests {
                 point_id: "temperature".to_string(),
                 pattern: PatternConfig::Constant { value: 25.0 },
                 interval_ms: 100,
+                device_tags: Tags::new(),
             }],
             ..Default::default()
         };
