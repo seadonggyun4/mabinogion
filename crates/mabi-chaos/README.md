@@ -91,25 +91,25 @@ mabi run scenario.yaml --time-scale 2.0 --duration 10m
 
 ## Documentation
 
-All detailed documentation lives in the [`docs/`](./docs/) directory. Each module has a comprehensive guide covering architecture, API reference, configuration, and usage examples.
+All detailed documentation lives in the [`docs/`](../../docs/) directory. Each module has a comprehensive guide covering architecture, API reference, configuration, and usage examples.
 
 ### Protocol Simulators
 
 | Protocol | Use Case | Key Features | Guide |
 |----------|----------|--------------|-------|
-| **Modbus TCP/RTU** | Factory automation, PLCs, sensors | TCP/RTU dual mode, handler registry, sparse registers, multi-unit, fault injection | [docs/modbus-simulator](./docs/modbus-simulator/README.md) |
-| **OPC UA** | Industrial IoT, SCADA systems | Address space, subscriptions, historical access, 22+ aggregates, security policies | [docs/opcua-simulator](./docs/opcua-simulator/README.md) |
-| **BACnet/IP** | Building automation (HVAC, lighting) | 9 object types, COV subscriptions, priority array, BBMD, APDU segmentation | [docs/bacnet-simulator](./docs/bacnet-simulator/README.md) |
-| **KNXnet/IP** | Smart home/building systems | Tunneling, 25+ datapoint types, group addressing, DPT codec system | [docs/knx-simulator](./docs/knx-simulator/README.md) |
+| **Modbus TCP/RTU** | Factory automation, PLCs, sensors | TCP/RTU dual mode, handler registry, sparse registers, multi-unit, fault injection | [docs/modbus-simulator](../../docs/modbus-simulator/README.md) |
+| **OPC UA** | Industrial IoT, SCADA systems | Address space, subscriptions, historical access, 22+ aggregates, security policies | [docs/opcua-simulator](../../docs/opcua-simulator/README.md) |
+| **BACnet/IP** | Building automation (HVAC, lighting) | 9 object types, COV subscriptions, priority array, BBMD, APDU segmentation | [docs/bacnet-simulator](../../docs/bacnet-simulator/README.md) |
+| **KNXnet/IP** | Smart home/building systems | Tunneling, 25+ datapoint types, group addressing, DPT codec system | [docs/knx-simulator](../../docs/knx-simulator/README.md) |
 
 ### Core & Infrastructure
 
 | Module | Description | Key Features | Guide |
 |--------|-------------|--------------|-------|
-| **Core** | Common abstractions and utilities | Device trait, SimulatorEngine, factory system, metrics, capabilities, lifecycle | [docs/core](./docs/core/README.md) |
-| **Scenario Engine** | Declarative time-based simulation | 9 pattern types, event triggers/actions, time scaling, YAML schema, replay | [docs/scenario-engine](./docs/scenario-engine/README.md) |
-| **Chaos Engine** | Fault injection framework | Network/device/protocol faults, latency models, scheduler, middleware, config | [docs/chaos-engine](./docs/chaos-engine/README.md) |
-| **CLI** | Command-line interface | All commands, global options, output formats, exit codes, validation | [docs/cli](./docs/cli/README.md) |
+| **Core** | Common abstractions and utilities | Device trait, SimulatorEngine, factory system, metrics, capabilities, lifecycle | [docs/core](../../docs/core/README.md) |
+| **Scenario Engine** | Declarative time-based simulation | 9 pattern types, event triggers/actions, time scaling, YAML schema, replay | [docs/scenario-engine](../../docs/scenario-engine/README.md) |
+| **Chaos Engine** | Fault injection framework | Network/device/protocol faults, latency models, scheduler, middleware, config | [docs/chaos-engine](../../docs/chaos-engine/README.md) |
+| **CLI** | Command-line interface | All commands, global options, output formats, exit codes, validation | [docs/cli](../../docs/cli/README.md) |
 
 ### API Reference
 
