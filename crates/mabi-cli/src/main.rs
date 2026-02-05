@@ -195,6 +195,10 @@ struct OpcuaArgs {
     /// Security mode (None, Sign, SignAndEncrypt)
     #[arg(long, value_enum, default_value = "none", ignore_case = true)]
     security: SecurityModeArg,
+
+    /// Device tags (format: key=value or label, can be repeated)
+    #[arg(long = "tag", value_parser = parse_tag)]
+    tags: Vec<TagEntry>,
 }
 
 #[derive(Args)]
@@ -214,6 +218,10 @@ struct BacnetArgs {
     /// Enable BBMD functionality
     #[arg(long)]
     bbmd: bool,
+
+    /// Device tags (format: key=value or label, can be repeated)
+    #[arg(long = "tag", value_parser = parse_tag)]
+    tags: Vec<TagEntry>,
 }
 
 #[derive(Args)]
@@ -229,6 +237,10 @@ struct KnxArgs {
     /// Number of group objects
     #[arg(short, long, default_value = "100", value_parser = parse_nonzero_count)]
     groups: usize,
+
+    /// Device tags (format: key=value or label, can be repeated)
+    #[arg(long = "tag", value_parser = parse_tag)]
+    tags: Vec<TagEntry>,
 }
 
 #[derive(Args)]
@@ -394,30 +406,39 @@ async fn main() -> ExitCode {
         }
 
         Commands::Opcua(args) => {
+            let tags = tags_from_entries(&args.tags);
+
             let cmd = OpcuaCommand::new()
                 .with_port(args.port)
                 .with_endpoint(args.endpoint)
                 .with_nodes(args.nodes)
-                .with_security(args.security.to_string());
+                .with_security(args.security.to_string())
+                .with_tags(tags);
 
             runner.run_with_shutdown(&cmd).await
         }
 
         Commands::Bacnet(args) => {
+            let tags = tags_from_entries(&args.tags);
+
             let cmd = BacnetCommand::new()
                 .with_port(args.port)
                 .with_device_instance(args.instance)
                 .with_objects(args.objects)
-                .with_bbmd(args.bbmd);
+                .with_bbmd(args.bbmd)
+                .with_tags(tags);
 
             runner.run_with_shutdown(&cmd).await
         }
 
         Commands::Knx(args) => {
+            let tags = tags_from_entries(&args.tags);
+
             let cmd = KnxCommand::new()
                 .with_port(args.port)
                 .with_individual_address(args.address)
-                .with_group_objects(args.groups);
+                .with_group_objects(args.groups)
+                .with_tags(tags);
 
             runner.run_with_shutdown(&cmd).await
         }

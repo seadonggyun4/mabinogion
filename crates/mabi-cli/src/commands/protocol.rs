@@ -342,6 +342,8 @@ pub struct OpcuaCommand {
     endpoint_path: String,
     nodes: usize,
     security_mode: String,
+    /// Device tags.
+    tags: Tags,
     /// Server instance (for shutdown).
     server: Arc<Mutex<Option<Arc<OpcUaServer>>>>,
     /// Server task handle.
@@ -355,6 +357,7 @@ impl OpcuaCommand {
             endpoint_path: "/".into(),
             nodes: 1000,
             security_mode: "None".into(),
+            tags: Tags::new(),
             server: Arc::new(Mutex::new(None)),
             server_task: Arc::new(Mutex::new(None)),
         }
@@ -377,6 +380,11 @@ impl OpcuaCommand {
 
     pub fn with_security(mut self, mode: impl Into<String>) -> Self {
         self.security_mode = mode.into();
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
         self
     }
 }
@@ -588,6 +596,8 @@ pub struct BacnetCommand {
     device_instance: u32,
     objects: usize,
     bbmd_enabled: bool,
+    /// Device tags.
+    tags: Tags,
     /// Server instance (for shutdown).
     server: Arc<Mutex<Option<Arc<BACnetServer>>>>,
     /// Server task handle.
@@ -601,6 +611,7 @@ impl BacnetCommand {
             device_instance: 1234,
             objects: 100,
             bbmd_enabled: false,
+            tags: Tags::new(),
             server: Arc::new(Mutex::new(None)),
             server_task: Arc::new(Mutex::new(None)),
         }
@@ -623,6 +634,11 @@ impl BacnetCommand {
 
     pub fn with_bbmd(mut self, enabled: bool) -> Self {
         self.bbmd_enabled = enabled;
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
         self
     }
 }
@@ -836,6 +852,8 @@ pub struct KnxCommand {
     bind_addr: SocketAddr,
     individual_address: String,
     group_objects: usize,
+    /// Device tags.
+    tags: Tags,
     /// Server instance (for shutdown).
     server: Arc<Mutex<Option<Arc<KnxServer>>>>,
     /// Server task handle.
@@ -848,6 +866,7 @@ impl KnxCommand {
             bind_addr: "0.0.0.0:3671".parse().unwrap(),
             individual_address: "1.1.1".into(),
             group_objects: 100,
+            tags: Tags::new(),
             server: Arc::new(Mutex::new(None)),
             server_task: Arc::new(Mutex::new(None)),
         }
@@ -865,6 +884,11 @@ impl KnxCommand {
 
     pub fn with_group_objects(mut self, count: usize) -> Self {
         self.group_objects = count;
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
         self
     }
 }
