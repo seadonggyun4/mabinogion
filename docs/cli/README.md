@@ -166,6 +166,7 @@ mabi opcua [OPTIONS]
 | `--endpoint` | | string | / | Endpoint path |
 | `--nodes` | `-n` | usize | 1000 | Number of nodes to create (≥ 1) |
 | `--security` | | enum | `None` | Security mode (case-insensitive): `None`, `Sign`, `SignAndEncrypt` |
+| `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
 
 #### Node Creation Behavior
 
@@ -184,6 +185,9 @@ mabi opcua --port 4841 --nodes 100
 
 # Start with signing security
 mabi opcua --security Sign --nodes 100
+
+# Start with device tags
+mabi opcua --port 4840 --nodes 500 --tag location=building-a --tag scada --tag critical
 ```
 
 ---
@@ -204,6 +208,7 @@ mabi bacnet [OPTIONS]
 | `--instance` | `-i` | u32 | 1234 | BACnet device instance number |
 | `--objects` | `-o` | usize | 100 | Number of BACnet objects (≥ 1) |
 | `--bbmd` | | flag | false | Enable BBMD functionality |
+| `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
 
 #### Examples
 
@@ -216,6 +221,9 @@ mabi bacnet --instance 5000 --objects 1000
 
 # Enable BBMD
 mabi bacnet --bbmd --objects 500
+
+# Start with device tags
+mabi bacnet --instance 1234 --objects 200 --tag location=building-b --tag floor=2 --tag hvac
 ```
 
 ---
@@ -235,6 +243,7 @@ mabi knx [OPTIONS]
 | `--port` | `-p` | u16 | 3671 | UDP port to bind (1–65535) |
 | `--address` | `-a` | string | 1.1.1 | Individual address (format: X.X.X) |
 | `--groups` | `-g` | usize | 100 | Number of group objects (≥ 1) |
+| `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
 
 #### Examples
 
@@ -244,6 +253,9 @@ mabi knx
 
 # Start with custom address and groups
 mabi knx --address 1.2.3 --groups 500
+
+# Start with device tags
+mabi knx --address 1.1.1 --groups 200 --tag location=building-c --tag lighting --tag smart-home
 ```
 
 ---
@@ -478,6 +490,67 @@ Example with 25 devices (`mabi modbus --devices 25 --points 100`):
 │ 25      ┆ 25           ┆ 25         ┆ 25    ┆ 25       ┆ Online │
 └─────────┴──────────────┴────────────┴───────┴──────────┴────────┘
 ```
+
+## Unified Device Tagging System
+
+All protocol commands (`modbus`, `opcua`, `bacnet`, `knx`) support a unified tagging system via the `--tag` option. This enables consistent metadata annotation across heterogeneous protocol simulators, facilitating unified monitoring, filtering, and operational management.
+
+### Tag Syntax
+
+Tags are specified using the `--tag` option, which can be repeated multiple times:
+
+```bash
+mabi <protocol> --tag key=value --tag label
+```
+
+| Format | Example | Semantics |
+|--------|---------|-----------|
+| Key-Value | `--tag location=building-a` | Dimensional metadata with explicit attribute-value relationship |
+| Label | `--tag critical` | Boolean predicate indicating group membership |
+
+### Cross-Protocol Consistency
+
+The tagging system is protocol-agnostic, enabling unified operational patterns across all supported protocols:
+
+```bash
+# Deploy building automation simulation with consistent organizational tags
+mabi modbus --port 5020 --devices 10 \
+    --tag location=building-a --tag floor=3 --tag system=hvac &
+
+mabi opcua --port 4840 --nodes 500 \
+    --tag location=building-a --tag floor=3 --tag system=scada &
+
+mabi bacnet --port 47808 --objects 200 \
+    --tag location=building-a --tag floor=3 --tag system=bms &
+
+mabi knx --port 3671 --groups 100 \
+    --tag location=building-a --tag floor=3 --tag system=lighting &
+```
+
+### Tag Use Cases
+
+| Use Case | Example Tags | Description |
+|----------|--------------|-------------|
+| **Physical Location** | `location=building-a`, `floor=3`, `room=101` | ISA-95 style equipment hierarchy |
+| **Functional Classification** | `system=hvac`, `function=temperature` | Cross-cutting functional categories |
+| **Operational State** | `critical`, `monitored`, `maintenance` | Boolean operational flags |
+| **Environment Segregation** | `env=prod`, `env=staging`, `env=dev` | Deployment environment classification |
+
+### Metrics Integration
+
+Tags propagate to Prometheus metrics labels, enabling dimensional queries:
+
+```promql
+# Aggregate requests by location and protocol
+sum(mabi_requests_total{location="building-a"}) by (protocol, system)
+
+# Filter critical devices
+mabi_devices_active{critical="true"}
+```
+
+For detailed tag API documentation and query semantics, see [mabi-core Tags](../core/README.md#tags).
+
+---
 
 ## Input Validation
 

@@ -27,10 +27,37 @@ The `mabi-core` crate provides the foundational infrastructure for building indu
 
 ## Tags
 
-The `tags` module provides a unified tagging mechanism for organizing and filtering devices across all protocols. Tags support two types of categorization:
+The `tags` module provides a unified tagging mechanism for organizing and filtering devices across all protocols. This system implements a multi-dimensional taxonomy based on established metadata classification principles from distributed systems literature.
 
-- **Key-Value Tags**: Structured metadata (e.g., `location=building-a`, `floor=3`)
-- **Labels**: Set-based tags for grouping (e.g., `production`, `critical`, `hvac`)
+### Theoretical Foundation
+
+The tagging system addresses three fundamental challenges in industrial protocol simulation:
+
+1. **Resource Identification**: Uniquely identifying simulated devices across heterogeneous protocol namespaces
+2. **Organizational Taxonomy**: Hierarchical and cross-cutting classification for operational management
+3. **Query Selectivity**: Efficient filtering and aggregation for metrics, logging, and operational queries
+
+The design draws from label-based systems in container orchestration (Kubernetes labels/selectors), time-series databases (Prometheus label dimensions), and asset management frameworks (ISA-95 equipment hierarchy).
+
+### Taxonomic Model
+
+Tags support two orthogonal classification paradigms:
+
+| Paradigm | Structure | Semantics | Use Case |
+|----------|-----------|-----------|----------|
+| **Key-Value Tags** | `key=value` pairs | Dimensional metadata with explicit attribute-value relationships | Hierarchical organization (location, floor, zone), numeric properties (unit_id, instance), environment classification (env=prod) |
+| **Labels** | Set membership | Boolean predicates indicating group affiliation | Capability flags (critical, monitored), functional categories (hvac, lighting), operational states (maintenance) |
+
+This dual-paradigm approach enables both **dimensional queries** (e.g., "all devices where location=building-a AND floor=3") and **categorical queries** (e.g., "all devices with label critical").
+
+### Cardinality Considerations
+
+Following Prometheus best practices for label design:
+
+- **Low-cardinality tags** (location, protocol, environment): Suitable for metric aggregation dimensions
+- **High-cardinality tags** (device_id, instance_number): Use with caution in metric labels; prefer for filtering only
+
+The Tags structure imposes no cardinality limits, delegating policy enforcement to the consuming application (e.g., metrics exporters may filter high-cardinality labels).
 
 ### Tags Struct
 
@@ -138,6 +165,95 @@ let tags = Tags::new()
 
 let empty_tags = Tags::new();
 // Serializes to: {}
+```
+
+### Protocol Integration
+
+Tags are supported across all four industrial protocols via the unified CLI interface:
+
+| Protocol | CLI Command | Tag Application |
+|----------|-------------|-----------------|
+| Modbus TCP/RTU | `mabi modbus --tag key=value` | Applied to all unit IDs in the simulator |
+| OPC UA | `mabi opcua --tag key=value` | Applied to server-level metadata |
+| BACnet/IP | `mabi bacnet --tag key=value` | Applied to device object metadata |
+| KNXnet/IP | `mabi knx --tag key=value` | Applied to server-level metadata |
+
+#### Cross-Protocol Tagging Example
+
+```bash
+# Deploy a unified building automation simulation with consistent tagging
+mabi modbus --port 5020 --devices 10 --tag location=building-a --tag system=hvac &
+mabi opcua --port 4840 --nodes 500 --tag location=building-a --tag system=scada &
+mabi bacnet --port 47808 --objects 200 --tag location=building-a --tag system=bms &
+mabi knx --port 3671 --groups 100 --tag location=building-a --tag system=lighting &
+```
+
+This enables unified monitoring and filtering:
+
+```promql
+# Prometheus query: aggregate all protocol metrics for building-a
+sum(mabi_requests_total{location="building-a"}) by (protocol)
+```
+
+### Operational Patterns
+
+#### 1. Environment Segregation
+
+```bash
+# Production environment
+mabi modbus --tag env=prod --tag critical
+
+# Development/testing
+mabi modbus --tag env=dev --tag ephemeral
+```
+
+#### 2. ISA-95 Equipment Hierarchy
+
+```bash
+# Enterprise > Site > Area > Cell > Unit
+mabi bacnet --tag enterprise=acme \
+            --tag site=plant-01 \
+            --tag area=packaging \
+            --tag cell=line-3 \
+            --tag unit=wrapper-01
+```
+
+#### 3. Functional Classification
+
+```bash
+# Cross-cutting functional categories
+mabi opcua --tag function=temperature-control \
+           --tag subsystem=chiller \
+           --tag monitored \
+           --tag critical
+```
+
+### Query Semantics
+
+The `matches_selector` method implements conjunctive (AND) query semantics:
+
+```rust
+// Selector: all key-value pairs must match
+tags.matches_selector(&[("location", "building-a"), ("floor", "3")])
+// Returns true iff tags["location"] == "building-a" AND tags["floor"] == "3"
+```
+
+For disjunctive (OR) queries on labels:
+
+```rust
+// Any of the specified labels
+tags.has_any_label(&["critical", "monitored"])
+
+// All of the specified labels
+tags.has_all_labels(&["critical", "monitored"])
+```
+
+Complex queries combining both paradigms:
+
+```rust
+// Devices in building-a that are either critical OR monitored
+let matches = tags.matches_selector(&[("location", "building-a")])
+    && tags.has_any_label(&["critical", "monitored"]);
 ```
 
 ---
