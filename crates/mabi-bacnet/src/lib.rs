@@ -81,7 +81,9 @@ pub mod prelude {
     pub use crate::network::npdu::{Npdu, NpduControl, Priority};
     pub use crate::network::udp::{BACnetNetwork, NetworkConfig, NetworkHandle};
     pub use crate::object::property::{BACnetValue, PropertyId, PropertyStore, SegmentationSupport, StatusFlags};
-    pub use crate::object::registry::{ObjectRegistry, RegistryError};
+    pub use crate::object::registry::{
+        default_object_descriptors, ObjectRegistry, ObjectTypeDescriptor, RegistryError,
+    };
     pub use crate::object::standard::{
         AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
         MultiStateInput, MultiStateOutput, MultiStateValue,

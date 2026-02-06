@@ -13,7 +13,7 @@ pub mod traits;
 pub mod types;
 
 pub use property::{BACnetValue, PropertyError, PropertyId, PropertyStore, StatusFlags};
-pub use registry::ObjectRegistry;
+pub use registry::{default_object_descriptors, ObjectRegistry, ObjectTypeDescriptor};
 pub use standard::{
     AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
     MultiStateInput, MultiStateOutput, MultiStateValue,

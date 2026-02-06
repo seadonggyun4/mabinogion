@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 // Protocol-specific imports
 use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2, ModbusDevice, ModbusDeviceConfig};
 use mabi_opcua::{OpcUaServer, OpcUaServerConfig};
-use mabi_bacnet::prelude::{BACnetServer, ServerConfig as BacnetServerConfig, ObjectRegistry, AnalogInput, AnalogOutput, BinaryInput, BinaryOutput};
+use mabi_bacnet::prelude::{BACnetServer, ServerConfig as BacnetServerConfig, ObjectRegistry, default_object_descriptors};
 use mabi_knx::{KnxServer, KnxServerConfig, IndividualAddress, GroupAddress, DptId, GroupObjectTable};
 
 /// Base trait for protocol-specific commands.
@@ -787,23 +787,9 @@ impl ProtocolCommand for BacnetCommand {
         // Create object registry with sample objects
         let registry = ObjectRegistry::new();
 
-        let objects_per_type = self.objects / 4;
-        for i in 0..objects_per_type {
-            let ai = AnalogInput::new((i + 1) as u32, format!("AI_{}", i + 1));
-            registry.register(Arc::new(ai));
-        }
-        for i in 0..objects_per_type {
-            let ao = AnalogOutput::new((i + 1) as u32, format!("AO_{}", i + 1));
-            registry.register(Arc::new(ao));
-        }
-        for i in 0..objects_per_type {
-            let bi = BinaryInput::new((i + 1) as u32, format!("BI_{}", i + 1));
-            registry.register(Arc::new(bi));
-        }
-        for i in 0..objects_per_type {
-            let bo = BinaryOutput::new((i + 1) as u32, format!("BO_{}", i + 1));
-            registry.register(Arc::new(bo));
-        }
+        let descriptors = default_object_descriptors();
+        let objects_per_type = self.objects / descriptors.len();
+        registry.populate_standard_objects(&descriptors, objects_per_type);
 
         let server = Arc::new(BACnetServer::new(config, registry));
 

@@ -187,6 +187,30 @@ impl ObjectRegistry {
         self.type_counts.clear();
     }
 
+    /// Populate the registry with objects described by the given descriptors.
+    ///
+    /// Creates `count_per_type` objects for each descriptor, with instance
+    /// numbers starting from **0** (per ASHRAE 135, instance range 0..4194302).
+    /// Object names follow the pattern `"{prefix}_{instance}"` (e.g., "AI_0", "AO_1").
+    ///
+    /// This is the canonical entry point for CLI-driven bulk creation.
+    /// Adding a new object type requires only appending a [`ObjectTypeDescriptor`]
+    /// to the descriptors slice — no loop modifications are needed.
+    pub fn populate_standard_objects(
+        &self,
+        descriptors: &[ObjectTypeDescriptor],
+        count_per_type: usize,
+    ) {
+        for desc in descriptors {
+            for i in 0..count_per_type {
+                let instance = i as u32;
+                let name = format!("{}_{}", desc.prefix, instance);
+                let object = (desc.create)(instance, name);
+                self.register(object);
+            }
+        }
+    }
+
     /// Get statistics about the registry.
     pub fn statistics(&self) -> RegistryStatistics {
         let mut type_counts = Vec::new();
@@ -217,6 +241,62 @@ pub struct RegistryStatistics {
     pub type_counts: Vec<(ObjectType, usize)>,
 }
 
+/// Descriptor for data-driven batch object creation.
+///
+/// Each descriptor defines a BACnet object type's naming prefix and
+/// constructor function. This enables the registry to populate objects
+/// without hardcoding object types, making it trivial to extend with
+/// new types (e.g., `AnalogValue`, `MultiStateInput`) by appending
+/// a single descriptor entry.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let descriptors = vec![
+///     ObjectTypeDescriptor {
+///         prefix: "AI",
+///         create: |instance, name| Arc::new(AnalogInput::new(instance, name)),
+///     },
+/// ];
+/// registry.populate_standard_objects(&descriptors, 50);
+/// // Creates AI_0, AI_1, ..., AI_49
+/// ```
+pub struct ObjectTypeDescriptor {
+    /// Naming prefix for the object type (e.g., "AI", "AO", "BI", "BO").
+    pub prefix: &'static str,
+    /// Constructor function: takes `(instance: u32, name: String)` and
+    /// returns an `ArcObject`.
+    pub create: fn(u32, String) -> ArcObject,
+}
+
+/// Returns the default set of BACnet object type descriptors.
+///
+/// Covers the four primary I/O object types used in CLI-driven
+/// simulations. To add a new type, append a descriptor — no loop
+/// or call-site changes are needed.
+pub fn default_object_descriptors() -> Vec<ObjectTypeDescriptor> {
+    use super::standard::{AnalogInput, AnalogOutput, BinaryInput, BinaryOutput};
+
+    vec![
+        ObjectTypeDescriptor {
+            prefix: "AI",
+            create: |instance, name| Arc::new(AnalogInput::new(instance, name)),
+        },
+        ObjectTypeDescriptor {
+            prefix: "AO",
+            create: |instance, name| Arc::new(AnalogOutput::new(instance, name)),
+        },
+        ObjectTypeDescriptor {
+            prefix: "BI",
+            create: |instance, name| Arc::new(BinaryInput::new(instance, name)),
+        },
+        ObjectTypeDescriptor {
+            prefix: "BO",
+            create: |instance, name| Arc::new(BinaryOutput::new(instance, name)),
+        },
+    ]
+}
+
 /// Registry errors.
 #[derive(Debug, thiserror::Error)]
 pub enum RegistryError {
@@ -232,7 +312,7 @@ pub enum RegistryError {
 
 #[cfg(test)]
 mod tests {
-    use super::super::standard::{AnalogInput, BinaryOutput};
+    use super::super::standard::{AnalogInput, AnalogOutput, BinaryInput, BinaryOutput};
     use super::*;
 
     #[test]
@@ -303,5 +383,56 @@ mod tests {
 
         let value = registry.read_property(&id, PropertyId::PresentValue).unwrap();
         assert_eq!(value.as_real(), Some(25.0));
+    }
+
+    #[test]
+    fn test_populate_standard_objects_starts_at_instance_0() {
+        let registry = ObjectRegistry::new();
+        let descriptors = default_object_descriptors();
+        registry.populate_standard_objects(&descriptors, 3);
+
+        // Instance 0 must exist for all types
+        assert!(registry.contains(&ObjectId::new(ObjectType::AnalogInput, 0)));
+        assert!(registry.contains(&ObjectId::new(ObjectType::AnalogOutput, 0)));
+        assert!(registry.contains(&ObjectId::new(ObjectType::BinaryInput, 0)));
+        assert!(registry.contains(&ObjectId::new(ObjectType::BinaryOutput, 0)));
+
+        // Instance 2 (last for count=3) must exist
+        assert!(registry.contains(&ObjectId::new(ObjectType::AnalogInput, 2)));
+
+        // Instance 3 must NOT exist
+        assert!(!registry.contains(&ObjectId::new(ObjectType::AnalogInput, 3)));
+
+        // Verify naming convention: "{prefix}_{instance}"
+        assert!(registry.get_by_name("AI_0").is_some());
+        assert!(registry.get_by_name("BO_2").is_some());
+        assert!(registry.get_by_name("AI_3").is_none());
+
+        // Total: 4 types * 3 = 12 objects
+        assert_eq!(registry.len(), 12);
+        assert_eq!(registry.count_by_type(ObjectType::AnalogInput), 3);
+        assert_eq!(registry.count_by_type(ObjectType::BinaryOutput), 3);
+    }
+
+    #[test]
+    fn test_populate_extensibility_custom_descriptors() {
+        let registry = ObjectRegistry::new();
+        let descriptors = vec![
+            ObjectTypeDescriptor {
+                prefix: "AI",
+                create: |instance, name| Arc::new(AnalogInput::new(instance, name)),
+            },
+            ObjectTypeDescriptor {
+                prefix: "AO",
+                create: |instance, name| Arc::new(AnalogOutput::new(instance, name)),
+            },
+        ];
+        registry.populate_standard_objects(&descriptors, 5);
+
+        // 2 types * 5 = 10
+        assert_eq!(registry.len(), 10);
+        assert_eq!(registry.count_by_type(ObjectType::AnalogInput), 5);
+        assert_eq!(registry.count_by_type(ObjectType::AnalogOutput), 5);
+        assert_eq!(registry.count_by_type(ObjectType::BinaryInput), 0);
     }
 }
