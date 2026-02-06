@@ -2,8 +2,9 @@
 //!
 //! Implements the full OPC UA connection lifecycle:
 //! 1. Hello/Acknowledge handshake
-//! 2. OpenSecureChannel
+//! 2. OpenSecureChannel (Issue)
 //! 3. Service message loop (MSG → dispatch → response)
+//!    - Handles in-band OPN renewals (requestType=Renew)
 //! 4. CloseSecureChannel / disconnect
 
 use std::sync::Arc;
@@ -19,13 +20,13 @@ use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
 use crate::codec::data_value::ExtensionObject;
 use crate::channel::message::{
-    AsymmetricSecurityHeader, OpenSecureChannelBody, SecureMessageBody,
+    OpenSecureChannelBody, SecureMessageBody,
     SequenceHeader, build_msg_response_body, build_opn_response_body,
 };
 use crate::channel::secure_channel::SecureChannel;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::service::registry::{ServiceContext, ServiceRegistry};
-use crate::transport::codec::{OpcUaTransportCodec, RawMessage, build_response};
+use crate::transport::codec::{OpcUaTransportCodec, build_response};
 use crate::transport::messages::*;
 use crate::transport::metrics::TransportMetrics;
 use crate::types::{NodeId, StatusCode};
@@ -94,7 +95,7 @@ pub async fn handle_connection(
     debug!(peer = %peer, "Sent Acknowledge");
 
     // =====================================================================
-    // Phase 2: OpenSecureChannel
+    // Phase 2: OpenSecureChannel (initial Issue)
     // =====================================================================
     let channel = match tokio::time::timeout(config.connection_timeout, framed.next()).await {
         Ok(Some(Ok(msg))) => {
@@ -107,31 +108,13 @@ pub async fn handle_connection(
 
             let opn = OpenSecureChannelBody::decode_from(&msg.body)?;
             let channel = SecureChannel::new_unsecured();
-
-            // Decode OpenSecureChannelRequest from payload
-            let mut payload_buf = Bytes::from(opn.payload);
-            // type_id (NodeId) + request header + request body
-            let _type_id = NodeId::decode(&mut payload_buf)?;
-            // Skip request header
-            let _auth_token = NodeId::decode(&mut payload_buf)?;
-            let _timestamp = chrono::DateTime::<chrono::Utc>::decode(&mut payload_buf)?;
-            let _request_handle = u32::decode(&mut payload_buf)?;
-            let _return_diagnostics = u32::decode(&mut payload_buf)?;
-            let _audit_entry_id = String::decode(&mut payload_buf)?;
-            let _timeout_hint = u32::decode(&mut payload_buf)?;
-            let _additional_header = ExtensionObject::decode(&mut payload_buf)?;
-            // OpenSecureChannelRequest fields
-            let _client_protocol_version = u32::decode(&mut payload_buf)?;
-            let _request_type = u32::decode(&mut payload_buf)?; // 0=Issue, 1=Renew
-            let _security_mode = u32::decode(&mut payload_buf)?;
-            let _client_nonce = Vec::<u8>::decode(&mut payload_buf)?;
-            let _requested_lifetime = u32::decode(&mut payload_buf)?;
+            let (request_handle, requested_lifetime) = decode_opn_request_fields(&opn.payload)?;
 
             // Build OpenSecureChannelResponse
             let response_body = build_opn_response(
                 &channel,
-                _request_handle,
-                _requested_lifetime,
+                request_handle,
+                requested_lifetime,
             )?;
 
             let opn_response = build_opn_response_body(
@@ -199,6 +182,67 @@ pub async fn handle_connection(
         metrics.record_message_received(msg.body.len() + MessageHeader::SIZE);
 
         match msg.header.message_type {
+            // =============================================================
+            // OPN inside the message loop = token renewal
+            // =============================================================
+            MessageType::OpenSecureChannel => {
+                let opn = match OpenSecureChannelBody::decode_from(&msg.body) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        metrics.record_error();
+                        warn!(peer = %peer, error = %e, "Failed to decode OPN renewal");
+                        continue;
+                    }
+                };
+
+                let (request_handle, requested_lifetime) =
+                    match decode_opn_request_fields(&opn.payload) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            metrics.record_error();
+                            warn!(peer = %peer, error = %e, "Failed to decode OPN request fields");
+                            continue;
+                        }
+                    };
+
+                // Renew the token on the existing channel (same channel_id,
+                // new token_id) per OPC UA Part 6 §6.7.4.
+                let lifetime = if requested_lifetime == 0 { 3_600_000 } else { requested_lifetime };
+                channel.renew_token(lifetime);
+
+                debug!(
+                    peer = %peer,
+                    channel_id = channel.channel_id(),
+                    new_token_id = channel.token_id(),
+                    lifetime_ms = lifetime,
+                    "Secure channel token renewed"
+                );
+
+                let response_body = build_opn_response(
+                    &channel,
+                    request_handle,
+                    lifetime,
+                )?;
+
+                let opn_response = build_opn_response_body(
+                    channel.channel_id(),
+                    &SequenceHeader {
+                        sequence_number: channel.next_server_sequence_number(),
+                        request_id: opn.sequence_header.request_id,
+                    },
+                    &response_body,
+                );
+
+                let response_msg = build_response(MessageType::OpenSecureChannel, opn_response);
+                if let Err(e) = framed.send(response_msg).await {
+                    error!(peer = %peer, error = %e, "Failed to send OPN renewal response");
+                    break;
+                }
+                metrics.record_message_sent(0);
+            }
+            // =============================================================
+            // MSG — normal service request dispatch
+            // =============================================================
             MessageType::Message => {
                 let secure_msg = match SecureMessageBody::decode_from(&msg.body) {
                     Ok(m) => m,
@@ -249,6 +293,9 @@ pub async fn handle_connection(
                     }
                 }
             }
+            // =============================================================
+            // CLO — close secure channel
+            // =============================================================
             MessageType::CloseSecureChannel => {
                 debug!(peer = %peer, "Received CLO — closing channel");
 
@@ -295,6 +342,38 @@ pub struct ServiceContextTemplate {
     pub history_store: Arc<crate::services::HistoryStore>,
     pub security_manager: Arc<crate::security::SecurityManager>,
     pub server_config: Arc<crate::config::OpcUaServerConfig>,
+}
+
+// =============================================================================
+// OpenSecureChannel helpers
+// =============================================================================
+
+/// Decode the OpenSecureChannelRequest payload, returning
+/// `(request_handle, requested_lifetime)`.
+///
+/// The `request_type` is parsed but currently not branched on at this
+/// level — the caller decides whether to Issue or Renew based on
+/// context (Phase 2 = Issue, Phase 3 = Renew).
+fn decode_opn_request_fields(payload: &[u8]) -> OpcUaResult<(u32, u32)> {
+    let mut buf = Bytes::from(payload.to_vec());
+    // type_id (NodeId)
+    let _type_id = NodeId::decode(&mut buf)?;
+    // RequestHeader fields
+    let _auth_token = NodeId::decode(&mut buf)?;
+    let _timestamp = chrono::DateTime::<chrono::Utc>::decode(&mut buf)?;
+    let request_handle = u32::decode(&mut buf)?;
+    let _return_diagnostics = u32::decode(&mut buf)?;
+    let _audit_entry_id = String::decode(&mut buf)?;
+    let _timeout_hint = u32::decode(&mut buf)?;
+    let _additional_header = ExtensionObject::decode(&mut buf)?;
+    // OpenSecureChannelRequest fields
+    let _client_protocol_version = u32::decode(&mut buf)?;
+    let _request_type = u32::decode(&mut buf)?; // 0=Issue, 1=Renew
+    let _security_mode = u32::decode(&mut buf)?;
+    let _client_nonce = Vec::<u8>::decode(&mut buf)?;
+    let requested_lifetime = u32::decode(&mut buf)?;
+
+    Ok((request_handle, requested_lifetime))
 }
 
 /// Build an OpenSecureChannelResponse payload.

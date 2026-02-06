@@ -2,18 +2,31 @@
 //!
 //! Manages secure channel lifecycle, token issuance, and sequence numbers.
 //! For SecurityPolicy::None, no actual encryption is performed.
+//!
+//! # Token Renewal
+//!
+//! OPC UA clients periodically send `OpenSecureChannel` requests with
+//! `requestType = 1` (Renew) to refresh the security token before it
+//! expires.  The server MUST reuse the existing `channel_id` and only
+//! issue a new `token_id`.  All mutable token state uses interior
+//! mutability so renewal works through `&self` / `Arc<SecureChannel>`.
 
 use std::sync::atomic::{AtomicU32, Ordering};
+
+use parking_lot::RwLock;
 
 use crate::config::{SecurityPolicy, MessageSecurityMode};
 
 /// Secure channel state for a single client connection.
+///
+/// Token-related fields use interior mutability so that renewal can
+/// happen through `Arc<SecureChannel>` without requiring `&mut self`.
 #[derive(Debug)]
 pub struct SecureChannel {
     /// Unique channel identifier assigned by the server.
     channel_id: u32,
-    /// Current security token ID.
-    token_id: u32,
+    /// Current security token ID (interior mutable for renewal).
+    token_id: AtomicU32,
     /// Negotiated security policy.
     security_policy: SecurityPolicy,
     /// Negotiated message security mode.
@@ -22,10 +35,10 @@ pub struct SecureChannel {
     client_sequence_number: AtomicU32,
     /// Server's next sequence number for responses.
     server_sequence_number: AtomicU32,
-    /// Token lifetime in milliseconds.
-    token_lifetime_ms: u32,
-    /// Creation time of the current token.
-    token_created_at: std::time::Instant,
+    /// Token lifetime in milliseconds (interior mutable for renewal).
+    token_lifetime_ms: AtomicU32,
+    /// Creation time of the current token (interior mutable for renewal).
+    token_created_at: RwLock<std::time::Instant>,
 }
 
 /// Counter for generating unique channel IDs.
@@ -34,18 +47,38 @@ static NEXT_CHANNEL_ID: AtomicU32 = AtomicU32::new(1);
 /// Counter for generating unique token IDs.
 static NEXT_TOKEN_ID: AtomicU32 = AtomicU32::new(1);
 
+/// OPC UA OpenSecureChannel request types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SecurityTokenRequestType {
+    /// Initial token issuance for a new channel.
+    Issue = 0,
+    /// Token renewal for an existing channel.
+    Renew = 1,
+}
+
+impl SecurityTokenRequestType {
+    /// Parse from the wire value.  Unknown values are treated as `Issue`.
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            1 => Self::Renew,
+            _ => Self::Issue,
+        }
+    }
+}
+
 impl SecureChannel {
     /// Create a new secure channel with SecurityPolicy::None.
     pub fn new_unsecured() -> Self {
         Self {
             channel_id: NEXT_CHANNEL_ID.fetch_add(1, Ordering::SeqCst),
-            token_id: NEXT_TOKEN_ID.fetch_add(1, Ordering::SeqCst),
+            token_id: AtomicU32::new(NEXT_TOKEN_ID.fetch_add(1, Ordering::SeqCst)),
             security_policy: SecurityPolicy::None,
             security_mode: MessageSecurityMode::None,
             client_sequence_number: AtomicU32::new(0),
             server_sequence_number: AtomicU32::new(1),
-            token_lifetime_ms: 3_600_000, // 1 hour default
-            token_created_at: std::time::Instant::now(),
+            token_lifetime_ms: AtomicU32::new(3_600_000), // 1 hour default
+            token_created_at: RwLock::new(std::time::Instant::now()),
         }
     }
 
@@ -57,21 +90,21 @@ impl SecureChannel {
     ) -> Self {
         Self {
             channel_id: NEXT_CHANNEL_ID.fetch_add(1, Ordering::SeqCst),
-            token_id: NEXT_TOKEN_ID.fetch_add(1, Ordering::SeqCst),
+            token_id: AtomicU32::new(NEXT_TOKEN_ID.fetch_add(1, Ordering::SeqCst)),
             security_policy,
             security_mode,
             client_sequence_number: AtomicU32::new(0),
             server_sequence_number: AtomicU32::new(1),
-            token_lifetime_ms,
-            token_created_at: std::time::Instant::now(),
+            token_lifetime_ms: AtomicU32::new(token_lifetime_ms),
+            token_created_at: RwLock::new(std::time::Instant::now()),
         }
     }
 
     pub fn channel_id(&self) -> u32 { self.channel_id }
-    pub fn token_id(&self) -> u32 { self.token_id }
+    pub fn token_id(&self) -> u32 { self.token_id.load(Ordering::SeqCst) }
     pub fn security_policy(&self) -> &SecurityPolicy { &self.security_policy }
     pub fn security_mode(&self) -> &MessageSecurityMode { &self.security_mode }
-    pub fn token_lifetime_ms(&self) -> u32 { self.token_lifetime_ms }
+    pub fn token_lifetime_ms(&self) -> u32 { self.token_lifetime_ms.load(Ordering::Relaxed) }
 
     /// Get the next server sequence number (atomically increments).
     pub fn next_server_sequence_number(&self) -> u32 {
@@ -86,15 +119,20 @@ impl SecureChannel {
         true
     }
 
-    /// Renew the security token.
-    pub fn renew_token(&mut self, lifetime_ms: u32) {
-        self.token_id = NEXT_TOKEN_ID.fetch_add(1, Ordering::SeqCst);
-        self.token_lifetime_ms = lifetime_ms;
-        self.token_created_at = std::time::Instant::now();
+    /// Renew the security token (callable through `&self` / `Arc`).
+    ///
+    /// Issues a new `token_id` and resets the token lifetime and creation
+    /// timestamp.  The `channel_id` remains unchanged per OPC UA spec.
+    pub fn renew_token(&self, lifetime_ms: u32) {
+        let new_token = NEXT_TOKEN_ID.fetch_add(1, Ordering::SeqCst);
+        self.token_id.store(new_token, Ordering::SeqCst);
+        self.token_lifetime_ms.store(lifetime_ms, Ordering::Relaxed);
+        *self.token_created_at.write() = std::time::Instant::now();
     }
 
     /// Check if the current token has expired.
     pub fn is_token_expired(&self) -> bool {
-        self.token_created_at.elapsed().as_millis() > self.token_lifetime_ms as u128
+        let created = *self.token_created_at.read();
+        created.elapsed().as_millis() > self.token_lifetime_ms.load(Ordering::Relaxed) as u128
     }
 }
