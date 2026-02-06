@@ -404,6 +404,32 @@ impl ApduEncoder {
         self.encode_value(value);
         self.encode_closing_tag(tag_number);
     }
+
+    /// Encode a complete BACnet-Error-PDU.
+    ///
+    /// Per ASHRAE 135, Clause 21.8, the Error PDU consists of:
+    ///
+    /// ```text
+    /// | 0x50 | Invoke ID | Service Choice | Error Class | Error Code |
+    /// |  1B  |    1B     |      1B        | Enumerated  | Enumerated |
+    /// ```
+    ///
+    /// Both `error_class` and `error_code` are encoded using Application
+    /// Tag 9 (Enumerated). This replaces manual byte construction that
+    /// previously used incorrect tag numbers (Tag 0 / Tag 1).
+    pub fn encode_error_pdu(
+        &mut self,
+        invoke_id: u8,
+        service_choice: u8,
+        error_class: u32,
+        error_code: u32,
+    ) {
+        self.put_u8(0x50); // Error PDU type
+        self.put_u8(invoke_id);
+        self.put_u8(service_choice);
+        self.encode_enumerated(error_class); // Application Tag 9
+        self.encode_enumerated(error_code); // Application Tag 9
+    }
 }
 
 impl Default for ApduEncoder {
@@ -703,5 +729,42 @@ mod tests {
         let bytes = encoder.into_bytes();
         assert_eq!(bytes[0], 0x09); // Context tag 0, length 1
         assert_eq!(bytes[1], 100);
+    }
+
+    #[test]
+    fn test_encode_error_pdu_uses_enumerated_tags() {
+        let mut encoder = ApduEncoder::new();
+        // ErrorClass::Property = 2, ErrorCode::UnknownProperty = 32
+        encoder.encode_error_pdu(1, 12, 2, 32);
+        let bytes = encoder.into_bytes();
+
+        // Header
+        assert_eq!(bytes[0], 0x50); // Error PDU type
+        assert_eq!(bytes[1], 1); // invoke_id
+        assert_eq!(bytes[2], 12); // service_choice
+
+        // Error class: Enumerated Tag 9, length 1 → (9 << 4) | 1 = 0x91
+        assert_eq!(bytes[3], 0x91);
+        assert_eq!(bytes[4], 2); // ErrorClass::Property
+
+        // Error code: Enumerated Tag 9, length 1 → 0x91
+        assert_eq!(bytes[5], 0x91);
+        assert_eq!(bytes[6], 32); // ErrorCode::UnknownProperty
+
+        assert_eq!(bytes.len(), 7);
+    }
+
+    #[test]
+    fn test_encode_error_pdu_object_unknown_object() {
+        let mut encoder = ApduEncoder::new();
+        // ErrorClass::Object = 1, ErrorCode::UnknownObject = 31
+        encoder.encode_error_pdu(5, 12, 1, 31);
+        let bytes = encoder.into_bytes();
+
+        assert_eq!(bytes[0], 0x50);
+        assert_eq!(bytes[3], 0x91);
+        assert_eq!(bytes[4], 1); // ErrorClass::Object
+        assert_eq!(bytes[5], 0x91);
+        assert_eq!(bytes[6], 31); // ErrorCode::UnknownObject
     }
 }

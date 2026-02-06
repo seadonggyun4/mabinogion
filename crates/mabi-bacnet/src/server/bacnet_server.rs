@@ -11,6 +11,7 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
+use crate::apdu::encoding::ApduEncoder;
 use crate::apdu::types::{ApduType, ConfirmedService, ErrorClass, ErrorCode, UnconfirmedService};
 use crate::error::{BacnetError, BacnetResult};
 use crate::network::bvlc::BvlcMessage;
@@ -513,38 +514,14 @@ impl ServiceContext {
 }
 
 /// Build an error APDU.
+/// Build an error APDU using the standard ApduEncoder.
+///
+/// Produces a BACnet-Error-PDU per ASHRAE 135, Clause 21.8, with
+/// error-class and error-code encoded as ENUMERATED (Application Tag 9).
 fn build_error_apdu(invoke_id: u8, service_choice: u8, error_class: ErrorClass, error_code: ErrorCode) -> Vec<u8> {
-    // Error PDU format:
-    // - Type byte: 0x50
-    // - Invoke ID
-    // - Service choice
-    // - Error class (application tag + value)
-    // - Error code (application tag + value)
-    let mut apdu = vec![0x50, invoke_id, service_choice];
-
-    // Encode error class as application tag 0 (unsigned)
-    let error_class_val = error_class as u32;
-    if error_class_val <= 4 {
-        apdu.push(0x01); // Application tag 0, length 1
-        apdu.push(error_class_val as u8);
-    } else {
-        apdu.push(0x02); // Application tag 0, length 2
-        apdu.push((error_class_val >> 8) as u8);
-        apdu.push(error_class_val as u8);
-    }
-
-    // Encode error code as application tag 0 (unsigned)
-    let error_code_val = error_code as u32;
-    if error_code_val <= 255 {
-        apdu.push(0x11); // Application tag 1, length 1
-        apdu.push(error_code_val as u8);
-    } else {
-        apdu.push(0x12); // Application tag 1, length 2
-        apdu.push((error_code_val >> 8) as u8);
-        apdu.push(error_code_val as u8);
-    }
-
-    apdu
+    let mut encoder = ApduEncoder::new();
+    encoder.encode_error_pdu(invoke_id, service_choice, error_class as u32, error_code as u32);
+    encoder.into_bytes()
 }
 
 /// Send a COV notification.
@@ -597,8 +574,36 @@ mod tests {
     fn test_build_error_apdu() {
         let apdu = build_error_apdu(1, 12, ErrorClass::Property, ErrorCode::UnknownProperty);
 
+        // Error PDU header
         assert_eq!(apdu[0], 0x50); // Error PDU type
         assert_eq!(apdu[1], 1); // Invoke ID
         assert_eq!(apdu[2], 12); // Service choice (ReadProperty)
+
+        // Error class = Property (2): Enumerated Tag 9, length 1 → 0x91
+        assert_eq!(apdu[3], 0x91);
+        assert_eq!(apdu[4], 2); // ErrorClass::Property = 2
+
+        // Error code = UnknownProperty (32): Enumerated Tag 9, length 1 → 0x91
+        assert_eq!(apdu[5], 0x91);
+        assert_eq!(apdu[6], 32); // ErrorCode::UnknownProperty = 32
+
+        assert_eq!(apdu.len(), 7);
+    }
+
+    #[test]
+    fn test_build_error_apdu_unknown_object() {
+        let apdu = build_error_apdu(3, 12, ErrorClass::Object, ErrorCode::UnknownObject);
+
+        assert_eq!(apdu[0], 0x50);
+        assert_eq!(apdu[1], 3);
+        assert_eq!(apdu[2], 12);
+
+        // ErrorClass::Object = 1
+        assert_eq!(apdu[3], 0x91);
+        assert_eq!(apdu[4], 1);
+
+        // ErrorCode::UnknownObject = 31
+        assert_eq!(apdu[5], 0x91);
+        assert_eq!(apdu[6], 31);
     }
 }
