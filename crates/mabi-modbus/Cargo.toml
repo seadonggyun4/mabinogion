@@ -14,7 +14,7 @@ keywords = ["modbus", "protocol", "simulator", "industrial", "plc"]
 categories = ["simulation", "network-programming"]
 
 [dependencies]
-mabi-core = { version = "1.1.3", path = "../mabi-core" }
+mabi-core = { version = "1.1.6", path = "../mabi-core" }
 
 # Async
 tokio = { workspace = true }
