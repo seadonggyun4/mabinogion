@@ -14,7 +14,7 @@ keywords = ["scenario", "simulation", "testing", "orchestration", "industrial"]
 categories = ["simulation", "development-tools::testing"]
 
 [dependencies]
-mabi-core = { version = "1.1.6", path = "../mabi-core" }
+mabi-core = { version = "1.1.7", path = "../mabi-core" }
 
 tokio = { workspace = true }
 async-trait = { workspace = true }
