@@ -31,7 +31,10 @@ pub enum CliError {
     DeviceNotFound { device_id: String },
 
     /// Port already in use.
-    #[error("Port {port} is already in use")]
+    #[error("Port {port} is already in use. \
+             A previous mabi process may have been suspended (Ctrl+Z) and is still holding the port.\n  \
+             Diagnostic: lsof -i :{port} | grep LISTEN\n  \
+             To kill:    kill $(lsof -ti :{port} -sTCP:LISTEN)")]
     PortInUse { port: u16 },
 
     /// Command execution failed.

@@ -406,6 +406,57 @@ let access = AccessControl {
 };
 ```
 
+## Port Safety and Process Lifecycle
+
+### Server Bind Error Detection
+
+When `ModbusTcpServerV2::run()` fails to bind the port (e.g., `EADDRINUSE`),
+the error is detected within 100 ms of spawning the server task. The CLI
+surfaces it as `CliError::PortInUse` (exit code 5) with actionable diagnostic
+commands:
+
+```
+Error: Port 5020 is already in use.
+  A previous mabi process may have been suspended (Ctrl+Z) and is still holding the port.
+  Diagnostic: lsof -i :5020 | grep LISTEN
+  To kill:    kill $(lsof -ti :5020 -sTCP:LISTEN)
+```
+
+### SIGTSTP (Ctrl+Z) Handling
+
+The `CommandRunner::run_with_shutdown()` method intercepts `SIGTSTP` using
+`tokio::signal::unix::Signal` and converts it into a graceful shutdown event.
+This prevents the process from being suspended while still holding the TCP
+listener socket — a condition known as a *zombie-port*.
+
+```
+┌─────────────────────────────────────────────┐
+│           Signal Flow (Unix only)            │
+├─────────────────────────────────────────────┤
+│  Ctrl+C  →  ctrlc handler  →  shutdown_notify.notify_waiters()  │
+│  Ctrl+Z  →  SIGTSTP handler → shutdown_notify.notify_waiters()  │
+│                                  ↓                               │
+│                         Graceful Shutdown                         │
+│                     (server.shutdown() + port released)           │
+└─────────────────────────────────────────────┘
+```
+
+### Advisory Port Pre-check
+
+Before the server starts, the CLI performs a non-blocking port availability
+check:
+
+| Probe Result | Meaning | Action |
+|-------------|---------|--------|
+| Connection refused / timeout | Port is available | Proceed normally |
+| TCP connects + Modbus response | Another server is running | Warn (will fail on bind) |
+| TCP connects + no Modbus response | Possible zombie process | Warn with `lsof` diagnostic |
+
+This is advisory only — it warns but does not block, since the port may be held
+by a legitimate external process.
+
+---
+
 ## Testing Utilities
 
 ### Load Generation

@@ -589,7 +589,64 @@ This design decouples validation logic from both the argument definition layer (
 | 8 | YAML/JSON parsing error |
 | 9 | Simulator core error |
 | 124 | Operation timeout |
-| 130 | User interrupted (Ctrl+C) |
+| 130 | User interrupted (Ctrl+C or Ctrl+Z) |
+
+## Signal Handling and Process Safety
+
+### Supported Signals
+
+| Signal | Key | Behavior |
+|--------|-----|----------|
+| `SIGINT` | Ctrl+C | Graceful shutdown — stops the server, releases the port, exits cleanly |
+| `SIGTSTP` | Ctrl+Z | **Intercepted** — performs graceful shutdown instead of suspending |
+| `SIGTERM` | `kill <pid>` | OS-level termination (not intercepted; default OS behavior) |
+
+### Why Ctrl+Z Is Intercepted
+
+When a process is suspended with `Ctrl+Z` (SIGTSTP), the OS kernel continues
+to accept TCP connections on behalf of the frozen process. This creates a
+**zombie-port** scenario:
+
+```
+Client  →  TCP connect  →  success (kernel handles SYN/ACK)
+Client  →  Modbus read  →  ... timeout (process is frozen, never reads socket)
+```
+
+The result is extremely difficult to diagnose:
+
+- TCP connections **succeed** (the port appears to be listening)
+- All application-layer reads **time out**
+- `lsof` shows the port held by a process in state **T** (stopped)
+
+To prevent this, `mabi` intercepts SIGTSTP and performs a graceful shutdown
+instead of suspending, ensuring the port is always released.
+
+If you genuinely need to suspend the process (e.g., for debugging), use:
+
+```bash
+kill -STOP <pid>    # suspend (bypasses the handler)
+kill -CONT <pid>    # resume
+```
+
+### Port Pre-check on Startup
+
+Before binding the server socket, `mabi` performs an advisory port availability
+check:
+
+1. **TCP connect** to the target port (500 ms timeout)
+2. If connection succeeds, sends a **Modbus probe** (ReadHoldingRegisters)
+3. **Probe responds** → "Port is already in use by a responding Modbus server"
+4. **Probe times out** → "Possible zombie process holding port" + diagnostic command
+
+```
+WARN  Port 5020 is in use: TCP connects but no Modbus response.
+      This may be a suspended (zombie) process holding the port.
+      Diagnostic: lsof -i :5020 | grep LISTEN
+      To kill:    kill $(lsof -ti :5020 -sTCP:LISTEN)
+```
+
+If the server task fails to bind (e.g., `EADDRINUSE`), the CLI exits with code
+**5** (`PortInUse`) and displays recovery instructions.
 
 ## Architecture
 

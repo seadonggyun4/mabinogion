@@ -61,6 +61,7 @@ chrono.workspace = true
 humantime = "2.1"
 humansize = "2.1"
 ctrlc = "3.4"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true

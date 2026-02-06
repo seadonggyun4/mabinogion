@@ -133,6 +133,11 @@ impl CommandRunner {
     }
 
     /// Run a command with graceful shutdown support.
+    ///
+    /// Handles both Ctrl+C (SIGINT) and Ctrl+Z (SIGTSTP) signals.
+    /// Ctrl+Z triggers a graceful shutdown instead of suspending the process,
+    /// which prevents the zombie-port scenario where a suspended process holds
+    /// a port but never processes incoming data.
     pub async fn run_with_shutdown<C: Command>(&self, cmd: &C) -> CliResult<CommandOutput> {
         if !cmd.supports_shutdown() {
             return self.run(cmd).await;
@@ -151,6 +156,32 @@ impl CommandRunner {
         .map_err(|e| CliError::ExecutionFailed {
             message: format!("Failed to set Ctrl+C handler: {}", e),
         })?;
+
+        // Setup SIGTSTP handler (Ctrl+Z) — treat as graceful shutdown instead of suspend.
+        // A suspended process keeps holding the port, creating a zombie-port scenario
+        // that is very difficult to diagnose: TCP connects succeed (kernel handles SYN/ACK)
+        // but all application-layer reads time out indefinitely.
+        #[cfg(unix)]
+        {
+            let sigtstp_shutdown = shutdown_signal.clone();
+            let mut sigtstp = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::from_raw(libc::SIGTSTP),
+            )
+            .map_err(|e| CliError::ExecutionFailed {
+                message: format!("Failed to set SIGTSTP handler: {}", e),
+            })?;
+
+            tokio::spawn(async move {
+                if sigtstp.recv().await.is_some() {
+                    eprintln!(
+                        "\n⚠ Received Ctrl+Z (SIGTSTP). Performing graceful shutdown instead of \
+                         suspending to release the port.\n  \
+                         Use 'kill -STOP <pid>' if you really need to suspend."
+                    );
+                    sigtstp_shutdown.notify_waiters();
+                }
+            });
+        }
 
         // Run command with shutdown support
         tokio::select! {

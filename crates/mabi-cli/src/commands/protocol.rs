@@ -22,6 +22,67 @@ use mabi_opcua::{OpcUaServer, OpcUaServerConfig};
 use mabi_bacnet::prelude::{BACnetServer, ServerConfig as BacnetServerConfig, ObjectRegistry, default_object_descriptors};
 use mabi_knx::{KnxServer, KnxServerConfig, IndividualAddress, GroupAddress, DptId, GroupObjectTable};
 
+/// Checks if a port is already in use and provides diagnostics.
+///
+/// This is an advisory check — it warns but does not block. If the port is held by
+/// a zombie/suspended process, it provides specific diagnostic instructions.
+async fn check_port_availability(addr: SocketAddr) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+
+    // Try to connect to the port
+    let connect_result =
+        tokio::time::timeout(Duration::from_millis(500), TcpStream::connect(addr)).await;
+
+    match connect_result {
+        Ok(Ok(_first_stream)) => {
+            // Port is in use — something is listening. Try a Modbus probe.
+            drop(_first_stream);
+
+            let probe_result = tokio::time::timeout(Duration::from_secs(1), async {
+                let mut stream = TcpStream::connect(addr).await?;
+                // Send Modbus TCP ReadHoldingRegisters: txn=1, proto=0, len=6, unit=1, fc=3, addr=0, count=1
+                let request: [u8; 12] = [
+                    0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x03, 0x00, 0x00, 0x00, 0x01,
+                ];
+                stream.write_all(&request).await?;
+                let mut response = [0u8; 32];
+                let n = stream.read(&mut response).await?;
+                Ok::<_, std::io::Error>(n)
+            })
+            .await;
+
+            match probe_result {
+                Ok(Ok(n)) if n >= 7 => {
+                    tracing::warn!(
+                        port = addr.port(),
+                        "Port {} is already in use by a responding Modbus server. \
+                         The new server will fail to bind.",
+                        addr.port()
+                    );
+                }
+                _ => {
+                    // TCP connects but Modbus doesn't respond — possible zombie
+                    tracing::warn!(
+                        port = addr.port(),
+                        "Port {} is in use: TCP connects but no Modbus response. \
+                         This may be a suspended (zombie) process holding the port.\n  \
+                         Diagnostic: lsof -i :{} | grep LISTEN\n  \
+                         To kill:    kill $(lsof -ti :{} -sTCP:LISTEN)",
+                        addr.port(),
+                        addr.port(),
+                        addr.port()
+                    );
+                }
+            }
+        }
+        Ok(Err(_)) | Err(_) => {
+            // Port is available (connection refused or timeout) — good
+            tracing::debug!(port = addr.port(), "Port {} is available", addr.port());
+        }
+    }
+}
+
 /// Base trait for protocol-specific commands.
 #[async_trait]
 pub trait ProtocolCommand: Command {
@@ -270,6 +331,10 @@ impl ProtocolCommand for ModbusCommand {
 
     async fn start_server(&self, ctx: &mut CliContext) -> CliResult<()> {
         let output = ctx.output();
+
+        // Advisory port availability check before starting
+        check_port_availability(self.bind_addr).await;
+
         let spinner = output.spinner("Starting Modbus server...");
 
         let config = ServerConfigV2 {
@@ -314,6 +379,19 @@ impl ProtocolCommand for ModbusCommand {
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Check if server task exited early (likely a bind failure / port-in-use)
+        {
+            let task_guard = self.server_task.lock().await;
+            if let Some(task) = task_guard.as_ref() {
+                if task.is_finished() {
+                    spinner.finish_with_message("Failed to start server");
+                    return Err(crate::error::CliError::PortInUse {
+                        port: self.bind_addr.port(),
+                    });
+                }
+            }
+        }
 
         spinner.finish_with_message(format!("Modbus server started on {}", self.bind_addr));
         Ok(())
