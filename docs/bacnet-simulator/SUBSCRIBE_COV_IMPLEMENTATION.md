@@ -1,41 +1,41 @@
-# BACnet SubscribeCOV 서비스 구현 보고서
+# BACnet SubscribeCOV Service Implementation Report
 
-> 2026-02 TRAP 게이트웨이 통합 테스트에서 식별된 COV 구독 서비스 미등록 문제 수정
-
----
-
-## 1. 서론
-
-BACnet (Building Automation and Control Networks)의 COV (Change of Value) 구독 메커니즘은 ASHRAE Standard 135, Clause 13에 정의된 핵심 서비스로, 클라이언트가 특정 객체의 값 변화를 실시간으로 수신할 수 있게 한다. 폴링 방식 대비 네트워크 트래픽을 크게 절감하며, 빌딩 자동화 시스템(BAS)에서 HVAC, 조명, 에너지 관리 등의 실시간 모니터링에 필수적이다.
-
-본 보고서는 mabi-bacnet 시뮬레이터에서 `SubscribeCOV` (Confirmed Service Choice 5) 서비스 핸들러가 서비스 레지스트리에 등록되지 않아 클라이언트의 COV 구독 요청이 거부되던 문제를 분석하고, ASHRAE 135 표준에 부합하는 구현을 기술한다.
+> Resolution of unregistered COV subscription service handler identified during TRAP gateway integration testing, 2026-02
 
 ---
 
-## 2. 문제 분석
+## 1. Introduction
 
-### 2.1 증상
+The COV (Change of Value) subscription mechanism in BACnet (Building Automation and Control Networks) is a core service defined in ASHRAE Standard 135, Clause 13, enabling clients to receive real-time notifications of value changes on specific objects. Compared to polling-based approaches, COV subscriptions significantly reduce network traffic and are essential for real-time monitoring of HVAC, lighting, energy management, and other subsystems within Building Automation Systems (BAS).
 
-TRAP 게이트웨이 클라이언트가 BACnet 시뮬레이터에 `SubscribeCOV` 요청(Service Choice = 5)을 전송하면, 서버가 `ServiceRequestDenied` (ErrorCode 29) 에러를 반환한다. 이로 인해:
+This report analyzes the issue wherein the `SubscribeCOV` (Confirmed Service Choice 5) service handler was not registered in the service registry of the mabi-bacnet simulator, causing the server to reject COV subscription requests from clients. The report further describes the corrective implementation in conformance with ASHRAE Standard 135.
 
-1. 클라이언트의 COV 구독이 실패하여 폴링 모드로 폴백
-2. 응답 지연이 누적되어 게이트웨이 측에서 타임아웃 발생
-3. Circuit Breaker가 열려 연결이 반복적으로 재시도
+---
 
-### 2.2 근본 원인
+## 2. Problem Analysis
 
-`server/bacnet_server.rs`의 `BACnetServer::new()`에서 서비스 레지스트리를 구성할 때, `SubscribeCOV` 핸들러를 등록하지 않았다:
+### 2.1 Symptoms
+
+When the TRAP gateway client transmitted a `SubscribeCOV` request (Service Choice = 5) to the BACnet simulator, the server returned a `ServiceRequestDenied` (ErrorCode 29) error. The consequences were:
+
+1. Client COV subscription failure, triggering a fallback to polling mode
+2. Accumulated response latency causing timeout errors on the gateway side
+3. Circuit breaker activation, resulting in repeated reconnection attempts
+
+### 2.2 Root Cause
+
+In `server/bacnet_server.rs`, the `BACnetServer::new()` constructor configured the service registry without registering a `SubscribeCOV` handler:
 
 ```rust
-// 등록된 Confirmed 서비스:
+// Registered Confirmed Services:
 services.register_confirmed(Arc::new(ReadPropertyHandler));         // 12
 services.register_confirmed(Arc::new(WritePropertyHandler));        // 15
 services.register_confirmed(Arc::new(ReadPropertyMultipleHandler)); // 14
 services.register_confirmed(Arc::new(WritePropertyMultipleHandler));// 16
-// SubscribeCOV (5) — 미등록 ✗
+// SubscribeCOV (5) — NOT registered ✗
 ```
 
-`ServiceRegistry::dispatch_confirmed()`는 미등록 서비스에 대해 다음을 반환한다:
+`ServiceRegistry::dispatch_confirmed()` returns the following for unregistered services:
 
 ```rust
 None => ServiceResult::Error {
@@ -44,17 +44,17 @@ None => ServiceResult::Error {
 }
 ```
 
-### 2.3 아키텍처적 원인
+### 2.3 Architectural Cause
 
-`CovManager`가 `BACnetServer::run()` 내부에서 생성되어 서버 시작 시점에만 존재했으므로, `BACnetServer::new()` 시점에서는 `CovManager`에 대한 참조를 핸들러에 전달할 수 없는 구조적 한계가 있었다.
+The `CovManager` was instantiated within `BACnetServer::run()`, meaning it existed only at server runtime. This structural limitation prevented passing a reference to `CovManager` to the handler at the time of `BACnetServer::new()` construction.
 
 ---
 
-## 3. 구현 설계
+## 3. Implementation Design
 
-### 3.1 ASHRAE 135 Clause 13 — SubscribeCOV 서비스 명세
+### 3.1 ASHRAE 135 Clause 13 — SubscribeCOV Service Specification
 
-`SubscribeCOV` 요청의 APDU 구조:
+APDU structure of the `SubscribeCOV` request:
 
 ```
 SubscribeCOV-Request ::= SEQUENCE {
@@ -65,51 +65,51 @@ SubscribeCOV-Request ::= SEQUENCE {
 }
 ```
 
-- Context Tag 0: Subscriber Process Identifier — 클라이언트 측 프로세스 식별자
-- Context Tag 1: Monitored Object Identifier — 모니터링 대상 객체 ID (ObjectType + Instance)
-- Context Tag 2: Issue Confirmed Notifications — Confirmed/Unconfirmed 알림 선택 (생략 시 구독 취소)
-- Context Tag 3: Lifetime — 구독 유효 시간(초), 0 또는 생략 시 무기한
+- Context Tag 0: Subscriber Process Identifier — client-side process identifier
+- Context Tag 1: Monitored Object Identifier — target object ID (ObjectType + Instance)
+- Context Tag 2: Issue Confirmed Notifications — selects Confirmed or Unconfirmed notifications (omission indicates subscription cancellation)
+- Context Tag 3: Lifetime — subscription validity period in seconds; 0 or omitted indicates indefinite duration
 
-### 3.2 설계 결정
+### 3.2 Design Decisions
 
-| 결정 사항 | 선택 | 근거 |
-|----------|------|------|
-| CovManager 생성 시점 | 서버 생성자 (`new()`) | 핸들러에 `Arc<CovManager>` 공유 필요 |
-| 핸들러 패턴 | `ConfirmedServiceHandler` trait 구현 | 기존 ReadProperty/WriteProperty와 동일한 추상화 |
-| 구독 취소 감지 | `issueConfirmedNotifications` 부재 시 | ASHRAE 135, Clause 13.14.1.1.4 |
-| 객체 존재 검증 | `ObjectRegistry::get()` 호출 | 존재하지 않는 객체에 대한 구독 방지 |
-| 에러 매핑 | `CovSubscriptionFailed` (43), `UnknownObject` (31) | ASHRAE 135 ErrorCode 표준 준수 |
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| CovManager instantiation point | Server constructor (`new()`) | Required for sharing `Arc<CovManager>` with the handler |
+| Handler pattern | `ConfirmedServiceHandler` trait implementation | Consistent abstraction with existing ReadProperty/WriteProperty handlers |
+| Subscription cancellation detection | Absence of `issueConfirmedNotifications` field | Per ASHRAE 135, Clause 13.14.1.1.4 |
+| Object existence validation | `ObjectRegistry::get()` invocation | Prevents subscriptions to nonexistent objects |
+| Error mapping | `CovSubscriptionFailed` (43), `UnknownObject` (31) | Conformance with ASHRAE 135 ErrorCode definitions |
 
-### 3.3 CovManager 라이프사이클 재구조화
+### 3.3 CovManager Lifecycle Restructuring
 
-**수정 전:**
+**Before modification:**
 ```
 BACnetServer::new()
-    └── ServiceRegistry 생성 (CovManager 없음)
+    └── ServiceRegistry created (no CovManager)
 
 BACnetServer::run()
-    └── CovManager 생성 (핸들러와 공유 불가)
-    └── COV 알림 루프 시작
+    └── CovManager created (cannot be shared with handlers)
+    └── COV notification loop started
 ```
 
-**수정 후:**
+**After modification:**
 ```
 BACnetServer::new()
-    ├── CovManager 생성 (Arc로 래핑)
-    ├── SubscribeCovHandler에 Arc<CovManager> 전달
-    └── ServiceRegistry에 핸들러 등록
+    ├── CovManager created (wrapped in Arc)
+    ├── Arc<CovManager> passed to SubscribeCovHandler
+    └── Handler registered in ServiceRegistry
 
 BACnetServer::run()
-    ├── self.cov_manager.clone() 사용
-    ├── cov_rx를 Mutex에서 추출
-    └── COV 알림 루프 시작
+    ├── self.cov_manager.clone() used
+    ├── cov_rx extracted from Mutex
+    └── COV notification loop started
 ```
 
 ---
 
-## 4. 구현 상세
+## 4. Implementation Details
 
-### 4.1 SubscribeCovHandler (신규 파일: `service/subscribe_cov.rs`)
+### 4.1 SubscribeCovHandler (New file: `service/subscribe_cov.rs`)
 
 ```rust
 pub struct SubscribeCovHandler {
@@ -123,89 +123,89 @@ impl ConfirmedServiceHandler for SubscribeCovHandler {
     }
 
     fn handle(&self, data: &[u8], ctx: &ServiceContext) -> ServiceResult {
-        // 1. APDU 디코딩 (Context Tags 0-3)
-        // 2. Tag 2 부재 → 구독 취소 (SimpleAck)
-        // 3. 객체 존재 검증 → 실패 시 UnknownObject 에러
-        // 4. CovSubscription 생성 및 등록 → 실패 시 CovSubscriptionFailed
-        // 5. SimpleAck 반환
+        // 1. Decode APDU (Context Tags 0-3)
+        // 2. Tag 2 absent → cancel subscription (SimpleAck)
+        // 3. Validate object existence → return UnknownObject error on failure
+        // 4. Create and register CovSubscription → return CovSubscriptionFailed on failure
+        // 5. Return SimpleAck
     }
 }
 ```
 
-### 4.2 APDU 디코딩 로직
+### 4.2 APDU Decoding Logic
 
-BACnet의 Context Tag 인코딩 규칙에 따라 각 태그를 순차적으로 파싱한다:
+Each tag is parsed sequentially according to BACnet context tag encoding rules:
 
-| 바이트 | 비트 구성 | 의미 |
-|--------|----------|------|
-| Tag byte | `[tag:4][class:1][len:3]` | tag = 태그 번호, class = 1 (context), len = 데이터 길이 |
+| Byte | Bit Layout | Meaning |
+|------|------------|---------|
+| Tag byte | `[tag:4][class:1][len:3]` | tag = tag number, class = 1 (context), len = data length |
 | 0x09 | `0000 1 001` | Tag 0, Context, Length 1 |
 | 0x1C | `0001 1 100` | Tag 1, Context, Length 4 |
 | 0x29 | `0010 1 001` | Tag 2, Context, Length 1 (Boolean) |
 | 0x39 | `0011 1 001` | Tag 3, Context, Length 1 |
 
-Context Tag 2 (Boolean)의 경우 BACnet 인코딩 특성상 길이 필드 자체가 Boolean 값을 전달한다: `len=0`은 `false`, `len=1`은 `true`.
+For Context Tag 2 (Boolean), due to BACnet encoding conventions, the length field itself conveys the Boolean value: `len=0` represents `false`, and `len=1` represents `true`.
 
-### 4.3 BACnetServer 구조 변경
+### 4.3 BACnetServer Structural Changes
 
 ```rust
 pub struct BACnetServer {
-    // ... 기존 필드 ...
-    cov_manager: Arc<CovManager>,                          // 추가
-    cov_rx: tokio::sync::Mutex<mpsc::Receiver<CovNotification>>,  // 추가
+    // ... existing fields ...
+    cov_manager: Arc<CovManager>,                          // added
+    cov_rx: tokio::sync::Mutex<mpsc::Receiver<CovNotification>>,  // added
 }
 ```
 
-`run()` 메서드에서 `cov_rx`를 `Mutex`에서 추출하여 COV 알림 태스크에 전달:
+In the `run()` method, `cov_rx` is extracted from the `Mutex` and passed to the COV notification task:
 
 ```rust
 let mut cov_rx = {
     let mut guard = self.cov_rx.lock().await;
     let (_dummy_tx, dummy_rx) = mpsc::channel(1);
-    std::mem::replace(&mut *guard, dummy_rx)  // 소유권 이전
+    std::mem::replace(&mut *guard, dummy_rx)  // ownership transfer
 };
 ```
 
 ---
 
-## 5. 수정 파일 요약
+## 5. Modified Files Summary
 
-| 파일 | 변경 유형 | 설명 |
-|------|----------|------|
-| `service/subscribe_cov.rs` | **신규** | `SubscribeCovHandler` 구현. ASHRAE 135 Clause 13 기반 구독/취소 로직, APDU 디코딩, 에러 매핑 |
-| `service/mod.rs` | **확장** | `subscribe_cov` 모듈 등록 및 `SubscribeCovHandler` public export |
-| `server/bacnet_server.rs` | **구조 변경** | `CovManager`를 서버 생성 시점으로 이동, `SubscribeCovHandler` 레지스트리 등록, `cov_rx` 소유권 관리 |
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `service/subscribe_cov.rs` | **New** | `SubscribeCovHandler` implementation. Subscription/cancellation logic based on ASHRAE 135 Clause 13, APDU decoding, error mapping |
+| `service/mod.rs` | **Extended** | `subscribe_cov` module registration and `SubscribeCovHandler` public export |
+| `server/bacnet_server.rs` | **Restructured** | Relocated `CovManager` to server construction time, registered `SubscribeCovHandler` in registry, `cov_rx` ownership management |
 
 ---
 
-## 6. 지원 서비스 매트릭스
+## 6. Supported Services Matrix
 
-수정 후 mabi-bacnet이 지원하는 BACnet 서비스 전체 목록:
+Complete list of BACnet services supported by mabi-bacnet after the modification:
 
 ### Confirmed Services
 
-| Service Choice | 서비스 명 | 상태 | 비고 |
-|----------------|----------|------|------|
-| 5 | SubscribeCOV | **신규** | 구독/취소, 객체 검증, 에러 처리 |
-| 12 | ReadProperty | 기존 | Context Tag 기반 디코딩 |
-| 14 | ReadPropertyMultiple | 기존 | 배치 읽기, All/Required/Optional 필터 |
-| 15 | WriteProperty | 기존 | 우선순위 지원 |
-| 16 | WritePropertyMultiple | 기존 | 배치 쓰기 |
+| Service Choice | Service Name | Status | Notes |
+|----------------|-------------|--------|-------|
+| 5 | SubscribeCOV | **New** | Subscribe/cancel, object validation, error handling |
+| 12 | ReadProperty | Existing | Context tag-based decoding |
+| 14 | ReadPropertyMultiple | Existing | Batch read, All/Required/Optional property filters |
+| 15 | WriteProperty | Existing | Priority array support |
+| 16 | WritePropertyMultiple | Existing | Batch write |
 
 ### Unconfirmed Services
 
-| Service Choice | 서비스 명 | 상태 | 비고 |
-|----------------|----------|------|------|
-| 0 | I-Am | 기존 | WhoIs 응답으로 자동 생성 |
-| 2 | UnconfirmedCOVNotification | 기존 | CovManager 기반 알림 전송 |
-| 8 | Who-Is | 기존 | 디바이스 인스턴스 범위 필터링 |
+| Service Choice | Service Name | Status | Notes |
+|----------------|-------------|--------|-------|
+| 0 | I-Am | Existing | Automatically generated in response to Who-Is |
+| 2 | UnconfirmedCOVNotification | Existing | Notification dispatch via CovManager |
+| 8 | Who-Is | Existing | Device instance range filtering |
 
 ---
 
-## 7. 상용 시뮬레이터 대비 비교
+## 7. Comparison with Commercial Simulators
 
-| 기능 | mabi-bacnet (수정 후) | Honeywell T7350 | Siemens PXC Series | BACnet4J |
-|------|---------------------|-----------------|-------------------|----------|
+| Feature | mabi-bacnet (Post-fix) | Honeywell T7350 | Siemens PXC Series | BACnet4J |
+|---------|----------------------|-----------------|-------------------|----------|
 | ReadProperty | O | O | O | O |
 | ReadPropertyMultiple | O | O | O | O |
 | WriteProperty | O | O | O | O |
@@ -213,29 +213,29 @@ let mut cov_rx = {
 | SubscribeCOV | **O** | O | O | O |
 | Who-Is / I-Am | O | O | O | O |
 | COV Notification | O | O | O | O |
-| Segmentation | 구조 존재 | O | O | O |
-| BBMD | 구조 존재 | O | O | 부분 |
+| Segmentation | Structural support | O | O | O |
+| BBMD | Structural support | O | O | Partial |
 
 ---
 
-## 8. 검증
+## 8. Verification
 
-### 단위 테스트
+### Unit Tests
 
-기존 90개 BACnet 테스트 + SubscribeCOV 디코딩 테스트 전부 통과 (0 failures).
+All existing 90 BACnet tests plus the new SubscribeCOV decoding tests passed (0 failures).
 
-### 프로토콜 정합성
+### Protocol Conformance
 
-| 테스트 케이스 | ASHRAE 135 조항 | 결과 |
-|-------------|----------------|------|
-| 구독 생성 (confirmed, lifetime=300s) | Clause 13.14.1 | SimpleAck |
-| 구독 생성 (unconfirmed, infinite) | Clause 13.14.1 | SimpleAck |
-| 구독 취소 (Tag 2 생략) | Clause 13.14.1.1.4 | SimpleAck |
-| 존재하지 않는 객체 구독 | Clause 13.14.1.1.2 | Error (UnknownObject) |
-| 최대 구독 수 초과 | Clause 13.14.1.1.3 | Error (CovSubscriptionFailed) |
+| Test Case | ASHRAE 135 Clause | Result |
+|-----------|-------------------|--------|
+| Subscription creation (confirmed, lifetime=300s) | Clause 13.14.1 | SimpleAck |
+| Subscription creation (unconfirmed, infinite) | Clause 13.14.1 | SimpleAck |
+| Subscription cancellation (Tag 2 omitted) | Clause 13.14.1.1.4 | SimpleAck |
+| Subscription to nonexistent object | Clause 13.14.1.1.2 | Error (UnknownObject) |
+| Maximum subscription count exceeded | Clause 13.14.1.1.3 | Error (CovSubscriptionFailed) |
 
 ---
 
-## 9. 결론
+## 9. Conclusion
 
-본 구현은 ASHRAE 135 Clause 13에 정의된 `SubscribeCOV` 서비스를 mabi-bacnet 시뮬레이터에 추가하고, `CovManager`의 라이프사이클을 서버 생성 시점으로 재구조화하여 서비스 핸들러와의 공유 참조를 가능하게 하였다. 이를 통해 상용 BACnet 클라이언트(TRAP 게이트웨이, Tridium Niagara, Honeywell EBI 등)의 COV 구독 워크플로우를 정상적으로 지원한다.
+This implementation adds the `SubscribeCOV` service defined in ASHRAE 135 Clause 13 to the mabi-bacnet simulator and restructures the `CovManager` lifecycle to server construction time, enabling shared references between the service handler and the manager. As a result, the COV subscription workflow for commercial BACnet clients (TRAP gateway, Tridium Niagara, Honeywell EBI, etc.) is now fully supported.

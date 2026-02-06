@@ -1,10 +1,10 @@
 # OPC UA TCP Transport Stack
 
-> OPC UA 바이너리 프로토콜의 실제 TCP 통신 스택 구현
+> Implementation of the TCP communication stack for the OPC UA binary protocol
 
 ## Overview
 
-`mabi-opcua` 크레이트에 OPC UA Part 6 (Mappings) 명세를 기반으로 한 실제 TCP 통신 스택이 추가되었습니다. 기존의 시뮬레이션 전용 서버 구조에 바이너리 인코딩/디코딩, TCP 트랜스포트, Secure Channel 관리, 서비스 디스패치 계층이 통합되어 OPC UA 클라이언트와 실제 TCP 연결을 수립하고 서비스 요청을 처리할 수 있습니다.
+A production-grade TCP communication stack based on the OPC UA Part 6 (Mappings) specification has been added to the `mabi-opcua` crate. Binary encoding/decoding, TCP transport, Secure Channel management, and service dispatch layers have been integrated into the existing simulation-only server architecture, enabling the establishment of real TCP connections with OPC UA clients and the processing of service requests.
 
 ## Architecture
 
@@ -13,13 +13,13 @@
 │                              OpcUaServer                                         │
 │                                                                                  │
 │  ┌──────────────────────────────────────────────────────────────────────────┐    │
-│  │                        기존 서버 컴포넌트                                 │    │
+│  │                     Existing Server Components                           │    │
 │  │  AddressSpace · SessionManager · SubscriptionManager                     │    │
 │  │  HistoryStore · SecurityManager · NodeCache                              │    │
 │  └──────────────────────────┬───────────────────────────────────────────────┘    │
-│                             │ Arc 공유                                           │
+│                             │ Shared via Arc                                     │
 │  ┌──────────────────────────▼───────────────────────────────────────────────┐    │
-│  │                    신규 TCP Transport Stack                               │    │
+│  │                     New TCP Transport Stack                              │    │
 │  │                                                                          │    │
 │  │  ┌─────────────┐   ┌───────────────┐   ┌──────────────────────────┐     │    │
 │  │  │ TCP Listener │──▶│  Connection   │──▶│  Service Registry        │     │    │
@@ -39,65 +39,65 @@
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 신규 모듈 구성
+## New Module Structure
 
-| 모듈 | 파일 수 | 역할 |
-|------|---------|------|
-| [`codec`](#codec-모듈) | 6 | OPC UA 바이너리 인코딩/디코딩 (Part 6 Section 5.2) |
-| [`transport`](#transport-모듈) | 6 | TCP 프레이밍, 연결 관리, 리스너 |
-| [`channel`](#channel-모듈) | 3 | Secure Channel 관리, 보안 헤더 |
-| [`service`](#service-모듈) | 8 | 서비스 핸들러 레지스트리 및 개별 핸들러 |
+| Module | Files | Role |
+|--------|-------|------|
+| [`codec`](#codec-module) | 6 | OPC UA binary encoding/decoding (Part 6, Section 5.2) |
+| [`transport`](#transport-module) | 6 | TCP framing, connection management, listener |
+| [`channel`](#channel-module) | 3 | Secure Channel management, security headers |
+| [`service`](#service-module) | 8 | Service handler registry and individual handlers |
 
-### 변경된 기존 파일
+### Modified Existing Files
 
-| 파일 | 변경 내용 |
-|------|----------|
-| `error.rs` | 에러 variant 8개 추가 (`Codec`, `ProtocolError`, `ServiceNotSupported`, `BadSecureChannelId`, `BadSequenceNumber`, `MessageTooLarge`, `Bind`) |
-| `lib.rs` | `codec`, `transport`, `channel`, `service` 모듈 선언 |
-| `server.rs` | TCP 리스너 생성/실행 통합, `ServiceRegistry` 연동, `parse_endpoint_url()` 함수 |
+| File | Changes |
+|------|---------|
+| `error.rs` | 8 error variants added (`Codec`, `ProtocolError`, `ServiceNotSupported`, `BadSecureChannelId`, `BadSequenceNumber`, `MessageTooLarge`, `Bind`) |
+| `lib.rs` | Module declarations for `codec`, `transport`, `channel`, `service` |
+| `server.rs` | TCP listener creation/execution integration, `ServiceRegistry` wiring, `parse_endpoint_url()` function |
 
 ---
 
-## Codec 모듈
+## Codec Module
 
 > `crates/mabi-opcua/src/codec/`
 >
-> OPC UA Part 6, Section 5.2 기반 바이너리 인코딩/디코딩
+> Binary encoding/decoding based on OPC UA Part 6, Section 5.2
 
-### 트레이트
+### Traits
 
 ```rust
-/// 바이너리 인코딩 트레이트
+/// Binary encoding trait
 pub trait BinaryEncodable {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()>;
     fn encoded_size(&self) -> usize;
 }
 
-/// 바이너리 디코딩 트레이트
+/// Binary decoding trait
 pub trait BinaryDecodable: Sized {
     fn decode(buf: &mut Bytes) -> OpcUaResult<Self>;
 }
 ```
 
-### 파일별 상세
+### File Details
 
-#### `encoder.rs` — 인코딩 프리미티브
+#### `encoder.rs` --- Encoding Primitives
 
-`BinaryEncodable` 구현 대상:
+Types implementing `BinaryEncodable`:
 
-| 타입 | 설명 |
-|------|------|
-| `bool`, `i8`, `u8` | 1바이트 |
-| `i16`, `u16` | 2바이트, little-endian |
-| `i32`, `u32` | 4바이트, little-endian |
-| `i64`, `u64` | 8바이트, little-endian |
+| Type | Description |
+|------|-------------|
+| `bool`, `i8`, `u8` | 1 byte |
+| `i16`, `u16` | 2 bytes, little-endian |
+| `i32`, `u32` | 4 bytes, little-endian |
+| `i64`, `u64` | 8 bytes, little-endian |
 | `f32`, `f64` | IEEE 754, little-endian |
-| `&str`, `String` | i32 길이 + UTF-8 바이트 |
-| `Vec<u8>` | i32 길이 + 바이트 배열 |
+| `&str`, `String` | i32 length prefix + UTF-8 bytes |
+| `Vec<u8>` | i32 length prefix + byte array |
 | `DateTime<Utc>` | Windows FILETIME (i64) |
-| `uuid::Uuid` | 16바이트 UUID |
+| `uuid::Uuid` | 16-byte UUID |
 
-유틸리티 함수:
+Utility functions:
 
 ```rust
 pub fn encode_optional_string(s: &Option<String>, buf: &mut BytesMut) -> OpcUaResult<()>;
@@ -106,11 +106,11 @@ pub fn encode_array<T: BinaryEncodable>(items: &[T], buf: &mut BytesMut) -> OpcU
 pub fn encode_optional_array<T: BinaryEncodable>(items: &Option<Vec<T>>, buf: &mut BytesMut) -> OpcUaResult<()>;
 ```
 
-상수: `FILETIME_UNIX_DIFF = 116_444_736_000_000_000` (Unix epoch ↔ Windows FILETIME 오프셋)
+Constant: `FILETIME_UNIX_DIFF = 116_444_736_000_000_000` (offset between Unix epoch and Windows FILETIME)
 
-#### `decoder.rs` — 디코딩 프리미티브
+#### `decoder.rs` --- Decoding Primitives
 
-`BinaryDecodable` 구현은 인코더와 동일한 타입 세트를 지원합니다. 디코딩 시 `ensure_remaining()` 함수로 버퍼 잔량을 검증합니다.
+The `BinaryDecodable` implementation supports the same set of types as the encoder. During decoding, the `ensure_remaining()` function validates the remaining buffer length.
 
 ```rust
 pub fn decode_optional_string(buf: &mut Bytes) -> OpcUaResult<Option<String>>;
@@ -119,16 +119,16 @@ pub fn decode_array<T: BinaryDecodable>(buf: &mut Bytes) -> OpcUaResult<Vec<T>>;
 pub fn decode_optional_array<T: BinaryDecodable>(buf: &mut Bytes) -> OpcUaResult<Option<Vec<T>>>;
 ```
 
-#### `variant.rs` — Variant 바이너리 인코딩
+#### `variant.rs` --- Variant Binary Encoding
 
-OPC UA Part 6, Section 5.2.2.16에 따른 Variant 인코딩/디코딩. 타입 ID 바이트 + 값 방식으로 직렬화하며, 배열은 `ARRAY_BIT (0x80)` 플래그로 구분합니다.
+Variant encoding/decoding per OPC UA Part 6, Section 5.2.2.16. Serialization follows the type-ID byte + value format, with arrays distinguished by the `ARRAY_BIT (0x80)` flag.
 
-#### `data_value.rs` — DataValue 및 복합 타입
+#### `data_value.rs` --- DataValue and Composite Types
 
-마스크 바이트 기반 선택적 필드 인코딩:
+Selective field encoding based on an encoding mask byte:
 
-| 마스크 비트 | 필드 |
-|------------|------|
+| Mask Bit | Field |
+|----------|-------|
 | `0x01` | `value` (Variant) |
 | `0x02` | `status` (StatusCode) |
 | `0x04` | `source_timestamp` (DateTime) |
@@ -136,7 +136,7 @@ OPC UA Part 6, Section 5.2.2.16에 따른 Variant 인코딩/디코딩. 타입 ID
 | `0x10` | `source_picoseconds` (u16) |
 | `0x20` | `server_picoseconds` (u16) |
 
-추가로 `QualifiedName`, `LocalizedText`, `StatusCode`, `ExtensionObject`, `DiagnosticInfo` 타입의 인코딩/디코딩을 포함합니다.
+Additionally includes encoding/decoding for the `QualifiedName`, `LocalizedText`, `StatusCode`, `ExtensionObject`, and `DiagnosticInfo` types.
 
 ```rust
 pub struct ExtensionObject {
@@ -155,28 +155,28 @@ pub struct DiagnosticInfo {
 }
 ```
 
-#### `node_id.rs` — NodeId 바이너리 인코딩
+#### `node_id.rs` --- NodeId Binary Encoding
 
-OPC UA Part 6, Section 5.2.2.9에 따른 컴팩트 인코딩:
+Compact encoding per OPC UA Part 6, Section 5.2.2.9:
 
-| 인코딩 타입 | 바이트 | 조건 |
-|------------|--------|------|
-| `TwoByte (0x00)` | 2 | ns=0, id 0–255 |
-| `FourByte (0x01)` | 4 | ns 0–255, id 0–65535 |
-| `Numeric (0x02)` | 7 | 전체 범위 |
-| `String (0x03)` | 가변 | 문자열 식별자 |
-| `Guid (0x04)` | 22 | UUID 식별자 |
-| `ByteString (0x05)` | 가변 | 바이트 배열 식별자 |
+| Encoding Type | Bytes | Condition |
+|---------------|-------|-----------|
+| `TwoByte (0x00)` | 2 | ns=0, id 0--255 |
+| `FourByte (0x01)` | 4 | ns 0--255, id 0--65535 |
+| `Numeric (0x02)` | 7 | Full range |
+| `String (0x03)` | Variable | String identifier |
+| `Guid (0x04)` | 22 | UUID identifier |
+| `ByteString (0x05)` | Variable | Byte array identifier |
 
 ---
 
-## Transport 모듈
+## Transport Module
 
 > `crates/mabi-opcua/src/transport/`
 >
-> OPC UA Part 6, Section 7.1 기반 TCP 트랜스포트
+> TCP transport based on OPC UA Part 6, Section 7.1
 
-### 메시지 타입 (`messages.rs`)
+### Message Types (`messages.rs`)
 
 ```rust
 pub enum MessageType {
@@ -189,15 +189,15 @@ pub enum MessageType {
 }
 
 pub enum ChunkType {
-    Final,        // 'F' — 최종 청크
-    Intermediate, // 'C' — 중간 청크
-    Abort,        // 'A' — 중단
+    Final,        // 'F' --- Final chunk
+    Intermediate, // 'C' --- Intermediate chunk
+    Abort,        // 'A' --- Abort
 }
 ```
 
 #### MessageHeader
 
-8바이트 고정 헤더: `[type: 3바이트][chunk: 1바이트][size: u32 LE]`
+Fixed 8-byte header: `[type: 3 bytes][chunk: 1 byte][size: u32 LE]`
 
 ```rust
 pub struct MessageHeader {
@@ -207,11 +207,11 @@ pub struct MessageHeader {
 }
 ```
 
-#### Hello / Acknowledge 핸드셰이크
+#### Hello / Acknowledge Handshake
 
 ```rust
 pub struct HelloMessage {
-    pub protocol_version: u32,    // 항상 0
+    pub protocol_version: u32,    // Always 0
     pub receive_buffer_size: u32,
     pub send_buffer_size: u32,
     pub max_message_size: u32,
@@ -228,20 +228,20 @@ pub struct AcknowledgeMessage {
 }
 ```
 
-`AcknowledgeMessage::from_hello()` 메서드는 클라이언트의 Hello 메시지와 서버 버퍼 크기를 협상하여 ACK를 생성합니다.
+The `AcknowledgeMessage::from_hello()` method negotiates buffer sizes between the client's Hello message and the server's buffer capacity to produce an ACK.
 
-기본값:
+Default values:
 
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `PROTOCOL_VERSION` | 0 | OPC UA 프로토콜 버전 |
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `PROTOCOL_VERSION` | 0 | OPC UA protocol version |
 | `DEFAULT_BUFFER_SIZE` | 65,535 | 64 KB |
 | `DEFAULT_MAX_MESSAGE_SIZE` | 16,777,216 | 16 MB |
-| `DEFAULT_MAX_CHUNK_COUNT` | 5,000 | 최대 청크 수 |
+| `DEFAULT_MAX_CHUNK_COUNT` | 5,000 | Maximum chunk count |
 
 ### Transport Codec (`codec.rs`)
 
-`tokio_util::codec`의 `Encoder`/`Decoder` 구현으로 TCP 스트림에서 메시지를 프레이밍합니다.
+Implements `tokio_util::codec` `Encoder`/`Decoder` for framing messages on the TCP stream.
 
 ```rust
 pub struct OpcUaTransportCodec {
@@ -255,17 +255,17 @@ pub struct RawMessage {
 }
 ```
 
-- `Decoder`: 8바이트 헤더를 먼저 파싱 → `message_size` 확인 → 전체 메시지 수신 → `RawMessage` 반환
-- `Encoder`: 헤더 + 본문을 연결하여 전송
+- `Decoder`: Parses the 8-byte header first, validates `message_size`, receives the complete message, then returns a `RawMessage`.
+- `Encoder`: Concatenates the header and body for transmission.
 
 ### TCP Listener (`tcp_listener.rs`)
 
 ```rust
 pub struct TcpTransportConfig {
     pub bind_address: SocketAddr,
-    pub max_connections: usize,          // 기본 1000
-    pub connection_timeout: Duration,    // 기본 60초
-    pub server_buffer_size: u32,         // 기본 65535
+    pub max_connections: usize,          // Default: 1000
+    pub connection_timeout: Duration,    // Default: 60 seconds
+    pub server_buffer_size: u32,         // Default: 65535
 }
 
 pub struct OpcUaTcpListener {
@@ -278,20 +278,20 @@ pub struct OpcUaTcpListener {
 }
 ```
 
-주요 메서드:
+Key methods:
 
-| 메서드 | 설명 |
-|--------|------|
-| `new(config, registry, context)` | 리스너 생성 |
-| `run()` | TCP accept 루프 실행 (blocking) |
-| `shutdown()` | 종료 시그널 전송 |
-| `metrics()` | 트랜스포트 메트릭 참조 |
+| Method | Description |
+|--------|-------------|
+| `new(config, registry, context)` | Creates the listener |
+| `run()` | Executes the TCP accept loop (blocking) |
+| `shutdown()` | Sends the shutdown signal |
+| `metrics()` | Returns a reference to transport metrics |
 
-연결 수락 시 `max_connections`를 초과하면 연결을 거부하고 `metrics.record_rejection()`을 기록합니다.
+When accepting connections, if `max_connections` is exceeded, the connection is rejected and `metrics.record_rejection()` is recorded.
 
 ### Connection Handler (`connection.rs`)
 
-개별 TCP 연결의 전체 OPC UA 라이프사이클을 처리합니다.
+Handles the complete OPC UA lifecycle for an individual TCP connection.
 
 ```rust
 pub struct ServiceContextTemplate {
@@ -304,29 +304,29 @@ pub struct ServiceContextTemplate {
 }
 ```
 
-연결 처리 흐름:
+Connection processing flow:
 
 ```text
-1. HEL (Hello) 수신 → ACK (Acknowledge) 응답
-2. OPN (OpenSecureChannel) 수신 → SecureChannel 생성 → OPN 응답
-3. MSG (Message) 수신/응답 루프:
-   ├── SequenceHeader + Payload 파싱
-   ├── ServiceRegistry.dispatch() → 핸들러 호출
-   └── 응답 인코딩 → MSG 전송
-4. CLO (CloseSecureChannel) 수신 → 연결 종료
+1. HEL (Hello) received → ACK (Acknowledge) response
+2. OPN (OpenSecureChannel) received → SecureChannel created → OPN response
+3. MSG (Message) receive/response loop:
+   ├── SequenceHeader + Payload parsing
+   ├── ServiceRegistry.dispatch() → Handler invocation
+   └── Response encoding → MSG transmission
+4. CLO (CloseSecureChannel) received → Connection closed
 ```
 
-내부 헬퍼:
+Internal helpers:
 
-| 함수 | 용도 |
-|------|------|
-| `build_opn_response()` | OpenSecureChannelResponse 인코딩 |
-| `build_service_fault()` | ServiceFault 응답 생성 (raw `NodeId + ResponseHeader` 형식) |
-| `encode_error()` | 에러 메시지 인코딩 |
+| Function | Purpose |
+|----------|---------|
+| `build_opn_response()` | Encodes OpenSecureChannelResponse |
+| `build_service_fault()` | Generates a ServiceFault response (raw `NodeId + ResponseHeader` format) |
+| `encode_error()` | Encodes error messages |
 
 ### Transport Metrics (`metrics.rs`)
 
-모든 필드가 `AtomicU64`로 lock-free 카운터입니다.
+All fields are `AtomicU64` lock-free counters.
 
 ```rust
 pub struct TransportMetrics {
@@ -343,7 +343,7 @@ pub struct TransportMetrics {
 
 ---
 
-## Channel 모듈
+## Channel Module
 
 > `crates/mabi-opcua/src/channel/`
 >
@@ -351,7 +351,7 @@ pub struct TransportMetrics {
 
 ### SecureChannel (`secure_channel.rs`)
 
-보안 채널 생성, 토큰 발행, 시퀀스 번호 관리를 담당합니다. `SecurityPolicy::None`인 경우 실제 암호화는 수행하지 않습니다.
+Responsible for Secure Channel creation, token issuance, and sequence number management. When `SecurityPolicy::None` is in effect, no actual cryptographic operations are performed.
 
 ```rust
 pub struct SecureChannel {
@@ -366,42 +366,42 @@ pub struct SecureChannel {
 }
 ```
 
-채널 ID와 토큰 ID는 전역 `AtomicU32` 카운터로 고유하게 할당됩니다.
+Channel IDs and token IDs are uniquely assigned via global `AtomicU32` counters.
 
-| 메서드 | 설명 |
-|--------|------|
-| `new_unsecured()` | SecurityPolicy::None 채널 생성 |
-| `new(policy, mode, lifetime)` | 지정된 보안 설정으로 생성 |
-| `next_server_sequence_number()` | 서버 시퀀스 번호 원자적 증가 |
-| `validate_sequence_number(received)` | 클라이언트 시퀀스 번호 검증 |
-| `renew_token(lifetime)` | 보안 토큰 갱신 |
-| `is_token_expired()` | 토큰 만료 여부 확인 |
+| Method | Description |
+|--------|-------------|
+| `new_unsecured()` | Creates a channel with SecurityPolicy::None |
+| `new(policy, mode, lifetime)` | Creates a channel with the specified security configuration |
+| `next_server_sequence_number()` | Atomically increments the server sequence number |
+| `validate_sequence_number(received)` | Validates the client sequence number |
+| `renew_token(lifetime)` | Renews the security token |
+| `is_token_expired()` | Checks whether the token has expired |
 
-### 메시지 보안 헤더 (`message.rs`)
+### Message Security Headers (`message.rs`)
 
-OPN/MSG/CLO 메시지의 보안 헤더 및 시퀀스 헤더를 처리합니다.
+Handles the security headers and sequence headers of OPN/MSG/CLO messages.
 
 ```rust
-/// OPN 메시지의 비대칭 보안 헤더
+/// Asymmetric security header for OPN messages
 pub struct AsymmetricSecurityHeader {
     pub security_policy_uri: String,
     pub sender_certificate: Vec<u8>,
     pub receiver_certificate_thumbprint: Vec<u8>,
 }
 
-/// MSG 메시지의 대칭 보안 헤더
+/// Symmetric security header for MSG messages
 pub struct SymmetricSecurityHeader {
     pub token_id: u32,
 }
 
-/// 시퀀스 헤더 (모든 보안 메시지 공통)
+/// Sequence header (common to all secured messages)
 pub struct SequenceHeader {
     pub sequence_number: u32,
     pub request_id: u32,
 }
 ```
 
-OPN/MSG 메시지 바디 파싱 및 응답 빌드 함수:
+Functions for parsing and building OPN/MSG message bodies:
 
 ```rust
 pub struct OpenSecureChannelBody { ... }
@@ -413,15 +413,15 @@ pub fn build_msg_response_body(channel_id, token_id, seq_header, payload) -> Vec
 
 ---
 
-## Service 모듈
+## Service Module
 
 > `crates/mabi-opcua/src/service/`
 >
-> OPC UA Part 4 기반 서비스 핸들러 계층
+> Service handler layer based on OPC UA Part 4
 
-### 서비스 레지스트리 (`registry.rs`)
+### Service Registry (`registry.rs`)
 
-요청 타입 NodeId를 키로 핸들러를 등록하고 디스패치합니다.
+Registers handlers keyed by request type NodeId and dispatches requests accordingly.
 
 ```rust
 #[async_trait]
@@ -452,82 +452,82 @@ pub struct ServiceResponse {
 }
 ```
 
-#### 디스패치 메시지 인코딩 형식
+#### Dispatch Message Encoding Format
 
-OPC UA Part 6에 따라, MSG 메시지 내부의 서비스 요청/응답은 **ExtensionObject가 아닌** raw `NodeId + body` 형식으로 인코딩됩니다.
+Per OPC UA Part 6, service requests and responses within MSG messages are encoded as raw `NodeId + body`, **not** as ExtensionObjects.
 
 ```text
-서비스 요청 페이로드:
+Service request payload:
 ┌──────────────────────────────────────────┐
 │  NodeId (request type_id)                │  ← e.g., i=428 (GetEndpoints)
-│  RequestHeader + request body bytes      │  ← 핸들러에 전달되는 body
+│  RequestHeader + request body bytes      │  ← body passed to handler
 └──────────────────────────────────────────┘
 
-서비스 응답 페이로드:
+Service response payload:
 ┌──────────────────────────────────────────┐
 │  NodeId (response type_id)               │  ← e.g., i=431 (GetEndpointsResponse)
-│  ResponseHeader + response body bytes    │  ← 핸들러가 생성한 body
+│  ResponseHeader + response body bytes    │  ← body produced by handler
 └──────────────────────────────────────────┘
 ```
 
-`dispatch()` 메서드는 페이로드에서 `NodeId`를 디코딩하여 핸들러를 찾고, NodeId 이후의 나머지 바이트를 `request_body`로 핸들러에 전달합니다. 응답도 동일하게 `NodeId + body`를 직접 연결하여 반환합니다.
+The `dispatch()` method decodes the `NodeId` from the payload to locate the appropriate handler, then passes the remaining bytes after the NodeId as the `request_body` to the handler. The response is similarly constructed by directly concatenating `NodeId + body`.
 
-> **주의**: ExtensionObject (`NodeId + encoding_byte + length + body`) 형식은 `AdditionalHeader` 등의 내부 필드에만 사용되며, 최상위 서비스 메시지 래핑에는 사용되지 않습니다. 이 구분은 OPC UA Part 6, Section 6.7.3에 정의되어 있습니다.
+> **Note**: The ExtensionObject format (`NodeId + encoding_byte + length + body`) is used only for internal fields such as `AdditionalHeader` and is not used for top-level service message wrapping. This distinction is defined in OPC UA Part 6, Section 6.7.3.
 
-### 서비스 핸들러 목록
+### Service Handler List
 
-모든 핸들러는 `ServiceHandler` 트레이트를 구현하며, 각 모듈의 `register_handlers()` 함수로 레지스트리에 일괄 등록됩니다.
+All handlers implement the `ServiceHandler` trait and are batch-registered in the registry via each module's `register_handlers()` function.
 
-#### Discovery (`discovery.rs`) — Part 4, Section 5.4
+#### Discovery (`discovery.rs`) --- Part 4, Section 5.4
 
-| 핸들러 | Request ID | Response ID |
-|--------|-----------|-------------|
+| Handler | Request ID | Response ID |
+|---------|-----------|-------------|
 | `GetEndpointsHandler` | 428 | 431 |
 
-공통 구조체:
-- `RequestHeader` — 모든 요청의 공통 헤더 (authentication_token, timestamp, request_handle, timeout_hint 등)
-- `ResponseHeader` — 응답 헤더 (timestamp, request_handle, service_result)
-- `encode_application_description()` — 서버 ApplicationDescription 인코딩
+Common structures:
+- `RequestHeader` --- Common header for all requests (authentication_token, timestamp, request_handle, timeout_hint, etc.)
+- `ResponseHeader` --- Response header (timestamp, request_handle, service_result)
+- `encode_application_description()` --- Encodes the server ApplicationDescription
 
-#### Session (`session.rs`) — Part 4, Section 5.6
+#### Session (`session.rs`) --- Part 4, Section 5.6
 
-| 핸들러 | Request ID | Response ID |
-|--------|-----------|-------------|
+| Handler | Request ID | Response ID |
+|---------|-----------|-------------|
 | `CreateSessionHandler` | 461 | 464 |
 | `ActivateSessionHandler` | 467 | 470 |
 | `CloseSessionHandler` | 473 | 476 |
 
-#### Attribute (`attribute.rs`) — Part 4, Section 5.10
+#### Attribute (`attribute.rs`) --- Part 4, Section 5.10
 
-| 핸들러 | Request ID | Response ID |
-|--------|-----------|-------------|
+| Handler | Request ID | Response ID |
+|---------|-----------|-------------|
 | `ReadHandler` | 631 | 634 |
 | `WriteHandler` | 673 | 676 |
 
-#### Browse (`browse.rs`) — Part 4, Section 5.8
+#### Browse (`browse.rs`) --- Part 4, Section 5.8
 
-| 핸들러 | Request ID | Response ID |
-|--------|-----------|-------------|
+| Handler | Request ID | Response ID |
+|---------|-----------|-------------|
 | `BrowseHandler` | 527 | 530 |
 
-#### Subscription (`subscription.rs`) — Part 4, Section 5.13
+#### Subscription (`subscription.rs`) --- Part 4, Section 5.13
 
-| 핸들러 | Request ID | Response ID |
-|--------|-----------|-------------|
+| Handler | Request ID | Response ID |
+|---------|-----------|-------------|
 | `CreateSubscriptionHandler` | 787 | 790 |
 | `DeleteSubscriptionsHandler` | 847 | 850 |
 | `PublishHandler` | 826 | 829 |
 
-#### MonitoredItem (`monitored_item.rs`) — Part 4, Section 5.12
+#### MonitoredItem (`monitored_item.rs`) --- Part 4, Section 5.12
 
-| 핸들러 | Request ID | Response ID |
-|--------|-----------|-------------|
+| Handler | Request ID | Response ID |
+|---------|-----------|-------------|
 | `CreateMonitoredItemsHandler` | 751 | 754 |
 | `DeleteMonitoredItemsHandler` | 781 | 784 |
 
-### 등록 흐름
+### Registration Flow
 
-`OpcUaServer::create_tcp_listener()` 에서 모든 핸들러를 등록합니다:
+All handlers are registered in `OpcUaServer::create_tcp_listener()`:
 
 ```rust
 let mut registry = ServiceRegistry::new();
@@ -541,15 +541,15 @@ service::monitored_item::register_handlers(&mut registry);
 
 ---
 
-## 서버 통합
+## Server Integration
 
-기존 `OpcUaServer::start()` 메서드에 TCP 리스너가 통합되었습니다:
+The TCP listener has been integrated into the existing `OpcUaServer::start()` method:
 
 ```rust
 pub async fn start(&self) -> OpcUaResult<()> {
-    // ... 기존 초기화 ...
+    // ... existing initialization ...
 
-    // TCP 리스너를 백그라운드 태스크로 실행
+    // Run TCP listener as a background task
     let tcp_listener = self.create_tcp_listener()?;
     tokio::spawn(async move {
         if let Err(e) = tcp_listener.run().await {
@@ -561,44 +561,44 @@ pub async fn start(&self) -> OpcUaResult<()> {
 }
 ```
 
-`create_tcp_listener()` 내부에서:
-1. `endpoint_url` (`opc.tcp://0.0.0.0:4840`)을 `SocketAddr`로 파싱
-2. 서비스 핸들러 등록
-3. `ServiceContextTemplate` (서버 컴포넌트 Arc 참조) 생성
-4. `OpcUaTcpListener` 구성
+Inside `create_tcp_listener()`:
+1. Parses `endpoint_url` (`opc.tcp://0.0.0.0:4840`) into a `SocketAddr`
+2. Registers service handlers
+3. Creates a `ServiceContextTemplate` (holding Arc references to server components)
+4. Constructs the `OpcUaTcpListener`
 
 ---
 
-## 에러 타입 추가
+## Error Type Additions
 
-`OpcUaError`에 다음 variant가 추가되었습니다:
+The following variants have been added to `OpcUaError`:
 
-| Variant | 설명 |
-|---------|------|
-| `Codec(String)` | 바이너리 인코딩/디코딩 에러 |
-| `ProtocolError(String)` | 프로토콜 수준 에러 |
-| `ServiceNotSupported { service_id }` | 미지원 서비스 요청 |
-| `BadSecureChannelId(u32)` | 잘못된 Secure Channel ID |
-| `BadSequenceNumber { expected, actual }` | 시퀀스 번호 불일치 |
-| `MessageTooLarge { size, max }` | 최대 메시지 크기 초과 |
-| `Bind { address, reason }` | TCP 바인드 실패 |
-
----
-
-## 설계 패턴
-
-| 패턴 | 적용 위치 |
-|------|----------|
-| **트레이트 기반 직렬화** | `BinaryEncodable` / `BinaryDecodable` |
-| **Async 서비스 핸들러** | `ServiceHandler` (async_trait) |
-| **HashMap 디스패치** | `ServiceRegistry` — NodeId → Handler |
-| **원자적 카운터** | SecureChannel ID/Token ID, TransportMetrics |
-| **컨텍스트 템플릿** | `ServiceContextTemplate` → 연결별 `ServiceContext` |
-| **tokio-util 코덱** | `OpcUaTransportCodec` — Encoder/Decoder |
+| Variant | Description |
+|---------|-------------|
+| `Codec(String)` | Binary encoding/decoding error |
+| `ProtocolError(String)` | Protocol-level error |
+| `ServiceNotSupported { service_id }` | Unsupported service request |
+| `BadSecureChannelId(u32)` | Invalid Secure Channel ID |
+| `BadSequenceNumber { expected, actual }` | Sequence number mismatch |
+| `MessageTooLarge { size, max }` | Maximum message size exceeded |
+| `Bind { address, reason }` | TCP bind failure |
 
 ---
 
-## 데이터 흐름
+## Design Patterns
+
+| Pattern | Applied Location |
+|---------|-----------------|
+| **Trait-based serialization** | `BinaryEncodable` / `BinaryDecodable` |
+| **Async service handlers** | `ServiceHandler` (async_trait) |
+| **HashMap dispatch** | `ServiceRegistry` --- NodeId to Handler |
+| **Atomic counters** | SecureChannel ID/Token ID, TransportMetrics |
+| **Context template** | `ServiceContextTemplate` to per-connection `ServiceContext` |
+| **tokio-util codec** | `OpcUaTransportCodec` --- Encoder/Decoder |
+
+---
+
+## Data Flow
 
 ```text
 OPC UA Client
@@ -609,7 +609,7 @@ OPC UA Client
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  Transport Codec │  ← OpcUaTransportCodec (프레이밍)
+│  Transport Codec │  ← OpcUaTransportCodec (framing)
 │  (8B header +   │
 │   body)         │
 └────────┬────────┘
@@ -624,7 +624,7 @@ OPC UA Client
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  Secure Channel │  ← 시퀀스 번호 검증, 토큰 관리
+│  Secure Channel │  ← Sequence number validation, token management
 │  + Message      │
 │    Headers      │
 └────────┬────────┘

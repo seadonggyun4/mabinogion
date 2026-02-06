@@ -1,72 +1,72 @@
-# mabi-opcua TCP Transport — OPC UA 호환성 버그 수정 보고서
+# mabi-opcua TCP Transport — OPC UA Compatibility Bugfix Report
 
-> 2026-01 TRAP OPC UA 통합 테스트에서 발견된 2건의 버그 수정 보고서
-
----
-
-## 테스트 환경
-
-- **시뮬레이터**: mabi-cli v1.1.0 (`mabi opcua --port 4840 --nodes 100`)
-- **클라이언트**: TRAP Gateway (`trap-opcua` 크레이트, `opcua-rs` 라이브러리 기반)
-- **테스트 범위**: 기본 연결, 100태그 대량 폴링, 100ms 고빈도 폴링, 다중 디바이스 병렬, 재연결 복원력
-- **결과**: 2건의 프로토콜 호환성 버그 발견 및 수정 후 전체 테스트 통과
+> Report on two bugs discovered during TRAP OPC UA integration testing, January 2026
 
 ---
 
-## Bug 1: 서비스 디스패치 메시지 형식 불일치 (Critical)
+## Test Environment
 
-### 증상
+- **Simulator**: mabi-cli v1.1.0 (`mabi opcua --port 4840 --nodes 100`)
+- **Client**: TRAP Gateway (`trap-opcua` crate, based on the `opcua-rs` library)
+- **Test Scope**: Basic connectivity, bulk polling of 100 tags, high-frequency polling at 100 ms intervals, parallel multi-device operation, reconnection resilience
+- **Result**: Two protocol-level compatibility bugs were identified and resolved; all tests passed after the fix
 
-TRAP 클라이언트가 `OpenSecureChannel` 이후 첫 서비스 요청(`GetEndpoints`, `i=428`)을 보내면 mabi 서버에서 다음 에러 발생:
+---
+
+## Bug 1: Service Dispatch Message Format Mismatch (Critical)
+
+### Symptoms
+
+When the TRAP client sent its first service request (`GetEndpoints`, `i=428`) after completing the `OpenSecureChannel` handshake, the mabi server raised the following error:
 
 ```
 Service handler error: Codec error: Empty buffer for NodeId
 ```
 
-클라이언트 측에서는 `ServiceFault` 응답을 받고 세션 생성에 실패:
+On the client side, a `ServiceFault` response was received, causing session establishment to fail:
 
 ```
 Array length is negative value and invalid
 ```
 
-### 근본 원인
+### Root Cause
 
-`service/registry.rs`의 `dispatch()` 메서드가 서비스 요청 페이로드를 **ExtensionObject** 형식(`NodeId + encoding_byte + length + body`)으로 디코딩했으나, OPC UA Part 6, Section 6.7.3에 따르면 MSG 메시지 내부의 서비스 요청은 **raw `NodeId + body`** 형식으로 인코딩됩니다.
+The `dispatch()` method in `service/registry.rs` was decoding the service request payload in **ExtensionObject** format (`NodeId + encoding_byte + length + body`). However, according to OPC UA Part 6, Section 6.7.3, the service request within an MSG message is encoded in **raw `NodeId + body`** format.
 
 ```text
-실제 페이로드:        [NodeId][RequestHeader + body...]
-dispatch()가 기대:    [NodeId][encoding_byte (0x01)][i32 length][body...]
-                              ↑ RequestHeader의 첫 바이트를 인코딩 마스크로 오해석
+Actual payload:           [NodeId][RequestHeader + body...]
+dispatch() expected:      [NodeId][encoding_byte (0x01)][i32 length][body...]
+                                  ^ First byte of RequestHeader misinterpreted as encoding mask
 ```
 
-이로 인해:
-1. `ExtensionObject::decode()`가 body의 첫 바이트를 `encoding_byte`로 읽음
-2. 다음 4바이트를 body 길이로 읽어 잘못된 크기의 body를 추출
-3. 핸들러에 전달된 `request_body`가 완전히 어긋남
-4. 핸들러에서 `NodeId::decode()` 실패 ("Empty buffer for NodeId")
-5. `ServiceFault` 응답도 ExtensionObject로 래핑되어 클라이언트가 파싱 실패
+This caused the following cascade of failures:
+1. `ExtensionObject::decode()` read the first byte of the body as the `encoding_byte`
+2. The next 4 bytes were interpreted as the body length, extracting an incorrectly sized body
+3. The `request_body` passed to the handler was completely misaligned
+4. The handler failed at `NodeId::decode()` ("Empty buffer for NodeId")
+5. The `ServiceFault` response was also wrapped in an ExtensionObject, causing the client to fail parsing it
 
-### 수정
+### Fix
 
-**`service/registry.rs` — `dispatch()` 메서드:**
+**`service/registry.rs` -- `dispatch()` method:**
 
 ```rust
-// Before (잘못된 ExtensionObject 디코딩)
+// Before (incorrect ExtensionObject decoding)
 let ext_obj = ExtensionObject::decode(&mut buf)?;
 let type_id = &ext_obj.type_id;
 let request_body = ext_obj.body.as_deref().unwrap_or(&[]);
-// ... response도 ExtensionObject로 래핑 ...
+// ... response was also wrapped in ExtensionObject ...
 
-// After (OPC UA 표준 준수 — raw NodeId + body)
+// After (OPC UA specification-compliant raw NodeId + body)
 let type_id = NodeId::decode(&mut buf)?;
-let request_body = buf.as_ref();  // NodeId 이후 나머지 전체가 body
-// ... response도 NodeId + body로 직접 연결 ...
+let request_body = buf.as_ref();  // Entire remainder after NodeId constitutes the body
+// ... response is also directly concatenated as NodeId + body ...
 ```
 
-**`transport/connection.rs` — `build_service_fault()` 함수:**
+**`transport/connection.rs` -- `build_service_fault()` function:**
 
 ```rust
-// Before (ExtensionObject 래핑)
+// Before (ExtensionObject wrapping)
 let ext = ExtensionObject {
     type_id: NodeId::numeric(0, 397),
     body: Some(response_header_bytes),
@@ -78,50 +78,50 @@ NodeId::numeric(0, 397).encode(&mut buf)?;
 response_header.encode(&mut buf)?;
 ```
 
-### 영향 범위
+### Impact Scope
 
-- 모든 OPC UA 서비스 요청/응답에 영향
-- ExtensionObject 래핑 없이 직접 NodeId + body 인코딩으로 변경
-- OPC UA Part 6 표준과 `opcua-rs` 클라이언트 라이브러리 모두와 호환
+- Affected all OPC UA service request/response processing
+- Changed from ExtensionObject wrapping to direct NodeId + body encoding
+- Now compatible with both the OPC UA Part 6 specification and the `opcua-rs` client library
 
 ---
 
-## Bug 2: CreateSession 요청 파싱 시 LocalizedText 디코딩 오류 (Critical)
+## Bug 2: LocalizedText Decoding Error During CreateSession Request Parsing (Critical)
 
-### 증상
+### Symptoms
 
-Bug 1 수정 후, `GetEndpoints` 요청은 성공하지만 `CreateSession` (`i=461`) 요청에서 다음 에러 발생:
+After Bug 1 was resolved, `GetEndpoints` requests succeeded, but `CreateSession` (`i=461`) requests failed with the following error:
 
 ```
 Service handler error: Codec error: Not enough data: need 4610 bytes, have 108
 ```
 
-### 근본 원인
+### Root Cause
 
-`service/session.rs`의 `CreateSessionHandler`에서 `CreateSessionRequest`의 `ClientDescription` (ApplicationDescription) 필드를 파싱할 때, `ApplicationName` 필드를 `LocalizedText`가 아닌 `String` 2개로 읽고 있었습니다.
+In `service/session.rs`, the `CreateSessionHandler` was parsing the `ClientDescription` (`ApplicationDescription`) field of the `CreateSessionRequest` by reading the `ApplicationName` field as two separate `String` values instead of a single `LocalizedText`.
 
 ```rust
-// Before (잘못된 파싱)
-let _app_name_locale = String::decode(&mut buf)?;  // LocalizedText를 String으로
-let _app_name_text = String::decode(&mut buf)?;     // 바이트 오프셋 어긋남
-// 이후 필드들 (ApplicationType, GatewayServerUri 등) 전혀 파싱하지 않음
+// Before (incorrect parsing)
+let _app_name_locale = String::decode(&mut buf)?;  // LocalizedText read as String
+let _app_name_text = String::decode(&mut buf)?;     // Byte offset misalignment begins here
+// Remaining fields (ApplicationType, GatewayServerUri, etc.) were not parsed at all
 ```
 
-OPC UA 표준에 따르면 `LocalizedText`는 `encoding_mask (u8) + locale (String) + text (String)` 형식이므로, 마스크 바이트 1개가 누락되어 이후 모든 필드의 바이트 오프셋이 어긋납니다. 또한 `ApplicationDescription`의 나머지 필드들(`ApplicationType`, `GatewayServerUri`, `DiscoveryProfileUri`, `DiscoveryUrls` 배열)도 파싱하지 않아 이후 `ServerUri`, `EndpointUrl`, `SessionName`, `ClientNonce` 등의 필드가 잘못된 위치에서 읽히게 됩니다.
+Per the OPC UA specification, `LocalizedText` is encoded as `encoding_mask (u8) + locale (String) + text (String)`. Omitting the 1-byte mask caused every subsequent field to be read at an incorrect byte offset. Furthermore, the remaining fields of `ApplicationDescription` (`ApplicationType`, `GatewayServerUri`, `DiscoveryProfileUri`, and the `DiscoveryUrls` array) were not parsed at all, causing downstream fields such as `ServerUri`, `EndpointUrl`, `SessionName`, and `ClientNonce` to be read from incorrect positions.
 
-잘못된 바이트를 `String::decode()`의 길이 프리픽스로 해석하면서 `4610 bytes` 같은 비정상적인 길이 요구가 발생합니다.
+Interpreting misaligned bytes as the length prefix for `String::decode()` produced nonsensical length values such as `4610 bytes`.
 
-### 수정
+### Fix
 
-**`service/session.rs` — `CreateSessionHandler::handle()`:**
+**`service/session.rs` -- `CreateSessionHandler::handle()`:**
 
 ```rust
-// After (OPC UA Part 4, Section 5.6.2 기준 전체 필드 파싱)
+// After (complete field parsing per OPC UA Part 4, Section 5.6.2)
 
 // ClientDescription (ApplicationDescription)
 let _app_uri = String::decode(&mut buf)?;
 let _product_uri = String::decode(&mut buf)?;
-let _app_name = LocalizedText::decode(&mut buf)?;    // LocalizedText로 올바르게 디코딩
+let _app_name = LocalizedText::decode(&mut buf)?;    // Correctly decoded as LocalizedText
 let _app_type = u32::decode(&mut buf)?;               // ApplicationType
 let _gateway_uri = String::decode(&mut buf)?;         // GatewayServerUri
 let _discovery_uri = String::decode(&mut buf)?;       // DiscoveryProfileUri
@@ -148,49 +148,49 @@ let _requested_timeout = f64::decode(&mut buf)?;
 let _max_response_size = u32::decode(&mut buf)?;
 ```
 
-### 영향 범위
+### Impact Scope
 
-- `CreateSession` 서비스 핸들러의 요청 파싱에만 영향
-- 수정 후 전체 세션 라이프사이클 (CreateSession → ActivateSession → Read/Write → CloseSession) 정상 동작 확인
-
----
-
-## 수정 후 검증 결과
-
-### 테스트 시나리오 및 결과
-
-| # | 시나리오 | 설정 | 결과 | 상세 |
-|---|---------|------|------|------|
-| 1 | 기본 연결 | 5태그, 1초 폴링 | **PASS** | OPN→GetEndpoints→CreateSession→ActivateSession→Read 전체 흐름 정상 |
-| 2 | 대량 태그 | 100태그, 1초 폴링 | **PASS** | 63 reads/sec, 메모리 20MB, 데이터 에러 0 |
-| 3 | 고빈도 폴링 | 10태그, 100ms 폴링 | **PASS** | 100 reads/sec (기대치 정확 일치), 메모리 안정 |
-| 4 | 다중 디바이스 | 3디바이스 (2 정상 + 1 불능) | **PASS** | 정상 디바이스 독립 동작, 실패 디바이스 자동 재연결 |
-| 5 | Graceful Degradation | 불가용 디바이스 포함 | **PASS** | Circuit breaker Closed, 10초 주기 재연결, 타 디바이스 무영향 |
-
-### 성능 측정
-
-| 메트릭 | 측정값 | 비고 |
-|--------|--------|------|
-| Read 처리량 (100태그, 1초 폴링) | ~63 reads/sec | 태그별 개별 읽기 |
-| Read 처리량 (10태그, 100ms 폴링) | ~100 reads/sec | 기대치 정확 일치 |
-| 메모리 사용량 | ~20MB RSS | 100태그 폴링 시 |
-| OPC UA 세션 수립 시간 | ~1초 이내 | GetEndpoints → CreateSession → ActivateSession |
-| 자동 재연결 주기 | 10초 | DriverManager::spawn_reconnect_monitor() |
+- Affected only the request parsing logic of the `CreateSession` service handler
+- After the fix, the complete session lifecycle (CreateSession, ActivateSession, Read/Write, CloseSession) was verified to function correctly
 
 ---
 
-## 수정 파일 요약
+## Post-Fix Verification Results
 
-| 파일 | 변경 유형 | 설명 |
-|------|----------|------|
-| `crates/mabi-opcua/src/service/registry.rs` | **버그 수정** | `dispatch()` 디코딩을 ExtensionObject에서 raw NodeId+body로 변경 |
-| `crates/mabi-opcua/src/service/session.rs` | **버그 수정** | `CreateSessionHandler` 요청 파싱에서 LocalizedText 및 ApplicationDescription 전체 필드 올바르게 디코딩 |
-| `crates/mabi-opcua/src/transport/connection.rs` | **버그 수정** | `build_service_fault()` 응답 인코딩을 ExtensionObject에서 raw NodeId+body로 변경 |
+### Test Scenarios and Outcomes
+
+| # | Scenario | Configuration | Result | Details |
+|---|----------|---------------|--------|---------|
+| 1 | Basic connectivity | 5 tags, 1 s polling interval | **PASS** | Full sequence (OPN, GetEndpoints, CreateSession, ActivateSession, Read) completed successfully |
+| 2 | Bulk tag polling | 100 tags, 1 s polling interval | **PASS** | 63 reads/sec, 20 MB memory usage, zero data errors |
+| 3 | High-frequency polling | 10 tags, 100 ms polling interval | **PASS** | 100 reads/sec (exact match with expected throughput), stable memory |
+| 4 | Multi-device parallel | 3 devices (2 healthy + 1 unavailable) | **PASS** | Healthy devices operated independently; failed device triggered automatic reconnection |
+| 5 | Graceful degradation | Including an unavailable device | **PASS** | Circuit breaker remained Closed, reconnection attempted every 10 s, no impact on other devices |
+
+### Performance Measurements
+
+| Metric | Measured Value | Notes |
+|--------|----------------|-------|
+| Read throughput (100 tags, 1 s polling) | ~63 reads/sec | Individual per-tag reads |
+| Read throughput (10 tags, 100 ms polling) | ~100 reads/sec | Exact match with expected value |
+| Memory usage | ~20 MB RSS | During 100-tag polling |
+| OPC UA session establishment time | < 1 second | GetEndpoints, CreateSession, ActivateSession |
+| Automatic reconnection interval | 10 seconds | Via `DriverManager::spawn_reconnect_monitor()` |
 
 ---
 
-## 교훈
+## Modified Files Summary
 
-1. **OPC UA 바이너리 프로토콜의 메시지 래핑 구분**: MSG 최상위 서비스 페이로드는 `NodeId + body`로 직접 인코딩되며, `ExtensionObject` 형식은 `AdditionalHeader` 같은 내부 필드에만 사용됨 (Part 6, Section 6.7.3)
-2. **LocalizedText vs String**: OPC UA의 `LocalizedText`는 `encoding_mask` 바이트가 선행하므로 단순 `String` 2개로 대체할 수 없음. 1바이트 차이가 이후 전체 필드 파싱을 무너뜨림
-3. **부분 파싱의 위험성**: 요청의 일부 필드만 파싱하면 가변 길이 필드(String, ByteString, Array 등)의 오프셋이 어긋나 후속 필드에서 예측 불가능한 에러 발생. 전체 필드를 순서대로 읽어야 함
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `crates/mabi-opcua/src/service/registry.rs` | **Bugfix** | Changed `dispatch()` decoding from ExtensionObject to raw NodeId + body |
+| `crates/mabi-opcua/src/service/session.rs` | **Bugfix** | Corrected `CreateSessionHandler` request parsing to properly decode LocalizedText and all ApplicationDescription fields |
+| `crates/mabi-opcua/src/transport/connection.rs` | **Bugfix** | Changed `build_service_fault()` response encoding from ExtensionObject to raw NodeId + body |
+
+---
+
+## Lessons Learned
+
+1. **Message wrapping distinctions in the OPC UA binary protocol**: The top-level service payload within an MSG message is encoded directly as `NodeId + body`. The `ExtensionObject` format is reserved for internal fields such as `AdditionalHeader` (Part 6, Section 6.7.3).
+2. **LocalizedText vs. String**: The OPC UA `LocalizedText` type is preceded by an `encoding_mask` byte and therefore cannot be substituted with two separate `String` values. A single byte discrepancy corrupts the parsing of all subsequent fields.
+3. **Risks of partial parsing**: Parsing only a subset of request fields causes byte offset misalignment on variable-length fields (String, ByteString, Array, etc.), leading to unpredictable errors in downstream fields. All fields must be read sequentially in their entirety.
