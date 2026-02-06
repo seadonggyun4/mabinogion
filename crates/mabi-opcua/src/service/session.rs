@@ -82,6 +82,13 @@ impl ServiceHandler for CreateSessionHandler {
         let session_info = context.session_manager.create_session(&session_name)
             .map_err(|e| crate::error::OpcUaError::Server(format!("Create session failed: {:?}", e)))?;
 
+        // Link session to this connection's context so subsequent requests
+        // (ActivateSession, Read, Write, Browse, etc.) can use it.
+        context.set_session(
+            session_info.session_id.clone(),
+            session_info.authentication_token.clone(),
+        );
+
         // Build response
         let mut out = BytesMut::new();
         ResponseHeader::good(header.request_handle).encode(&mut out)?;
@@ -153,9 +160,13 @@ impl ServiceHandler for ActivateSessionHandler {
         let header = RequestHeader::decode(&mut buf)?;
         let _additional_header = ExtensionObject::decode(&mut buf)?;
 
-        // Activate the session using the auth token from the request header
-        if let Some(ref session_id) = context.session_id {
-            let _ = context.session_manager.activate_session(session_id, UserIdentity::Anonymous);
+        // Activate the session using the session ID stored in the context
+        if let Some(session_id) = context.current_session_id() {
+            let _ = context.session_manager.activate_session(&session_id, UserIdentity::Anonymous);
+        } else {
+            return Err(crate::error::OpcUaError::InvalidState(
+                "No session created on this connection; call CreateSession first".into(),
+            ));
         }
 
         // Build response
@@ -197,8 +208,9 @@ impl ServiceHandler for CloseSessionHandler {
         let header = RequestHeader::decode(&mut buf)?;
         let _additional_header = ExtensionObject::decode(&mut buf)?;
 
-        if let Some(ref session_id) = context.session_id {
-            let _ = context.session_manager.close_session(session_id);
+        if let Some(session_id) = context.current_session_id() {
+            let _ = context.session_manager.close_session(&session_id);
+            context.clear_session();
         }
 
         let mut out = BytesMut::new();

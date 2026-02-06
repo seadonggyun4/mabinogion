@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use parking_lot::RwLock;
 use tracing::{debug, warn};
 
 use crate::codec::encoder::BinaryEncodable;
@@ -20,6 +21,10 @@ use crate::config::OpcUaServerConfig;
 use crate::channel::secure_channel::SecureChannel;
 
 /// Context passed to every service handler invocation.
+///
+/// Session-related fields use interior mutability so that handlers like
+/// `CreateSessionHandler` can set `session_id` / `auth_token` without
+/// requiring exclusive ownership of the context.
 pub struct ServiceContext {
     pub session_manager: Arc<SessionManager>,
     pub address_space: Arc<AddressSpace>,
@@ -30,9 +35,35 @@ pub struct ServiceContext {
     /// The secure channel for this connection.
     pub channel: Arc<SecureChannel>,
     /// The session ID for the authenticated session (if any).
-    pub session_id: Option<NodeId>,
+    /// Updated by CreateSession / closed by CloseSession.
+    pub session_id: RwLock<Option<NodeId>>,
     /// The authentication token for the current session (if any).
-    pub auth_token: Option<NodeId>,
+    /// Updated by CreateSession.
+    pub auth_token: RwLock<Option<NodeId>>,
+}
+
+impl ServiceContext {
+    /// Set session identity after CreateSession succeeds.
+    pub fn set_session(&self, session_id: NodeId, auth_token: NodeId) {
+        *self.session_id.write() = Some(session_id);
+        *self.auth_token.write() = Some(auth_token);
+    }
+
+    /// Clear session identity (called when session is closed).
+    pub fn clear_session(&self) {
+        *self.session_id.write() = None;
+        *self.auth_token.write() = None;
+    }
+
+    /// Read the current session ID.
+    pub fn current_session_id(&self) -> Option<NodeId> {
+        self.session_id.read().clone()
+    }
+
+    /// Read the current auth token.
+    pub fn current_auth_token(&self) -> Option<NodeId> {
+        self.auth_token.read().clone()
+    }
 }
 
 /// Trait for OPC UA service handlers.

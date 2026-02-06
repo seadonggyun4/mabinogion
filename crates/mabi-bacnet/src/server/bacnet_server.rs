@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 
 use crate::apdu::encoding::ApduEncoder;
@@ -24,6 +24,7 @@ use crate::service::discovery::WhoIsHandler;
 use crate::service::handler::{ServiceContext, ServiceRegistry, ServiceResult};
 use crate::service::property::{ReadPropertyHandler, WritePropertyHandler};
 use crate::service::property_multiple::{ReadPropertyMultipleHandler, WritePropertyMultipleHandler};
+use crate::service::subscribe_cov::SubscribeCovHandler;
 
 use super::metrics::{LatencyTimer, ServerMetrics};
 
@@ -119,6 +120,8 @@ pub struct BACnetServer {
     objects: Arc<ObjectRegistry>,
     services: Arc<ServiceRegistry>,
     metrics: Arc<ServerMetrics>,
+    cov_manager: Arc<CovManager>,
+    cov_rx: tokio::sync::Mutex<mpsc::Receiver<CovNotification>>,
     shutdown: Arc<AtomicBool>,
     shutdown_tx: broadcast::Sender<()>,
     event_tx: broadcast::Sender<ServerEvent>,
@@ -130,6 +133,11 @@ impl BACnetServer {
         let (shutdown_tx, _) = broadcast::channel(1);
         let (event_tx, _) = broadcast::channel(64);
 
+        // Create COV manager early so the SubscribeCOV handler can use it
+        let (cov_manager, cov_rx) =
+            CovManager::new(config.device_instance, config.max_cov_subscriptions);
+        let cov_manager = Arc::new(cov_manager);
+
         // Create service registry with default handlers
         let mut services = ServiceRegistry::new();
         // Property services
@@ -138,6 +146,8 @@ impl BACnetServer {
         // Property multiple services (batch operations)
         services.register_confirmed(Arc::new(ReadPropertyMultipleHandler::new()));
         services.register_confirmed(Arc::new(WritePropertyMultipleHandler::new()));
+        // COV services
+        services.register_confirmed(Arc::new(SubscribeCovHandler::new(cov_manager.clone())));
         // Discovery services
         services.register_unconfirmed(Arc::new(WhoIsHandler::new(
             config.device_instance,
@@ -151,6 +161,8 @@ impl BACnetServer {
             objects: Arc::new(objects),
             services: Arc::new(services),
             metrics: Arc::new(ServerMetrics::new()),
+            cov_manager,
+            cov_rx: tokio::sync::Mutex::new(cov_rx),
             shutdown: Arc::new(AtomicBool::new(false)),
             shutdown_tx,
             event_tx,
@@ -208,10 +220,14 @@ impl BACnetServer {
             address: local_addr,
         });
 
-        // Create COV manager
-        let (cov_manager, mut cov_rx) =
-            CovManager::new(self.config.device_instance, self.config.max_cov_subscriptions);
-        let cov_manager = Arc::new(cov_manager);
+        // Take the COV receiver out of the server (can only run once)
+        let cov_manager = self.cov_manager.clone();
+        let mut cov_rx = {
+            let mut guard = self.cov_rx.lock().await;
+            // Replace with a dummy channel — the original receiver is consumed
+            let (_dummy_tx, dummy_rx) = mpsc::channel(1);
+            std::mem::replace(&mut *guard, dummy_rx)
+        };
 
         // Spawn network receive loop
         let shutdown_clone = self.shutdown.clone();

@@ -167,8 +167,8 @@ pub async fn handle_connection(
         security_manager: service_context_template.security_manager.clone(),
         server_config: service_context_template.server_config.clone(),
         channel: channel.clone(),
-        session_id: None,
-        auth_token: None,
+        session_id: parking_lot::RwLock::new(None),
+        auth_token: parking_lot::RwLock::new(None),
     });
 
     // =====================================================================
@@ -251,6 +251,28 @@ pub async fn handle_connection(
             }
             MessageType::CloseSecureChannel => {
                 debug!(peer = %peer, "Received CLO — closing channel");
+
+                // Clean up session if one exists
+                if let Some(session_id) = context.current_session_id() {
+                    let _ = context.session_manager.close_session(&session_id);
+                    context.clear_session();
+                    debug!(peer = %peer, "Session closed during CLO");
+                }
+
+                // Send CLO response per OPC UA spec (mirror the CLO message type)
+                let clo_body = build_msg_response_body(
+                    channel.channel_id(),
+                    channel.token_id(),
+                    &SequenceHeader {
+                        sequence_number: channel.next_server_sequence_number(),
+                        request_id: 0,
+                    },
+                    &[],
+                );
+                let _ = framed
+                    .send(build_response(MessageType::CloseSecureChannel, clo_body))
+                    .await;
+
                 break;
             }
             other => {

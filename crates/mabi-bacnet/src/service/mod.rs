@@ -32,6 +32,7 @@ pub mod discovery;
 pub mod handler;
 pub mod property;
 pub mod property_multiple;
+pub mod subscribe_cov;
 
 pub use cov::{CovManager, CovNotification, CovSubscription};
 pub use discovery::{DiscoveryService, IAmResponse, WhoIsRequest};
@@ -50,3 +51,4 @@ pub use property_multiple::{
     // Reusable abstractions
     PropertyReference, PropertyAccessResult, PropertyValueWrite,
 };
+pub use subscribe_cov::SubscribeCovHandler;
