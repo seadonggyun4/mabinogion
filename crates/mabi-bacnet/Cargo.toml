@@ -14,7 +14,7 @@ keywords = ["bacnet", "protocol", "simulator", "building-automation", "hvac"]
 categories = ["simulation", "network-programming"]
 
 [dependencies]
-mabi-core = { version = "1.1.7", path = "../mabi-core" }
+mabi-core = { version = "1.1.8", path = "../mabi-core" }
 
 # Async
 tokio = { workspace = true }
