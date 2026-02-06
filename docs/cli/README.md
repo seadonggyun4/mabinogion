@@ -206,7 +206,7 @@ mabi bacnet [OPTIONS]
 |--------|-------|------|---------|-------------|
 | `--port` | `-p` | u16 | 47808 | UDP port to bind (1–65535) |
 | `--instance` | `-i` | u32 | 1234 | BACnet device instance number |
-| `--objects` | `-o` | usize | 100 | Number of BACnet objects (≥ 1) |
+| `--objects` | `-o` | usize | 100 | Number of BACnet objects (≥ 1). 4개 타입(AI, AO, BI, BO)에 균등 분배, 인스턴스 0부터 시작 |
 | `--bbmd` | | flag | false | Enable BBMD functionality |
 | `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
 
@@ -217,6 +217,7 @@ mabi bacnet [OPTIONS]
 mabi bacnet
 
 # Start with custom instance and objects
+# → AI_0..AI_249, AO_0..AO_249, BI_0..BI_249, BO_0..BO_249
 mabi bacnet --instance 5000 --objects 1000
 
 # Enable BBMD

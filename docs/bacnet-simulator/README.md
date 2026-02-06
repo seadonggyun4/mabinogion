@@ -161,6 +161,24 @@ The simulator includes BBMD support for cross-subnet communication:
 - **Foreign Device Table (FDT):** Tracks registered foreign devices with TTL
 - Automatic entry expiration and cleanup
 
+### APDU Encoding
+
+`ApduEncoder`는 BACnet APDU 메시지의 구조화된 인코딩을 담당합니다. Application Tag 기반의 타입 안전 인코딩을 제공하며, Error PDU 등 복합 PDU 구성을 위한 전용 메서드를 포함합니다.
+
+#### Error PDU (ASHRAE 135, Clause 21.8)
+
+Error PDU는 Confirmed Service 요청 실패 시 반환되며, `error-class`와 `error-code`를 **Enumerated** (Application Tag 9)로 인코딩합니다.
+
+```rust
+let mut encoder = ApduEncoder::new();
+encoder.encode_error_pdu(invoke_id, service_choice, error_class, error_code);
+```
+
+```text
+| 0x50 | Invoke ID | Service Choice | Error Class  | Error Code   |
+|  1B  |    1B     |      1B        | Tag9 + Value | Tag9 + Value |
+```
+
 ### APDU Segmentation
 
 For messages exceeding the maximum APDU length, the simulator supports:
@@ -235,6 +253,30 @@ let config = ServerConfig::new(1234)
 // Create and run server
 let server = BACnetServer::new(config, registry);
 server.run().await?;
+```
+
+### Bulk Object Creation
+
+CLI 및 대량 시뮬레이션 시나리오에서는 `ObjectTypeDescriptor` 기반의 데이터 주도 생성을 사용합니다. 인스턴스 번호는 ASHRAE 135 표준에 따라 **0부터** 시작하며, 이름은 `{prefix}_{instance}` 패턴을 따릅니다.
+
+```rust
+use mabi_bacnet::prelude::*;
+
+let registry = ObjectRegistry::new();
+
+// 기본 4개 타입 (AI, AO, BI, BO) 디스크립터 사용
+let descriptors = default_object_descriptors();
+registry.populate_standard_objects(&descriptors, 50);
+// → AI_0..AI_49, AO_0..AO_49, BI_0..BI_49, BO_0..BO_49 (총 200개)
+
+// 커스텀 디스크립터로 특정 타입만 생성 가능
+let custom = vec![
+    ObjectTypeDescriptor {
+        prefix: "AI",
+        create: |instance, name| Arc::new(AnalogInput::new(instance, name)),
+    },
+];
+registry.populate_standard_objects(&custom, 100);
 ```
 
 ### Custom Service Handler
