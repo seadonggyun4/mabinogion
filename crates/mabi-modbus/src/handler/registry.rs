@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use super::{
-    ExceptionCode, FunctionHandler, HandlerContext,
+    ExceptionCode, FunctionHandler, HandlerContext, MaskWriteRegisterHandler,
     ReadCoilsHandler, ReadDiscreteInputsHandler, ReadHoldingRegistersHandler,
     ReadInputRegistersHandler, ReadWriteMultipleRegistersHandler, WriteMultipleCoilsHandler,
     WriteMultipleRegistersHandler, WriteSingleCoilHandler, WriteSingleRegisterHandler,
@@ -84,6 +84,7 @@ impl HandlerRegistry {
         registry.register(Box::new(WriteMultipleCoilsHandler));
         registry.register(Box::new(WriteMultipleRegistersHandler));
         registry.register(Box::new(ReadWriteMultipleRegistersHandler));
+        registry.register(Box::new(MaskWriteRegisterHandler));
 
         registry
     }
@@ -236,9 +237,10 @@ mod tests {
         assert!(registry.has_handler(0x06)); // Write Single Register
         assert!(registry.has_handler(0x0F)); // Write Multiple Coils
         assert!(registry.has_handler(0x10)); // Write Multiple Registers
+        assert!(registry.has_handler(0x16)); // Mask Write Register
         assert!(registry.has_handler(0x17)); // Read/Write Multiple Registers
 
-        assert_eq!(registry.len(), 9);
+        assert_eq!(registry.len(), 10);
     }
 
     #[test]
@@ -300,7 +302,8 @@ mod tests {
         assert!(codes.contains(&0x01));
         assert!(codes.contains(&0x03));
         assert!(codes.contains(&0x10));
-        assert_eq!(codes.len(), 9);
+        assert!(codes.contains(&0x16));
+        assert_eq!(codes.len(), 10);
     }
 
     #[test]

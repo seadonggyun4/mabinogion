@@ -52,5 +52,5 @@ pub use reference::{
     Reference, ReferenceDescription, ReferenceDirection, ReferenceTypeId,
     BrowseDirection, BrowseResult,
 };
-pub use store::{AddressSpace, AddressSpaceConfig, NodeStoreStats};
+pub use store::{AddressSpace, AddressSpaceConfig, NodeStoreStats, RelativePathElement, BrowsePathResult, BrowsePathTarget};
 pub use variables::{VariableFactory, AnalogVariable, DiscreteVariable};

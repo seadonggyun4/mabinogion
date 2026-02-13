@@ -284,8 +284,12 @@ impl RtuCodec {
         }
 
         match function_code {
-            // Read requests (fixed 8 bytes)
+            // Read requests and single writes (fixed 8 bytes)
             0x01 | 0x02 | 0x03 | 0x04 | 0x05 | 0x06 => Some(8),
+
+            // Mask Write Register (fixed 10 bytes)
+            // Unit + FC + Addr(2) + And_Mask(2) + Or_Mask(2) + CRC(2)
+            0x16 => Some(10),
 
             // Write multiple coils / registers
             0x0F | 0x10 => {

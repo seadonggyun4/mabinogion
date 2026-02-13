@@ -261,6 +261,31 @@ impl RegisterStore {
         Ok(())
     }
 
+    // === Mask Write operations ===
+
+    /// Perform a mask write operation on a single holding register.
+    ///
+    /// Atomically reads the current value, applies the mask formula, and writes
+    /// the result in a single lock acquisition (prevents TOCTOU).
+    ///
+    /// Formula: `Result = (Current AND And_Mask) OR (Or_Mask AND NOT(And_Mask))`
+    ///
+    /// This implements Modbus FC 0x16 (Mask Write Register) semantics.
+    pub fn mask_write_holding_register(
+        &self,
+        address: u16,
+        and_mask: u16,
+        or_mask: u16,
+    ) -> ModbusResult<u16> {
+        self.validate(RegisterType::HoldingRegister, address, 1)?;
+
+        let mut registers = self.holding_registers.write();
+        let current = registers[address as usize];
+        let result = (current & and_mask) | (or_mask & !and_mask);
+        registers[address as usize] = result;
+        Ok(result)
+    }
+
     // === Generic operations ===
 
     /// Read raw bytes from registers (for f32, f64, etc.).

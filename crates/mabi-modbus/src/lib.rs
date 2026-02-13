@@ -105,6 +105,7 @@
 pub mod config;
 pub mod device;
 pub mod error;
+pub mod fault_injection;
 pub mod handler;
 pub mod register;
 pub mod registers;
@@ -162,6 +163,29 @@ pub use testing::{
     LoadGenerator, LoadConfig, LoadPattern, ConnectionSimulator,
     // Reporting
     TestReport, TestMetrics, TestSummary,
+};
+
+// Re-exports for fault injection
+pub use fault_injection::{
+    FaultAction, FaultPipeline, ModbusFault, ModbusFaultContext, TransportKind,
+    FaultInjectionConfig, FaultConfig, FaultType, FaultTarget,
+    FaultStats, FaultStatsSnapshot,
+    CrcCorruptionFault, WrongUnitIdFault, WrongFunctionCodeFault,
+    WrongTransactionIdFault, TruncatedResponseFault, ExtraDataFault,
+    DelayedResponseFault, NoResponseFault, ExceptionInjectionFault,
+    PartialFrameFault,
+};
+
+// Re-exports for connection disruption
+pub use fault_injection::connection_disruption::{
+    ConnectionDisruptionConfig, ConnectionDisruptionState, DisruptionAction,
+};
+
+// Re-exports for RTU timing faults
+pub use fault_injection::rtu_timing::{
+    RtuTimingFaultConfig, InterCharGapConfig, GapPosition,
+    BusCollisionConfig, CollisionMode,
+    ByteJitterConfig, TimingPlan, TimingSegment,
 };
 
 // Re-exports for runtime configuration

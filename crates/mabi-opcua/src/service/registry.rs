@@ -19,6 +19,7 @@ use crate::services::{SessionManager, SubscriptionManager, HistoryStore};
 use crate::security::SecurityManager;
 use crate::config::OpcUaServerConfig;
 use crate::channel::secure_channel::SecureChannel;
+use crate::service::method_call::MethodRegistry;
 
 /// Context passed to every service handler invocation.
 ///
@@ -32,6 +33,8 @@ pub struct ServiceContext {
     pub history_store: Arc<HistoryStore>,
     pub security_manager: Arc<SecurityManager>,
     pub server_config: Arc<OpcUaServerConfig>,
+    /// Method call registry for Call service.
+    pub method_registry: Arc<MethodRegistry>,
     /// The secure channel for this connection.
     pub channel: Arc<SecureChannel>,
     /// The session ID for the authenticated session (if any).

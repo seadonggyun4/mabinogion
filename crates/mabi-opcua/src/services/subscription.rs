@@ -16,7 +16,8 @@ use tokio::time::interval;
 use tracing::{debug, info, trace, warn};
 
 use crate::types::{NodeId, DataValue};
-use super::monitored_item::{MonitoredItem, MonitoredItemConfig, MonitoredItemNotification};
+use super::event::{EventFieldList, EventFilter};
+use super::monitored_item::{MonitoredItem, MonitoredItemConfig, MonitoredItemKind, MonitoredItemNotification};
 
 /// Subscription configuration.
 #[derive(Debug, Clone)]
@@ -97,8 +98,10 @@ pub struct Subscription {
     keep_alive_counter: u32,
     /// Lifetime counter.
     lifetime_counter: u32,
-    /// Pending notifications.
+    /// Pending data change notifications.
     pending_notifications: Vec<MonitoredItemNotification>,
+    /// Pending event notifications.
+    pending_event_notifications: Vec<EventFieldList>,
     /// Last publish time.
     last_publish_time: DateTime<Utc>,
     /// Creation time.
@@ -117,6 +120,7 @@ impl Subscription {
             keep_alive_counter: 0,
             lifetime_counter: 0,
             pending_notifications: Vec::new(),
+            pending_event_notifications: Vec::new(),
             last_publish_time: Utc::now(),
             created_at: Utc::now(),
         }
@@ -201,7 +205,7 @@ impl Subscription {
         }
     }
 
-    /// Process pending notifications.
+    /// Process pending notifications (both data change and events).
     pub fn process_publish(&mut self) -> Option<NotificationMessage> {
         if !self.config.publishing_enabled {
             return None;
@@ -210,8 +214,11 @@ impl Subscription {
         // Reset lifetime counter on publish
         self.lifetime_counter = 0;
 
-        // Check if there are notifications to send
-        if self.pending_notifications.is_empty() {
+        let has_data_notifications = !self.pending_notifications.is_empty();
+        let has_event_notifications = !self.pending_event_notifications.is_empty();
+
+        // Check if there are any notifications to send
+        if !has_data_notifications && !has_event_notifications {
             self.keep_alive_counter += 1;
 
             if self.keep_alive_counter >= self.config.max_keep_alive_count {
@@ -224,6 +231,7 @@ impl Subscription {
                     sequence_number: self.sequence_number,
                     publish_time: Utc::now(),
                     notifications: Vec::new(),
+                    event_notifications: Vec::new(),
                     more_notifications: false,
                 });
             }
@@ -231,7 +239,7 @@ impl Subscription {
             return None;
         }
 
-        // Take notifications up to max
+        // Take data change notifications up to max
         let max = self.config.max_notifications_per_publish as usize;
         let notifications: Vec<_> = if self.pending_notifications.len() > max {
             self.pending_notifications.drain(..max).collect()
@@ -239,13 +247,25 @@ impl Subscription {
             std::mem::take(&mut self.pending_notifications)
         };
 
-        let more = !self.pending_notifications.is_empty();
+        // Take event notifications up to max (remaining budget after data changes)
+        let event_budget = max.saturating_sub(notifications.len());
+        let event_notifications: Vec<_> = if event_budget == 0 {
+            Vec::new()
+        } else if self.pending_event_notifications.len() > event_budget {
+            self.pending_event_notifications.drain(..event_budget).collect()
+        } else {
+            std::mem::take(&mut self.pending_event_notifications)
+        };
+
+        let more = !self.pending_notifications.is_empty()
+            || !self.pending_event_notifications.is_empty();
 
         let message = NotificationMessage {
             subscription_id: self.config.subscription_id,
             sequence_number: self.sequence_number,
             publish_time: Utc::now(),
             notifications,
+            event_notifications,
             more_notifications: more,
         };
 
@@ -255,6 +275,32 @@ impl Subscription {
         self.last_publish_time = Utc::now();
 
         Some(message)
+    }
+
+    /// Push an event notification into the pending event queue.
+    pub fn push_event_notification(&mut self, field_list: EventFieldList) {
+        let max_queue = self.config.max_notifications_per_publish as usize * 2; // generous buffer
+        if self.pending_event_notifications.len() < max_queue {
+            self.pending_event_notifications.push(field_list);
+        }
+    }
+
+    /// Get event-monitoring items with their filters.
+    ///
+    /// Returns a list of (client_handle, EventFilter) for items that have event monitoring enabled.
+    pub fn get_event_monitored_items(&self) -> Vec<(u32, EventFilter)> {
+        self.monitored_items
+            .values()
+            .filter_map(|item| {
+                if item.config().kind == MonitoredItemKind::Event {
+                    item.config().event_filter.as_ref().map(|filter| {
+                        (item.client_handle(), filter.clone())
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// Tick the subscription (advance lifetime counter).
@@ -281,8 +327,10 @@ pub struct NotificationMessage {
     pub sequence_number: u32,
     /// Publish time.
     pub publish_time: DateTime<Utc>,
-    /// Notifications.
+    /// Data change notifications.
     pub notifications: Vec<MonitoredItemNotification>,
+    /// Event notifications (EventFieldList entries).
+    pub event_notifications: Vec<EventFieldList>,
     /// More notifications available.
     pub more_notifications: bool,
 }
@@ -459,6 +507,28 @@ impl SubscriptionManager {
         Ok(item_id)
     }
 
+    /// Modify a monitored item's parameters.
+    pub fn modify_monitored_item(
+        &self,
+        subscription_id: u32,
+        item_id: u32,
+        sampling_interval_ms: f64,
+        queue_size: u32,
+        discard_oldest: bool,
+    ) -> Result<(), SubscriptionError> {
+        let subscription = self.subscriptions
+            .get(&subscription_id)
+            .ok_or(SubscriptionError::SubscriptionNotFound)?;
+
+        let mut sub = subscription.write();
+        let item = sub.get_monitored_item_mut(item_id)
+            .ok_or(SubscriptionError::MonitoredItemNotFound)?;
+
+        item.modify(sampling_interval_ms, queue_size, discard_oldest, None);
+        debug!(subscription_id, item_id, "Monitored item modified");
+        Ok(())
+    }
+
     /// Delete a monitored item.
     pub fn delete_monitored_item(
         &self,
@@ -492,7 +562,8 @@ impl SubscriptionManager {
             subscription_id,
             available_sequence_numbers: vec![sub.sequence_number],
             notification_message,
-            more_notifications: !sub.pending_notifications.is_empty(),
+            more_notifications: !sub.pending_notifications.is_empty()
+                || !sub.pending_event_notifications.is_empty(),
         })
     }
 
@@ -506,9 +577,9 @@ impl SubscriptionManager {
                 // Tick for lifetime management
                 sub.tick();
 
-                // Process notifications
+                // Process notifications (data change + events)
                 sub.process_publish()
-                    .filter(|msg| !msg.notifications.is_empty())
+                    .filter(|msg| !msg.notifications.is_empty() || !msg.event_notifications.is_empty())
             })
             .collect();
 
@@ -548,6 +619,23 @@ impl SubscriptionManager {
     /// Take the notification receiver.
     pub fn take_notification_receiver(&self) -> Option<mpsc::Receiver<NotificationMessage>> {
         self.notification_rx.write().take()
+    }
+
+    /// Get event-monitoring items for a subscription.
+    ///
+    /// Returns a list of (client_handle, EventFilter) for items that have event monitoring enabled.
+    pub fn get_event_monitored_items(&self, subscription_id: u32) -> Vec<(u32, EventFilter)> {
+        match self.subscriptions.get(&subscription_id) {
+            Some(sub) => sub.read().get_event_monitored_items(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Push an event notification into a subscription's pending event queue.
+    pub fn push_event_notification(&self, subscription_id: u32, field_list: EventFieldList) {
+        if let Some(sub) = self.subscriptions.get(&subscription_id) {
+            sub.write().push_event_notification(field_list);
+        }
     }
 }
 
@@ -606,6 +694,7 @@ mod tests {
             queue_size: 10,
             discard_oldest: true,
             filter: None,
+            ..Default::default()
         };
 
         let item_id = manager.create_monitored_item(sub_id, item_config).unwrap();
@@ -634,6 +723,7 @@ mod tests {
             queue_size: 10,
             discard_oldest: true,
             filter: None,
+            ..Default::default()
         };
 
         subscription.create_monitored_item(item_config);

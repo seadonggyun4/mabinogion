@@ -54,6 +54,6 @@ pub use read::{
 pub use registry::HandlerRegistry;
 pub use traits::{FunctionHandler, FunctionHandlerExt, HandlerContext, HandlerResult};
 pub use write::{
-    ReadWriteMultipleRegistersHandler, WriteMultipleCoilsHandler, WriteMultipleRegistersHandler,
-    WriteSingleCoilHandler, WriteSingleRegisterHandler,
+    MaskWriteRegisterHandler, ReadWriteMultipleRegistersHandler, WriteMultipleCoilsHandler,
+    WriteMultipleRegistersHandler, WriteSingleCoilHandler, WriteSingleRegisterHandler,
 };

@@ -23,6 +23,10 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::config::ModbusServerConfig;
 use crate::device::ModbusDevice;
 use crate::error::ModbusResult;
+use crate::fault_injection::connection_disruption::{
+    ConnectionDisruptionConfig, ConnectionDisruptionState, DisruptionAction,
+};
+use crate::fault_injection::{FaultAction, FaultPipeline, ModbusFaultContext};
 use crate::handler::{build_exception_pdu, ExceptionCode, HandlerContext, HandlerRegistry};
 use crate::register::RegisterStore;
 
@@ -137,6 +141,12 @@ pub struct ModbusTcpServerV2 {
 
     /// Event broadcaster.
     event_tx: broadcast::Sender<ServerEvent>,
+
+    /// Optional fault injection pipeline.
+    fault_pipeline: Option<Arc<FaultPipeline>>,
+
+    /// Optional TCP connection disruption config.
+    connection_disruption: Option<Arc<ConnectionDisruptionConfig>>,
 }
 
 impl ModbusTcpServerV2 {
@@ -156,6 +166,8 @@ impl ModbusTcpServerV2 {
             shutdown: Arc::new(AtomicBool::new(false)),
             shutdown_tx,
             event_tx,
+            fault_pipeline: None,
+            connection_disruption: None,
         }
     }
 
@@ -167,6 +179,18 @@ impl ModbusTcpServerV2 {
     /// Set custom handler registry.
     pub fn with_handlers(mut self, handlers: HandlerRegistry) -> Self {
         self.handlers = Arc::new(handlers);
+        self
+    }
+
+    /// Set fault injection pipeline.
+    pub fn with_fault_pipeline(mut self, pipeline: FaultPipeline) -> Self {
+        self.fault_pipeline = Some(Arc::new(pipeline));
+        self
+    }
+
+    /// Set TCP connection disruption configuration.
+    pub fn with_connection_disruption(mut self, config: ConnectionDisruptionConfig) -> Self {
+        self.connection_disruption = Some(Arc::new(config));
         self
     }
 
@@ -301,6 +325,8 @@ impl ModbusTcpServerV2 {
         let metrics = self.metrics.clone();
         let shutdown = self.shutdown.clone();
         let config = self.config.clone();
+        let fault_pipeline = self.fault_pipeline.clone();
+        let connection_disruption = self.connection_disruption.clone();
 
         tokio::spawn(async move {
             let result = handle_connection(
@@ -314,6 +340,8 @@ impl ModbusTcpServerV2 {
                 metrics.clone(),
                 shutdown,
                 config,
+                fault_pipeline,
+                connection_disruption,
             )
             .await;
 
@@ -366,6 +394,8 @@ async fn handle_connection(
     metrics: Arc<ServerMetrics>,
     shutdown: Arc<AtomicBool>,
     config: ServerConfigV2,
+    fault_pipeline: Option<Arc<FaultPipeline>>,
+    connection_disruption: Option<Arc<ConnectionDisruptionConfig>>,
 ) -> ModbusResult<()> {
     debug!(peer = %peer_addr, connection_id, "Connection established");
 
@@ -376,6 +406,12 @@ async fn handle_connection(
 
     // Create framed codec
     let mut framed = Framed::new(stream, MbapCodec::new());
+    let mut request_number: u64 = 0;
+
+    // Initialize connection disruption state if configured
+    let disruption_state = connection_disruption
+        .as_ref()
+        .map(|cfg| ConnectionDisruptionState::new((**cfg).clone()));
 
     loop {
         // Check shutdown
@@ -471,33 +507,183 @@ async fn handle_connection(
             }
         };
 
-        // Send response
-        let is_exception = response_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
-        let response = MbapFrame::response(&frame, response_pdu);
-        let response_bytes = response.frame_size() as u64;
-
-        if let Err(e) = framed.send(response).await {
-            warn!(peer = %peer_addr, error = %e, "Failed to send response");
-            break;
-        }
-
-        // Record metrics
-        let latency = timer.elapsed_us();
-        if is_exception {
-            metrics.record_exception(latency, request_bytes, response_bytes);
+        // Apply fault injection pipeline (if configured)
+        request_number += 1;
+        let fault_action = if let Some(ref pipeline) = fault_pipeline {
+            let fault_ctx = ModbusFaultContext::tcp(
+                unit_id,
+                function_code,
+                &frame.pdu,
+                &response_pdu,
+                frame.header.transaction_id,
+                request_number,
+            );
+            pipeline.apply(&fault_ctx)
         } else {
-            metrics.record_success(latency, request_bytes, response_bytes);
+            None
+        };
+
+        match fault_action {
+            Some(FaultAction::DropResponse) => {
+                // Silent drop - no response sent
+                debug!(peer = %peer_addr, unit_id, fc = function_code, "Fault: dropping response");
+                let latency = timer.elapsed_us();
+                metrics.record_success(latency, request_bytes, 0);
+                continue;
+            }
+            Some(FaultAction::DelayThenSend { delay, response: fault_pdu }) => {
+                tokio::time::sleep(delay).await;
+                let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
+                let response = MbapFrame::response(&frame, fault_pdu);
+                let response_bytes = response.frame_size() as u64;
+                if let Err(e) = framed.send(response).await {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send delayed response");
+                    break;
+                }
+                let latency = timer.elapsed_us();
+                if is_exception {
+                    metrics.record_exception(latency, request_bytes, response_bytes);
+                } else {
+                    metrics.record_success(latency, request_bytes, response_bytes);
+                }
+                connections.record_request(connection_id, unit_id, function_code, !is_exception, latency, request_bytes, response_bytes);
+            }
+            Some(FaultAction::OverrideTransactionId { transaction_id, response: fault_pdu }) => {
+                let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
+                let mut response = MbapFrame::response(&frame, fault_pdu);
+                response.header.transaction_id = transaction_id;
+                let response_bytes = response.frame_size() as u64;
+                if let Err(e) = framed.send(response).await {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send response with overridden TID");
+                    break;
+                }
+                let latency = timer.elapsed_us();
+                if is_exception {
+                    metrics.record_exception(latency, request_bytes, response_bytes);
+                } else {
+                    metrics.record_success(latency, request_bytes, response_bytes);
+                }
+                connections.record_request(connection_id, unit_id, function_code, !is_exception, latency, request_bytes, response_bytes);
+            }
+            Some(FaultAction::SendRawBytes(raw_bytes)) => {
+                // For TCP: raw bytes include the complete MBAP frame, send directly
+                use tokio::io::AsyncWriteExt;
+                let inner = framed.get_mut();
+                let response_bytes = raw_bytes.len() as u64;
+                if let Err(e) = inner.write_all(&raw_bytes).await {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send raw bytes");
+                    break;
+                }
+                let _ = inner.flush().await;
+                let latency = timer.elapsed_us();
+                metrics.record_success(latency, request_bytes, response_bytes);
+                connections.record_request(connection_id, unit_id, function_code, true, latency, request_bytes, response_bytes);
+            }
+            Some(FaultAction::SendResponse(fault_pdu)) => {
+                let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
+                let response = MbapFrame::response(&frame, fault_pdu);
+                let response_bytes = response.frame_size() as u64;
+                if let Err(e) = framed.send(response).await {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send faulted response");
+                    break;
+                }
+                let latency = timer.elapsed_us();
+                if is_exception {
+                    metrics.record_exception(latency, request_bytes, response_bytes);
+                } else {
+                    metrics.record_success(latency, request_bytes, response_bytes);
+                }
+                connections.record_request(connection_id, unit_id, function_code, !is_exception, latency, request_bytes, response_bytes);
+            }
+            Some(FaultAction::SendPartial { bytes }) => {
+                // Partial frames are RTU-only, but handle gracefully for TCP
+                use tokio::io::AsyncWriteExt;
+                let inner = framed.get_mut();
+                let response_bytes = bytes.len() as u64;
+                if let Err(e) = inner.write_all(&bytes).await {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send partial bytes");
+                    break;
+                }
+                let _ = inner.flush().await;
+                let latency = timer.elapsed_us();
+                metrics.record_success(latency, request_bytes, response_bytes);
+                connections.record_request(connection_id, unit_id, function_code, true, latency, request_bytes, response_bytes);
+            }
+            None => {
+                // No fault — normal response path
+                let is_exception = response_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
+                let response = MbapFrame::response(&frame, response_pdu);
+                let response_bytes = response.frame_size() as u64;
+
+                if let Err(e) = framed.send(response).await {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send response");
+                    break;
+                }
+
+                // Record metrics
+                let latency = timer.elapsed_us();
+                if is_exception {
+                    metrics.record_exception(latency, request_bytes, response_bytes);
+                } else {
+                    metrics.record_success(latency, request_bytes, response_bytes);
+                }
+
+                connections.record_request(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    !is_exception,
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                );
+            }
         }
 
-        connections.record_request(
-            connection_id,
-            unit_id,
-            function_code,
-            !is_exception,
-            latency,
-            request_bytes,
-            response_bytes,
-        );
+        // Apply connection disruption (if configured)
+        if let Some(ref state) = disruption_state {
+            match state.record_request() {
+                DisruptionAction::None => {}
+                DisruptionAction::Disconnect { close_delay, use_rst: _ } => {
+                    debug!(peer = %peer_addr, "Connection disruption: disconnect");
+                    if let Some(delay) = close_delay {
+                        tokio::time::sleep(delay).await;
+                    }
+                    // Drop the framed transport to close the connection.
+                    // TCP RST vs FIN is OS-controlled; the abrupt drop without
+                    // a graceful shutdown will typically produce a RST if there's
+                    // unread data in the receive buffer.
+                    break;
+                }
+                DisruptionAction::DropMidFrame { close_delay, use_rst: _ } => {
+                    debug!(peer = %peer_addr, "Connection disruption: drop mid-frame");
+                    if let Some(delay) = close_delay {
+                        tokio::time::sleep(delay).await;
+                    }
+                    break;
+                }
+                DisruptionAction::RstAfterPartial { byte_count, close_delay, use_rst: _ } => {
+                    debug!(peer = %peer_addr, byte_count, "Connection disruption: RST after partial");
+                    // Send partial garbage bytes then close
+                    use tokio::io::AsyncWriteExt;
+                    let garbage: Vec<u8> = (0..byte_count).map(|i| i as u8).collect();
+                    let inner = framed.get_mut();
+                    let _ = inner.write_all(&garbage).await;
+                    let _ = inner.flush().await;
+                    if let Some(delay) = close_delay {
+                        tokio::time::sleep(delay).await;
+                    }
+                    break;
+                }
+                DisruptionAction::HoldOpen { duration } => {
+                    debug!(peer = %peer_addr, ?duration, "Connection disruption: hold open");
+                    state.set_holding_open(true);
+                    tokio::time::sleep(duration).await;
+                    state.set_holding_open(false);
+                    break;
+                }
+            }
+        }
     }
 
     Ok(())

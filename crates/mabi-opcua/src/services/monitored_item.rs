@@ -89,6 +89,21 @@ impl DataChangeFilter {
     }
 }
 
+/// The kind of monitoring: data change or event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MonitoredItemKind {
+    /// Monitor data changes on a variable attribute.
+    DataChange,
+    /// Monitor events on an object with EventNotifier.
+    Event,
+}
+
+impl Default for MonitoredItemKind {
+    fn default() -> Self {
+        Self::DataChange
+    }
+}
+
 /// Monitored item configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitoredItemConfig {
@@ -104,6 +119,13 @@ pub struct MonitoredItemConfig {
     pub discard_oldest: bool,
     /// Data change filter (optional).
     pub filter: Option<DataChangeFilter>,
+    /// The kind of monitoring (data change vs event).
+    #[serde(default)]
+    pub kind: MonitoredItemKind,
+    /// Event filter (only used when kind == Event).
+    /// Serialization is skipped since EventFilter doesn't derive Serialize.
+    #[serde(skip)]
+    pub event_filter: Option<super::event::EventFilter>,
 }
 
 impl Default for MonitoredItemConfig {
@@ -115,6 +137,8 @@ impl Default for MonitoredItemConfig {
             queue_size: 10,
             discard_oldest: true,
             filter: None,
+            kind: MonitoredItemKind::DataChange,
+            event_filter: None,
         }
     }
 }
@@ -125,6 +149,17 @@ impl MonitoredItemConfig {
         Self {
             node_id,
             attribute_id: AttributeId::Value,
+            ..Default::default()
+        }
+    }
+
+    /// Create a new config for monitoring events on a node.
+    pub fn for_event(node_id: NodeId, event_filter: super::event::EventFilter) -> Self {
+        Self {
+            node_id,
+            attribute_id: AttributeId::EventNotifier,
+            kind: MonitoredItemKind::Event,
+            event_filter: Some(event_filter),
             ..Default::default()
         }
     }

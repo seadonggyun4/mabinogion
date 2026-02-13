@@ -134,7 +134,113 @@ impl ServiceHandler for BrowseHandler {
     }
 }
 
+// =========================================================================
+// BrowseNext
+// =========================================================================
+
+const BROWSE_NEXT_REQUEST_ID: u32 = 533;
+const BROWSE_NEXT_RESPONSE_ID: u32 = 536;
+
+pub struct BrowseNextHandler;
+
+#[async_trait]
+impl ServiceHandler for BrowseNextHandler {
+    fn request_type_id(&self) -> NodeId {
+        NodeId::numeric(0, BROWSE_NEXT_REQUEST_ID)
+    }
+
+    async fn handle(
+        &self,
+        request_body: &[u8],
+        context: &ServiceContext,
+    ) -> OpcUaResult<ServiceResponse> {
+        let mut buf = Bytes::copy_from_slice(request_body);
+        let header = RequestHeader::decode(&mut buf)?;
+        let _additional_header = ExtensionObject::decode(&mut buf)?;
+
+        // ReleaseContinuationPoints
+        let release = bool::decode(&mut buf)?;
+
+        // ContinuationPoints array (ByteString[])
+        let count = i32::decode(&mut buf)?;
+
+        let mut out = BytesMut::new();
+        ResponseHeader::good(header.request_handle).encode(&mut out)?;
+
+        // Results array
+        out.put_i32_le(count);
+        for _ in 0..count.max(0) {
+            // ByteString — continuation point
+            let cp_len = i32::decode(&mut buf)?;
+            let continuation_point = if cp_len > 0 {
+                let mut cp = vec![0u8; cp_len as usize];
+                for b in cp.iter_mut() {
+                    *b = u8::decode(&mut buf)?;
+                }
+                cp
+            } else {
+                Vec::new()
+            };
+
+            if continuation_point.is_empty() {
+                StatusCode::BAD_CONTINUATION_POINT_INVALID.encode(&mut out)?;
+                out.put_i32_le(-1); // null continuation point
+                out.put_i32_le(0);  // empty references
+                continue;
+            }
+
+            let result = context.address_space.browse_next(
+                &continuation_point,
+                release,
+                1000, // default max_results for next batch
+            );
+
+            // BrowseResult
+            StatusCode::GOOD.encode(&mut out)?;
+            // ContinuationPoint
+            match &result.continuation_point {
+                Some(cp) => cp.encode(&mut out)?,
+                None => out.put_i32_le(-1),
+            }
+            // References array
+            out.put_i32_le(result.references.len() as i32);
+            for reference in &result.references {
+                // ReferenceDescription (same encoding as Browse)
+                reference.reference_type_id.encode(&mut out)?;
+                reference.is_forward.encode(&mut out)?;
+                reference.node_id.encode(&mut out)?;
+                out.put_u32_le(0); // server_index
+                out.put_i32_le(-1); // namespace_uri (null)
+                reference.browse_name.encode(&mut out)?;
+                reference.display_name.encode(&mut out)?;
+                out.put_u32_le(reference.node_class as u32);
+                match &reference.type_definition {
+                    Some(td) => {
+                        td.encode(&mut out)?;
+                        out.put_u32_le(0);
+                        out.put_i32_le(-1);
+                    }
+                    None => {
+                        NodeId::numeric(0, 0).encode(&mut out)?;
+                        out.put_u32_le(0);
+                        out.put_i32_le(-1);
+                    }
+                }
+            }
+        }
+
+        // DiagnosticInfos (empty)
+        out.put_i32_le(0);
+
+        Ok(ServiceResponse {
+            type_id: NodeId::numeric(0, BROWSE_NEXT_RESPONSE_ID),
+            body: out.to_vec(),
+        })
+    }
+}
+
 /// Register all browse service handlers.
 pub fn register_handlers(registry: &mut super::registry::ServiceRegistry) {
     registry.register(Arc::new(BrowseHandler));
+    registry.register(Arc::new(BrowseNextHandler));
 }

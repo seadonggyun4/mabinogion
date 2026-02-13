@@ -11,18 +11,23 @@ The `mabi-opcua` crate provides an OPC UA (Open Platform Communications Unified 
 ### Server Components
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                         OpcUaServer                                  │
-│  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────┐  │
-│  │ AddressSpace │  │ SessionManager   │  │ SubscriptionManager   │  │
-│  │  (DashMap)   │  │                  │  │                       │  │
-│  └──────────────┘  └──────────────────┘  └───────────────────────┘  │
-│         │                   │                       │               │
-│  ┌──────┴──────┐     ┌──────┴──────┐        ┌──────┴──────┐        │
-│  │  NodeCache  │     │  Security   │        │  History    │        │
-│  │   (LRU)     │     │  Manager    │        │   Store     │        │
-│  └─────────────┘     └─────────────┘        └─────────────┘        │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                            OpcUaServer                                    │
+│  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────┐       │
+│  │ AddressSpace │  │ SessionManager   │  │ SubscriptionManager   │       │
+│  │  (DashMap)   │  │                  │  │ (Data + Event)        │       │
+│  └──────┬───────┘  └──────────────────┘  └───────────┬───────────┘       │
+│         │                                            │                   │
+│  ┌──────┴──────┐  ┌──────────────┐  ┌───────────────┴────────────┐      │
+│  │  NodeCache  │  │  Security    │  │  History    │  EventManager│      │
+│  │   (LRU)     │  │  Manager     │  │   Store     │              │      │
+│  └─────────────┘  └──────────────┘  └─────────────┴──────────────┘      │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────┐      │
+│  │MethodRegistry│  │ ServiceRegistry  │  │ SecureChannel         │      │
+│  │  (DashMap)   │  │ (Handler Dispatch│  │ (Token Renewal)       │      │
+│  └──────────────┘  └──────────────────┘  └───────────────────────┘      │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Node Class Hierarchy
@@ -48,10 +53,13 @@ The `mabi-opcua` crate provides an OPC UA (Open Platform Communications Unified 
 | Module | Description |
 |--------|-------------|
 | [`server`](#server) | OPC UA server implementation with session management |
-| [`address_space`](#address-space) | Node storage and namespace management |
-| [`subscription`](#subscriptions) | Data change subscription and monitored item management |
-| [`history`](#historical-access) | Historical data storage and aggregate computation |
-| [`security`](#security) | Security policies and user authentication |
+| [`address_space`](#address-space) | Node storage, namespace management, and browse continuation points |
+| [`subscription`](#subscriptions) | Data change and event subscription with monitored item management |
+| [`history`](#historical-access) | Historical data storage, aggregate computation, and HistoryRead service |
+| [`event`](#event-system) | Event generation, filtering, and distribution (OPC UA Part 4, Section 7.17) |
+| [`method`](#method-invocation) | Method registry, callback system, and Call service (OPC UA Part 4, Section 5.11) |
+| [`browse`](#browse-services) | Browse, BrowseNext, and TranslateBrowsePathsToNodeIds services |
+| [`security`](#security) | Security policies, user authentication, and secure channel token renewal |
 | [`types`](#data-types) | OPC UA data types and node identifiers |
 | [`cache`](#node-cache) | LRU caching for frequently accessed nodes |
 
@@ -114,6 +122,87 @@ The following standard folders are created when `enable_standard_namespace` is t
 | Types | ns=0;i=86 | Type definitions |
 | Views | ns=0;i=87 | View definitions |
 | Server | ns=0;i=2253 | Server diagnostics |
+
+### Server Capabilities and Operation Limits
+
+The address space includes standard `ServerCapabilities/OperationLimits` nodes (OPC UA Part 5, Section 6.3.2), which enable clients to discover per-request batch sizes:
+
+| Node | NodeId | Default | Description |
+|------|--------|---------|-------------|
+| MaxNodesPerRead | ns=0;i=11565 | 0 (unlimited) | Maximum nodes in a Read request |
+| MaxNodesPerWrite | ns=0;i=11567 | 0 (unlimited) | Maximum nodes in a Write request |
+| MaxNodesPerBrowse | ns=0;i=11570 | 0 (unlimited) | Maximum nodes in a Browse request |
+| MaxNodesPerMethodCall | ns=0;i=11569 | 0 (unlimited) | Maximum nodes in a Call request |
+| MaxNodesPerRegisterNodes | ns=0;i=11571 | 0 (unlimited) | Maximum nodes in RegisterNodes |
+| MaxNodesPerTranslateBrowsePathsToNodeIds | ns=0;i=11572 | 0 (unlimited) | Maximum paths per translate |
+| MaxNodesPerNodeManagement | ns=0;i=11573 | 0 (unlimited) | Maximum nodes per management op |
+| MaxMonitoredItemsPerCall | ns=0;i=11574 | 0 (unlimited) | Maximum monitored items per call |
+
+The `HistoryServerCapabilities` node (ns=0;i=2330) exposes `AccessHistoryDataCapability` (ns=0;i=11192) indicating historical data access support.
+
+### Data Type Hierarchy
+
+The address space includes the standard OPC UA data type tree rooted at `BaseDataType` (ns=0;i=24):
+
+```text
+BaseDataType (i=24)
+├── Boolean (i=1)
+├── String (i=12)
+├── DateTime (i=13)
+├── Guid (i=14)
+├── ByteString (i=15)
+├── XmlElement (i=16)
+├── NodeId (i=17)
+├── ExpandedNodeId (i=18)
+├── StatusCode (i=19)
+├── QualifiedName (i=20)
+├── LocalizedText (i=21)
+├── Number (i=26)
+│   ├── Integer (i=27)
+│   │   ├── SByte (i=2) / Int16 (i=4) / Int32 (i=6) / Int64 (i=8)
+│   │   └── UInteger (i=28)
+│   │       └── Byte (i=3) / UInt16 (i=5) / UInt32 (i=7) / UInt64 (i=9)
+│   ├── Float (i=10)
+│   └── Double (i=11)
+├── Structure (i=22)
+└── Enumeration (i=29)
+```
+
+All nodes are connected via `HasSubtype` references, enabling proper type hierarchy traversal for `OfType` filter operators and `IsAbstract` attribute resolution.
+
+### Event Type Hierarchy
+
+Standard event types rooted at `BaseEventType` (ns=0;i=2041):
+
+| Event Type | NodeId | Description |
+|------------|--------|-------------|
+| BaseEventType | ns=0;i=2041 | Abstract root event type |
+| AuditEventType | ns=0;i=2052 | Audit trail events |
+| SystemEventType | ns=0;i=2130 | System-level events |
+| DeviceFailureEventType | ns=0;i=2131 | Device failure events |
+| BaseModelChangeEventType | ns=0;i=2132 | Model change notifications |
+
+Standard event properties are exposed as `HasProperty` references from `BaseEventType`:
+
+| Property | NodeId | Data Type | Description |
+|----------|--------|-----------|-------------|
+| EventId | ns=0;i=2042 | ByteString | Unique event identifier |
+| EventType | ns=0;i=2043 | NodeId | Event type |
+| SourceNode | ns=0;i=2044 | NodeId | Source node |
+| SourceName | ns=0;i=2045 | String | Source name |
+| Time | ns=0;i=2046 | DateTime | Event timestamp |
+| ReceiveTime | ns=0;i=2047 | DateTime | Server receipt time |
+| Message | ns=0;i=2050 | LocalizedText | Human-readable message |
+| Severity | ns=0;i=2051 | UInt16 | Event severity (0-1000) |
+
+### Browse Continuation Points
+
+The `browse_next()` method supports paginated browsing of large result sets:
+
+- Continuation points are created automatically when results exceed `max_references_returned`
+- Points expire after 5 minutes if not consumed
+- `release_continuation_point()` explicitly frees allocated state
+- Points are stored per-session in the address space
 
 ### Node Classes
 
@@ -386,6 +475,164 @@ let result = history.read_aggregate(
 )?;
 ```
 
+## Event System
+
+The event system (OPC UA Part 4, Section 7.17) provides full event generation, filtering, and distribution to subscriptions.
+
+### EventManager
+
+The `EventManager` processes events and delivers them to all interested subscriptions:
+
+```rust
+use mabi_opcua::EventManager;
+
+let event = EventData::new(
+    NodeId::numeric(0, 2041),  // BaseEventType
+    NodeId::numeric(2, 1001),  // Source node
+    "TemperatureSensor",       // Source name
+    500,                       // Severity
+    "Temperature exceeded threshold",
+)
+.with_field(
+    vec![QualifiedName::new(2, "CurrentValue")],
+    Variant::Double(85.7),
+);
+
+event_manager.fire_event(event).await;
+```
+
+### Event Filter
+
+Event subscriptions use `EventFilter` to specify which fields to return and which events to accept:
+
+```text
+EventFilter (encoding_id i=725)
+├── SelectClauses: SimpleAttributeOperand[]
+│   ├── TypeDefinitionId (NodeId)
+│   ├── BrowsePath (QualifiedName[])
+│   ├── AttributeId (u32)
+│   └── IndexRange (String)
+└── WhereClause: ContentFilterElement[]
+    ├── FilterOperator (u32 enum)
+    └── FilterOperands: ExtensionObject[]
+```
+
+### Content Filter Operators
+
+The where clause supports the following operators for event filtering:
+
+| Operator | Value | Description |
+|----------|-------|-------------|
+| Equals | 0 | Equality comparison |
+| IsNull | 1 | Null check |
+| GreaterThan | 2 | Greater than comparison |
+| LessThan | 3 | Less than comparison |
+| GreaterThanOrEqual | 4 | Greater than or equal |
+| LessThanOrEqual | 5 | Less than or equal |
+| Like | 6 | Pattern matching |
+| Not | 7 | Logical negation |
+| Between | 8 | Range check |
+| InList | 9 | Set membership |
+| And | 10 | Logical AND |
+| Or | 11 | Logical OR |
+| Cast | 12 | Type cast |
+| InView | 13 | View membership |
+| OfType | 14 | Type hierarchy check |
+| RelatedTo | 15 | Reference relationship |
+| BitwiseAnd | 16 | Bitwise AND |
+| BitwiseOr | 17 | Bitwise OR |
+
+The `OfType` operator traverses the `HasSubtype` hierarchy in the address space to evaluate event type membership, supporting up to 50 levels of inheritance depth.
+
+### Monitored Item Kinds
+
+Monitored items are classified by their subscription mode:
+
+| Kind | Description | Filter Type |
+|------|-------------|-------------|
+| DataChange | Monitors node value changes | DataChangeFilter (deadband, trigger) |
+| Event | Monitors events from source nodes | EventFilter (select + where clauses) |
+
+## Method Invocation
+
+The Call service (OPC UA Part 4, Section 5.11.2) enables remote procedure call via the `MethodRegistry`:
+
+```rust
+use mabi_opcua::MethodRegistry;
+
+let registry = MethodRegistry::new();
+
+// Register a method with callback
+registry.register(
+    object_node_id,
+    method_node_id,
+    Arc::new(|inputs: &[Variant]| -> Result<Vec<Variant>, StatusCode> {
+        let a = inputs[0].as_f64().unwrap_or(0.0);
+        let b = inputs[1].as_f64().unwrap_or(0.0);
+        Ok(vec![Variant::Double(a * b)])
+    }),
+);
+```
+
+The `CallHandler` validates object and method node existence, maps input arguments to registered callbacks, and returns output arguments or appropriate status codes. Unregistered methods return `BadNotImplemented`.
+
+## Browse Services
+
+### TranslateBrowsePathsToNodeIds
+
+Resolves relative browse paths from starting nodes (OPC UA Part 4, Section 5.8.4):
+
+- Walks the address space following `RelativePathElement` arrays
+- Supports hierarchical reference type filtering
+- Handles inverse reference traversal
+- Returns `ExpandedNodeId` results with server index and namespace URI
+
+### RegisterNodes / UnregisterNodes
+
+Pass-through implementation per OPC UA Part 4, Sections 5.8.5 and 5.8.6. The server returns the same NodeIds received in the request, which is spec-compliant for non-optimizing servers.
+
+### TransferSubscriptions
+
+Enables session recovery by transferring active subscriptions between sessions (OPC UA Part 4, Section 5.13.7):
+
+- Returns available sequence numbers for each transferred subscription
+- Status: `GoodSubscriptionTransferred` or `BadSubscriptionIdInvalid`
+
+## OPC UA Service Compliance Matrix
+
+| Service | OPC UA Part 4 Section | Status | Notes |
+|---------|----------------------|--------|-------|
+| FindServers | 5.4.2 | Supported | Discovery service |
+| GetEndpoints | 5.4.4 | Supported | Endpoint discovery |
+| CreateSession | 5.6.2 | Supported | Session management |
+| ActivateSession | 5.6.3 | Supported | Session activation |
+| CloseSession | 5.6.4 | Supported | Session cleanup |
+| Read | 5.10.2 | Supported | Attribute read |
+| Write | 5.10.4 | Supported | Attribute write with AccessLevel check |
+| HistoryRead | 5.10.3 | **New** | ReadRaw, ReadProcessed, continuation points |
+| Browse | 5.8.2 | Enhanced | Continuation points, subtype filtering |
+| BrowseNext | 5.8.3 | **New** | Pagination of browse results |
+| TranslateBrowsePathsToNodeIds | 5.8.4 | **New** | Full path resolution |
+| RegisterNodes | 5.8.5 | **New** | Pass-through implementation |
+| UnregisterNodes | 5.8.6 | **New** | Pass-through implementation |
+| Call | 5.11.2 | **New** | Method registry and invocation |
+| CreateSubscription | 5.13.1 | Supported | Data change subscriptions |
+| ModifySubscription | 5.13.2 | Supported | Subscription parameter update |
+| DeleteSubscriptions | 5.13.4 | Supported | Subscription cleanup |
+| Publish | 5.13.5 | Enhanced | DataChange + Event notifications |
+| CreateMonitoredItems | 5.12.2 | Enhanced | EventFilter parsing support |
+| TransferSubscriptions | 5.13.7 | **New** | Session recovery |
+| OpenSecureChannel | Part 6 Section 6.7.1 | Enhanced | Issue + Renew request types |
+
+## Secure Channel Token Renewal
+
+The transport layer supports in-band secure channel token renewal (OPC UA Part 6, Section 6.7.4):
+
+- Handles OPN (OpenSecureChannel) messages within the active service message loop
+- Implements `channel.renew_token(lifetime)` for token refresh
+- Updates `token_id` while preserving `channel_id` for long-lived connections
+- Interior mutability via `RwLock` for thread-safe token state management
+
 ## Security
 
 ### Security Policies
@@ -544,11 +791,26 @@ pub use mabi_opcua::{
     Variant,
     StatusCode,
     DataTypeId,
+    QualifiedName,
+    ExpandedNodeId,
 
     // Subscriptions
     SubscriptionManager,
     DataChangeTrigger,
     DeadbandType,
+
+    // Events
+    EventManager,
+    EventData,
+    EventFilter,
+    EventFieldList,
+    ContentFilterElement,
+    FilterOperator,
+    SimpleAttributeOperand,
+
+    // Method Invocation
+    MethodRegistry,
+    CallHandler,
 
     // History
     HistoryStore,

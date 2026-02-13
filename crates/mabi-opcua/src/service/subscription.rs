@@ -176,15 +176,68 @@ impl ServiceHandler for PublishHandler {
                 if let Some(msg) = &pr.notification_message {
                     out.put_u32_le(msg.sequence_number);
                     msg.publish_time.encode(&mut out)?;
-                    // NotificationData array (simplified — send empty for now)
-                    out.put_i32_le(0);
+
+                    let has_data_change = !msg.notifications.is_empty();
+                    let has_events = !msg.event_notifications.is_empty();
+
+                    if !has_data_change && !has_events {
+                        // Keep-alive: empty NotificationData array
+                        out.put_i32_le(0);
+                    } else {
+                        // Count NotificationData elements
+                        let mut notification_count = 0i32;
+                        if has_data_change { notification_count += 1; }
+                        if has_events { notification_count += 1; }
+                        out.put_i32_le(notification_count);
+
+                        // === DataChangeNotification (encoding_id i=811) ===
+                        if has_data_change {
+                            NodeId::numeric(0, 811).encode(&mut out)?;
+                            out.put_u8(0x01); // Has binary body
+
+                            let mut body_buf = BytesMut::new();
+                            // MonitoredItems array
+                            body_buf.put_i32_le(msg.notifications.len() as i32);
+                            for notification in &msg.notifications {
+                                body_buf.put_u32_le(notification.client_handle);
+                                notification.value.encode(&mut body_buf)?;
+                            }
+                            // DiagnosticInfos (empty)
+                            body_buf.put_i32_le(0);
+
+                            out.put_i32_le(body_buf.len() as i32);
+                            out.extend_from_slice(&body_buf);
+                        }
+
+                        // === EventNotificationList (encoding_id i=916) ===
+                        if has_events {
+                            NodeId::numeric(0, 916).encode(&mut out)?;
+                            out.put_u8(0x01); // Has binary body
+
+                            let mut body_buf = BytesMut::new();
+                            // Events array
+                            body_buf.put_i32_le(msg.event_notifications.len() as i32);
+                            for event_field_list in &msg.event_notifications {
+                                // EventFieldList
+                                body_buf.put_u32_le(event_field_list.client_handle);
+                                // EventFields: Variant[]
+                                body_buf.put_i32_le(event_field_list.event_fields.len() as i32);
+                                for field in &event_field_list.event_fields {
+                                    field.encode(&mut body_buf)?;
+                                }
+                            }
+
+                            out.put_i32_le(body_buf.len() as i32);
+                            out.extend_from_slice(&body_buf);
+                        }
+                    }
                 } else {
                     // Empty notification
                     out.put_u32_le(0);
                     chrono::Utc::now().encode(&mut out)?;
                     out.put_i32_le(0);
                 }
-                // Results (empty)
+                // Results (empty — SubscriptionAcknowledgement results)
                 out.put_i32_le(0);
                 // DiagnosticInfos (empty)
                 out.put_i32_le(0);

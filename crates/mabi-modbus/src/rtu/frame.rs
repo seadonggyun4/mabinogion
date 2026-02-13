@@ -439,6 +439,12 @@ fn estimate_frame_length(data: &[u8]) -> Option<usize> {
             Some(8)
         }
 
+        // Mask Write Register
+        0x16 => {
+            // Unit + FC + Addr(2) + And_Mask(2) + Or_Mask(2) + CRC(2) = 10 bytes
+            Some(10)
+        }
+
         // Write Multiple Coils
         0x0F => {
             if data.len() >= 7 {

@@ -2,9 +2,11 @@
 //!
 //! The address space is the primary container for all nodes and references.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -13,7 +15,7 @@ use tracing::{debug, info, instrument, warn};
 use crate::types::{NodeId, AttributeId, DataValue, StatusCode, Variant};
 use crate::error::{OpcUaError, OpcUaResult};
 use super::base::{Node, NodeClass, QualifiedName, LocalizedText, SharedNode, shared_node};
-use super::classes::{ObjectNode, VariableNode};
+use super::classes::{ObjectNode, VariableNode, DataTypeNode, ObjectTypeNode};
 use super::reference::{
     Reference, ReferenceDescription, ReferenceTypeId, ReferenceDirection,
     BrowseDirection, BrowseResult,
@@ -90,6 +92,44 @@ pub struct NodeStoreStats {
 ///     &NodeId::objects_folder(),
 /// );
 /// ```
+/// A stored browse continuation for BrowseNext pagination.
+pub struct BrowseContinuation {
+    /// Unique identifier.
+    pub id: u64,
+    /// Remaining references not yet returned.
+    pub remaining_references: Vec<ReferenceDescription>,
+    /// Creation time for expiry check.
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of a browse path resolution.
+pub struct BrowsePathResult {
+    /// Status of the resolution.
+    pub status: StatusCode,
+    /// Resolved targets.
+    pub targets: Vec<BrowsePathTarget>,
+}
+
+/// A resolved browse path target.
+pub struct BrowsePathTarget {
+    /// The resolved node ID.
+    pub target_id: NodeId,
+    /// Index of the first unprocessed element (0 = fully resolved).
+    pub remaining_path_index: u32,
+}
+
+/// A single element in a relative browse path.
+pub struct RelativePathElement {
+    /// Reference type to follow.
+    pub reference_type_id: NodeId,
+    /// Whether to follow inverse references.
+    pub is_inverse: bool,
+    /// Whether to include subtypes of the reference type.
+    pub include_subtypes: bool,
+    /// Target browse name to match.
+    pub target_name: QualifiedName,
+}
+
 pub struct AddressSpace {
     /// Configuration.
     config: AddressSpaceConfig,
@@ -107,6 +147,10 @@ pub struct AddressSpace {
     read_counter: AtomicU64,
     write_counter: AtomicU64,
     browse_counter: AtomicU64,
+    /// Browse continuation points for BrowseNext pagination.
+    browse_continuations: RwLock<HashMap<u64, BrowseContinuation>>,
+    /// Next continuation point ID.
+    next_browse_continuation_id: AtomicU64,
 }
 
 impl AddressSpace {
@@ -127,6 +171,8 @@ impl AddressSpace {
             read_counter: AtomicU64::new(0),
             write_counter: AtomicU64::new(0),
             browse_counter: AtomicU64::new(0),
+            browse_continuations: RwLock::new(HashMap::new()),
+            next_browse_continuation_id: AtomicU64::new(1),
         };
 
         // Initialize standard nodes if enabled
@@ -183,19 +229,242 @@ impl AddressSpace {
             NodeId::views_folder(),
         ));
 
-        // Server node
+        // Server node (with event_notifier=1 to support event subscriptions)
         let server = ObjectNode::new(
             NodeId::server(),
             QualifiedName::null("Server"),
             "Server",
-        );
+        ).with_event_notifier(1);
         self.insert_node(server);
         self.add_reference(Reference::organizes(
             NodeId::objects_folder(),
             NodeId::server(),
         ));
 
+        // =====================================================================
+        // Server/ServerCapabilities/OperationLimits
+        // =====================================================================
+        self.init_server_capabilities();
+
+        // =====================================================================
+        // DataType hierarchy under Types folder
+        // =====================================================================
+        self.init_data_type_hierarchy();
+
+        // =====================================================================
+        // Event type hierarchy under Types folder
+        // =====================================================================
+        self.init_event_type_hierarchy();
+
         info!("Initialized standard OPC UA address space nodes");
+    }
+
+    /// Initialize Server/ServerCapabilities/OperationLimits nodes.
+    ///
+    /// These nodes are read by TRAP's OperationLimitsInitTask to discover
+    /// server capacity and automatically partition batch operations.
+    fn init_server_capabilities(&self) {
+        // ServerCapabilities (i=2268)
+        let capabilities = ObjectNode::new(
+            NodeId::numeric(0, 2268),
+            QualifiedName::null("ServerCapabilities"),
+            "ServerCapabilities",
+        );
+        self.insert_node(capabilities);
+        self.add_reference(Reference::has_component(
+            NodeId::server(), // i=2253
+            NodeId::numeric(0, 2268),
+        ));
+
+        // OperationLimits (i=11704)
+        let op_limits = ObjectNode::new(
+            NodeId::numeric(0, 11704),
+            QualifiedName::null("OperationLimits"),
+            "OperationLimits",
+        );
+        self.insert_node(op_limits);
+        self.add_reference(Reference::has_component(
+            NodeId::numeric(0, 2268),
+            NodeId::numeric(0, 11704),
+        ));
+
+        // Individual limit variables (UInt32)
+        let limits: &[(u32, &str, u32)] = &[
+            (11705, "MaxNodesPerRead", 10_000),
+            (11707, "MaxNodesPerWrite", 10_000),
+            (11710, "MaxNodesPerBrowse", 10_000),
+            (11711, "MaxNodesPerRegisterNodes", 10_000),
+            (11709, "MaxNodesPerMethodCall", 1_000),
+            (11714, "MaxMonitoredItemsPerCall", 10_000),
+            (12165, "MaxNodesPerHistoryReadData", 1_000),
+            (11712, "MaxNodesPerTranslateBrowsePathsToNodeIds", 10_000),
+        ];
+
+        for &(id, name, value) in limits {
+            let var = VariableNode::new(
+                NodeId::numeric(0, id),
+                QualifiedName::null(name),
+                name,
+                NodeId::numeric(0, 7), // UInt32 data type
+                Variant::UInt32(value),
+            );
+            self.insert_node(var);
+            self.add_reference(Reference::has_component(
+                NodeId::numeric(0, 11704), // OperationLimits
+                NodeId::numeric(0, id),
+            ));
+        }
+
+        // HistoryServerCapabilities (i=2330) — indicates HDA support
+        let history_cap = ObjectNode::new(
+            NodeId::numeric(0, 2330),
+            QualifiedName::null("HistoryServerCapabilities"),
+            "HistoryServerCapabilities",
+        );
+        self.insert_node(history_cap);
+        self.add_reference(Reference::has_component(
+            NodeId::numeric(0, 2268), // ServerCapabilities
+            NodeId::numeric(0, 2330),
+        ));
+
+        // AccessHistoryDataCapability (i=11192) = true
+        let access_hda = VariableNode::new(
+            NodeId::numeric(0, 11192),
+            QualifiedName::null("AccessHistoryDataCapability"),
+            "AccessHistoryDataCapability",
+            NodeId::numeric(0, 1), // Boolean
+            Variant::Boolean(true),
+        );
+        self.insert_node(access_hda);
+        self.add_reference(Reference::has_property(
+            NodeId::numeric(0, 2330),
+            NodeId::numeric(0, 11192),
+        ));
+    }
+
+    /// Initialize the OPC UA DataType hierarchy.
+    ///
+    /// This creates the standard built-in type tree under BaseDataType (i=24)
+    /// so that TRAP's DataTypeTree can discover types via Browse(HasSubtype).
+    fn init_data_type_hierarchy(&self) {
+        // BaseDataType (i=24) — abstract root of all data types
+        let base = DataTypeNode::new(NodeId::numeric(0, 24), "BaseDataType", "BaseDataType");
+        self.insert_node(base);
+        self.add_reference(Reference::organizes(
+            NodeId::types_folder(), // i=86
+            NodeId::numeric(0, 24),
+        ));
+
+        // Helper closure to add a data type node with HasSubtype from parent
+        let add_type = |store: &AddressSpace, id: u32, name: &str, parent_id: u32, is_abstract: bool| {
+            let mut node = DataTypeNode::new(NodeId::numeric(0, id), name, name);
+            node.is_abstract = is_abstract;
+            store.insert_node(node);
+            store.add_reference(Reference::has_subtype(
+                NodeId::numeric(0, parent_id),
+                NodeId::numeric(0, id),
+            ));
+        };
+
+        // Direct children of BaseDataType (i=24)
+        add_type(self, 1, "Boolean", 24, false);
+        add_type(self, 12, "String", 24, false);
+        add_type(self, 13, "DateTime", 24, false);
+        add_type(self, 14, "Guid", 24, false);
+        add_type(self, 15, "ByteString", 24, false);
+        add_type(self, 16, "XmlElement", 24, false);
+        add_type(self, 17, "NodeId", 24, false);
+        add_type(self, 18, "ExpandedNodeId", 24, false);
+        add_type(self, 19, "StatusCode", 24, false);
+        add_type(self, 20, "QualifiedName", 24, false);
+        add_type(self, 21, "LocalizedText", 24, false);
+        add_type(self, 22, "Structure", 24, true);   // abstract
+        add_type(self, 29, "Enumeration", 24, true);  // abstract
+        add_type(self, 26, "Number", 24, true);       // abstract
+
+        // Number subtypes
+        add_type(self, 27, "Integer", 26, true);   // abstract
+        add_type(self, 28, "UInteger", 26, true);  // abstract
+        add_type(self, 10, "Float", 26, false);
+        add_type(self, 11, "Double", 26, false);
+
+        // Integer subtypes
+        add_type(self, 2, "SByte", 27, false);
+        add_type(self, 4, "Int16", 27, false);
+        add_type(self, 6, "Int32", 27, false);
+        add_type(self, 8, "Int64", 27, false);
+
+        // UInteger subtypes
+        add_type(self, 3, "Byte", 28, false);
+        add_type(self, 5, "UInt16", 28, false);
+        add_type(self, 7, "UInt32", 28, false);
+        add_type(self, 9, "UInt64", 28, false);
+    }
+
+    /// Initialize event type hierarchy for event subscription support.
+    ///
+    /// Creates BaseEventType (i=2041) with standard event property nodes
+    /// so TRAP's EventFilter can discover and subscribe to events.
+    fn init_event_type_hierarchy(&self) {
+        // BaseEventType (i=2041) — abstract root of all event types
+        let base_event = ObjectTypeNode::new(
+            NodeId::numeric(0, 2041),
+            "BaseEventType",
+            "BaseEventType",
+        ).with_is_abstract(true);
+        self.insert_node(base_event);
+        self.add_reference(Reference::organizes(
+            NodeId::types_folder(), // i=86
+            NodeId::numeric(0, 2041),
+        ));
+
+        // Standard event properties (HasProperty from BaseEventType)
+        let event_properties: &[(u32, &str, u32)] = &[
+            (2042, "EventId", 15),      // ByteString
+            (2043, "EventType", 17),     // NodeId
+            (2044, "SourceNode", 17),    // NodeId
+            (2045, "SourceName", 12),    // String
+            (2046, "Time", 13),          // DateTime
+            (2047, "ReceiveTime", 13),   // DateTime
+            (2050, "Message", 21),       // LocalizedText
+            (2051, "Severity", 5),       // UInt16
+        ];
+
+        for &(id, name, data_type_id) in event_properties {
+            let var = VariableNode::new(
+                NodeId::numeric(0, id),
+                QualifiedName::null(name),
+                name,
+                NodeId::numeric(0, data_type_id),
+                Variant::Null,
+            );
+            self.insert_node(var);
+            self.add_reference(Reference::has_property(
+                NodeId::numeric(0, 2041), // BaseEventType
+                NodeId::numeric(0, id),
+            ));
+        }
+
+        // Common event subtypes
+        let event_subtypes: &[(u32, &str)] = &[
+            (2052, "AuditEventType"),
+            (2130, "SystemEventType"),
+            (2132, "DeviceFailureEventType"),
+            (2133, "BaseModelChangeEventType"),
+        ];
+
+        for &(id, name) in event_subtypes {
+            let event_type = ObjectTypeNode::new(
+                NodeId::numeric(0, id),
+                name,
+                name,
+            );
+            self.insert_node(event_type);
+            self.add_reference(Reference::has_subtype(
+                NodeId::numeric(0, 2041), // BaseEventType
+                NodeId::numeric(0, id),
+            ));
+        }
     }
 
     // =========================================================================
@@ -479,7 +748,7 @@ impl AddressSpace {
         refs
     }
 
-    /// Browse node references.
+    /// Browse node references with continuation point support.
     #[instrument(skip(self))]
     pub fn browse(
         &self,
@@ -497,7 +766,7 @@ impl AddressSpace {
         }
 
         let refs = self.get_references(node_id, direction);
-        let mut descriptions = Vec::new();
+        let mut all_descriptions = Vec::new();
 
         for reference in refs {
             // Filter by reference type
@@ -506,7 +775,11 @@ impl AddressSpace {
                     if !include_subtypes {
                         continue;
                     }
-                    // TODO: Check if reference type is subtype of filter
+                    // Check if reference type is a subtype of the filter.
+                    // For HierarchicalReferences (i=33), accept all hierarchical types.
+                    if !self.is_reference_subtype(&reference.reference_type_id, filter) {
+                        continue;
+                    }
                 }
             }
 
@@ -530,16 +803,229 @@ impl AddressSpace {
                     target.node_class(),
                 );
 
-                descriptions.push(desc);
-
-                if descriptions.len() >= max_results {
-                    // TODO: Create continuation point
-                    break;
-                }
+                all_descriptions.push(desc);
             }
         }
 
-        BrowseResult::new(descriptions)
+        // If we have more references than max_results, create a continuation point
+        if all_descriptions.len() > max_results {
+            let returned: Vec<_> = all_descriptions.drain(..max_results).collect();
+            let remaining = all_descriptions; // remaining after drain
+
+            let cp_id = self.next_browse_continuation_id.fetch_add(1, Ordering::Relaxed);
+            let continuation = BrowseContinuation {
+                id: cp_id,
+                remaining_references: remaining,
+                created_at: Utc::now(),
+            };
+
+            self.browse_continuations.write().insert(cp_id, continuation);
+
+            // Encode continuation point ID as 8-byte LE ByteString
+            let cp_bytes = cp_id.to_le_bytes().to_vec();
+            BrowseResult::with_continuation(returned, cp_bytes)
+        } else {
+            BrowseResult::new(all_descriptions)
+        }
+    }
+
+    /// Continue a previous browse operation using a continuation point.
+    ///
+    /// Returns the next batch of references, or creates a new continuation
+    /// point if more results remain.
+    pub fn browse_next(
+        &self,
+        continuation_point: &[u8],
+        release: bool,
+        max_results: usize,
+    ) -> BrowseResult {
+        // Decode continuation point ID from 8-byte LE
+        if continuation_point.len() != 8 {
+            return BrowseResult::default();
+        }
+        let cp_id = u64::from_le_bytes([
+            continuation_point[0], continuation_point[1],
+            continuation_point[2], continuation_point[3],
+            continuation_point[4], continuation_point[5],
+            continuation_point[6], continuation_point[7],
+        ]);
+
+        // If releasing, just remove and return empty
+        if release {
+            self.browse_continuations.write().remove(&cp_id);
+            return BrowseResult::new(Vec::new());
+        }
+
+        // Remove the old continuation point
+        let continuation = self.browse_continuations.write().remove(&cp_id);
+        let Some(mut continuation) = continuation else {
+            return BrowseResult::default();
+        };
+
+        // Check expiry (5 minutes)
+        if Utc::now().signed_duration_since(continuation.created_at).num_seconds() > 300 {
+            return BrowseResult::default();
+        }
+
+        let max = if max_results == 0 { 1000 } else { max_results };
+
+        if continuation.remaining_references.len() > max {
+            let returned: Vec<_> = continuation.remaining_references.drain(..max).collect();
+            let remaining = continuation.remaining_references;
+
+            let new_cp_id = self.next_browse_continuation_id.fetch_add(1, Ordering::Relaxed);
+            let new_continuation = BrowseContinuation {
+                id: new_cp_id,
+                remaining_references: remaining,
+                created_at: Utc::now(),
+            };
+            self.browse_continuations.write().insert(new_cp_id, new_continuation);
+            let cp_bytes = new_cp_id.to_le_bytes().to_vec();
+            BrowseResult::with_continuation(returned, cp_bytes)
+        } else {
+            BrowseResult::new(continuation.remaining_references)
+        }
+    }
+
+    /// Release a browse continuation point without returning results.
+    pub fn release_continuation_point(&self, continuation_point: &[u8]) {
+        if continuation_point.len() == 8 {
+            let cp_id = u64::from_le_bytes([
+                continuation_point[0], continuation_point[1],
+                continuation_point[2], continuation_point[3],
+                continuation_point[4], continuation_point[5],
+                continuation_point[6], continuation_point[7],
+            ]);
+            self.browse_continuations.write().remove(&cp_id);
+        }
+    }
+
+    /// Check if a reference type is a subtype of another.
+    ///
+    /// Handles the common hierarchical reference type hierarchy:
+    /// HierarchicalReferences(33) → HasChild(34) → HasSubtype(45), HasComponent(47), HasProperty(46), Organizes(35)
+    fn is_reference_subtype(&self, candidate: &ReferenceTypeId, parent: &ReferenceTypeId) -> bool {
+        // All hierarchical types are subtypes of HierarchicalReferences
+        if *parent == ReferenceTypeId::HierarchicalReferences {
+            return candidate.is_hierarchical();
+        }
+        // HasChild subtypes
+        if *parent == ReferenceTypeId::HasChild {
+            return matches!(
+                candidate,
+                ReferenceTypeId::HasComponent
+                | ReferenceTypeId::HasProperty
+                | ReferenceTypeId::HasSubtype
+                | ReferenceTypeId::HasOrderedComponent
+                | ReferenceTypeId::Aggregates
+            );
+        }
+        // NonHierarchicalReferences subtypes
+        if *parent == ReferenceTypeId::NonHierarchicalReferences {
+            return matches!(
+                candidate,
+                ReferenceTypeId::HasTypeDefinition
+                | ReferenceTypeId::HasEncoding
+                | ReferenceTypeId::HasDescription
+                | ReferenceTypeId::HasModellingRule
+                | ReferenceTypeId::GeneratesEvent
+                | ReferenceTypeId::AlwaysGeneratesEvent
+            );
+        }
+        false
+    }
+
+    /// Resolve a browse path starting from a node, following relative path elements.
+    ///
+    /// Used by the TranslateBrowsePathsToNodeIds service. Walks the address
+    /// space from `starting_node`, matching references by browse name at each hop.
+    pub fn resolve_browse_path(
+        &self,
+        starting_node: &NodeId,
+        elements: &[RelativePathElement],
+    ) -> BrowsePathResult {
+        if !self.contains_node(starting_node) {
+            return BrowsePathResult {
+                status: StatusCode::BAD_NODE_ID_UNKNOWN,
+                targets: Vec::new(),
+            };
+        }
+
+        if elements.is_empty() {
+            return BrowsePathResult {
+                status: StatusCode::GOOD,
+                targets: vec![BrowsePathTarget {
+                    target_id: starting_node.clone(),
+                    remaining_path_index: 0,
+                }],
+            };
+        }
+
+        let mut current_nodes = vec![starting_node.clone()];
+
+        for (idx, element) in elements.iter().enumerate() {
+            let mut next_nodes = Vec::new();
+
+            for current_node in &current_nodes {
+                let direction = if element.is_inverse {
+                    BrowseDirection::Inverse
+                } else {
+                    BrowseDirection::Forward
+                };
+
+                let refs = self.get_references(current_node, direction);
+
+                for reference in &refs {
+                    // Filter by reference type (if specified, i.e., not null node i=0)
+                    if reference.reference_type_id.node_id() != NodeId::numeric(0, 0) {
+                        let ref_type_filter = ReferenceTypeId::from_node_id(&element.reference_type_id);
+                        if let Some(filter) = ref_type_filter {
+                            if reference.reference_type_id != filter {
+                                if element.include_subtypes {
+                                    if !self.is_reference_subtype(&reference.reference_type_id, &filter) {
+                                        continue;
+                                    }
+                                } else {
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    // Match browse name
+                    if let Some(target_node) = self.get_node(&reference.target_node_id) {
+                        let target = target_node.read();
+                        let browse_name = target.browse_name();
+
+                        // Match by name (and namespace if specified)
+                        if browse_name.name == element.target_name.name {
+                            let ns_match = element.target_name.namespace_index == 0
+                                || element.target_name.namespace_index == browse_name.namespace_index;
+                            if ns_match {
+                                next_nodes.push(reference.target_node_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if next_nodes.is_empty() {
+                return BrowsePathResult {
+                    status: StatusCode::BAD_NO_MATCH,
+                    targets: Vec::new(),
+                };
+            }
+
+            current_nodes = next_nodes;
+        }
+
+        BrowsePathResult {
+            status: StatusCode::GOOD,
+            targets: current_nodes.into_iter().map(|id| BrowsePathTarget {
+                target_id: id,
+                remaining_path_index: 0,
+            }).collect(),
+        }
     }
 
     // =========================================================================

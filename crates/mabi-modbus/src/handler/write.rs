@@ -381,6 +381,62 @@ impl FunctionHandler for ReadWriteMultipleRegistersHandler {
     }
 }
 
+/// FC16 (0x16): Mask Write Register Handler
+///
+/// Modifies the contents of a specified holding register using a
+/// combination of an AND mask, an OR mask, and the register's
+/// current contents.
+///
+/// Formula: Result = (Current AND And_Mask) OR (Or_Mask AND NOT(And_Mask))
+///
+/// Request PDU:
+/// - Function code: 1 byte (0x16)
+/// - Reference address: 2 bytes
+/// - And_Mask: 2 bytes
+/// - Or_Mask: 2 bytes
+///
+/// Response PDU (echo of request):
+/// - Function code: 1 byte (0x16)
+/// - Reference address: 2 bytes
+/// - And_Mask: 2 bytes
+/// - Or_Mask: 2 bytes
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MaskWriteRegisterHandler;
+
+impl FunctionHandler for MaskWriteRegisterHandler {
+    fn function_code(&self) -> u8 {
+        0x16
+    }
+
+    fn handle(&self, pdu: &[u8], ctx: &HandlerContext) -> Result<Vec<u8>, ExceptionCode> {
+        self.validate_pdu_length(pdu)?;
+
+        let address = self.parse_address(pdu, 1)?;
+        let and_mask = u16::from_be_bytes([pdu[3], pdu[4]]);
+        let or_mask = u16::from_be_bytes([pdu[5], pdu[6]]);
+
+        // Perform atomic mask write (single lock acquisition)
+        ctx.registers
+            .mask_write_holding_register(address, and_mask, or_mask)
+            .map_err(|_| ExceptionCode::IllegalDataAddress)?;
+
+        // Echo request as response
+        Ok(pdu.to_vec())
+    }
+
+    fn name(&self) -> &'static str {
+        "Mask Write Register"
+    }
+
+    fn min_pdu_length(&self) -> usize {
+        7 // FC + address(2) + and_mask(2) + or_mask(2)
+    }
+
+    fn supports_broadcast(&self) -> bool {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,6 +590,144 @@ mod tests {
         // Verify write was performed
         let values = ctx.registers.read_holding_registers(10, 2).unwrap();
         assert_eq!(values, vec![256, 512]);
+    }
+
+    #[test]
+    fn test_mask_write_register_basic() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        // Set register 10 to 0x00FF
+        ctx.registers.write_holding_register(10, 0x00FF).unwrap();
+
+        // Apply And_Mask=0xFF00, Or_Mask=0x00F0
+        // Result = (0x00FF & 0xFF00) | (0x00F0 & !0xFF00)
+        //        = (0x0000)          | (0x00F0 & 0x00FF)
+        //        = 0x0000            | 0x00F0
+        //        = 0x00F0
+        let pdu = [0x16, 0x00, 0x0A, 0xFF, 0x00, 0x00, 0xF0];
+        let response = handler.handle(&pdu, &ctx).unwrap();
+
+        // Response echoes request
+        assert_eq!(response, pdu.to_vec());
+
+        // Verify register value
+        let values = ctx.registers.read_holding_registers(10, 1).unwrap();
+        assert_eq!(values[0], 0x00F0);
+    }
+
+    #[test]
+    fn test_mask_write_register_identity() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        // Set register 5 to 0xABCD
+        ctx.registers.write_holding_register(5, 0xABCD).unwrap();
+
+        // And_Mask=0xFFFF, Or_Mask=0x0000 => identity (no change)
+        // Result = (0xABCD & 0xFFFF) | (0x0000 & !0xFFFF)
+        //        = 0xABCD            | 0x0000
+        //        = 0xABCD
+        let pdu = [0x16, 0x00, 0x05, 0xFF, 0xFF, 0x00, 0x00];
+        handler.handle(&pdu, &ctx).unwrap();
+
+        let values = ctx.registers.read_holding_registers(5, 1).unwrap();
+        assert_eq!(values[0], 0xABCD);
+    }
+
+    #[test]
+    fn test_mask_write_register_force_all_bits() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        // Set register 0 to 0x1234
+        ctx.registers.write_holding_register(0, 0x1234).unwrap();
+
+        // And_Mask=0x0000, Or_Mask=0xABCD => force to Or_Mask value
+        // Result = (0x1234 & 0x0000) | (0xABCD & !0x0000)
+        //        = 0x0000            | (0xABCD & 0xFFFF)
+        //        = 0xABCD
+        let pdu = [0x16, 0x00, 0x00, 0x00, 0x00, 0xAB, 0xCD];
+        handler.handle(&pdu, &ctx).unwrap();
+
+        let values = ctx.registers.read_holding_registers(0, 1).unwrap();
+        assert_eq!(values[0], 0xABCD);
+    }
+
+    #[test]
+    fn test_mask_write_register_clear_low_byte() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        // Set register 0 to 0xABCD
+        ctx.registers.write_holding_register(0, 0xABCD).unwrap();
+
+        // And_Mask=0xFF00, Or_Mask=0x0000 => clear low byte
+        // Result = (0xABCD & 0xFF00) | (0x0000 & !0xFF00)
+        //        = 0xAB00            | 0x0000
+        //        = 0xAB00
+        let pdu = [0x16, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00];
+        handler.handle(&pdu, &ctx).unwrap();
+
+        let values = ctx.registers.read_holding_registers(0, 1).unwrap();
+        assert_eq!(values[0], 0xAB00);
+    }
+
+    #[test]
+    fn test_mask_write_register_set_single_bit() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        // Set register 0 to 0x0000
+        ctx.registers.write_holding_register(0, 0x0000).unwrap();
+
+        // Set bit 3 (0x0008): And_Mask=0xFFFF, Or_Mask=0x0008
+        // Result = (0x0000 & 0xFFFF) | (0x0008 & !0xFFFF)
+        //        = 0x0000            | (0x0008 & 0x0000)
+        //        = 0x0000
+        // Wait - to SET a bit: And_Mask should preserve all, Or_Mask sets the bit
+        // But NOT(0xFFFF) = 0x0000, so Or_Mask has no effect.
+        // Correct approach: And_Mask=0xFFFF, Or_Mask=0x0008 won't work.
+        // Instead: And_Mask = keep all existing, and also OR in the bit:
+        // And_Mask=0xFFFF preserves all, Or_Mask=0x0008
+        // Result = (0x0000 & 0xFFFF) | (0x0008 & 0x0000) = 0x0000 ... wrong
+        //
+        // Actually per Modbus spec: to set bit 3, use And_Mask=0xFFFF, Or_Mask=0x0008
+        // But: (0x0000 & 0xFFFF) | (0x0008 & ~0xFFFF) = 0 | (0x0008 & 0x0000) = 0
+        // This is correct per spec - And_Mask=0xFFFF means "keep all original bits,
+        // don't allow OR to change anything". To set bit 3:
+        // And_Mask = 0xFFF7 (clear bit 3 position in and_mask so OR can write it)
+        // Or_Mask = 0x0008
+        // Result = (0x0000 & 0xFFF7) | (0x0008 & ~0xFFF7) = 0x0000 | (0x0008 & 0x0008) = 0x0008
+        let pdu = [0x16, 0x00, 0x00, 0xFF, 0xF7, 0x00, 0x08];
+        handler.handle(&pdu, &ctx).unwrap();
+
+        let values = ctx.registers.read_holding_registers(0, 1).unwrap();
+        assert_eq!(values[0], 0x0008);
+    }
+
+    #[test]
+    fn test_mask_write_register_echo_response() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        let pdu = [0x16, 0x00, 0x04, 0x00, 0xF2, 0x00, 0x25];
+        let response = handler.handle(&pdu, &ctx).unwrap();
+
+        // Response must be exact echo of request
+        assert_eq!(response, pdu.to_vec());
+    }
+
+    #[test]
+    fn test_mask_write_register_pdu_too_short() {
+        let handler = MaskWriteRegisterHandler;
+        let ctx = create_context();
+
+        // Only 6 bytes (need 7)
+        let pdu = [0x16, 0x00, 0x00, 0xFF, 0xFF, 0x00];
+        let result = handler.handle(&pdu, &ctx);
+
+        assert_eq!(result, Err(ExceptionCode::IllegalDataValue));
     }
 
     #[test]

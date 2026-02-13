@@ -97,8 +97,8 @@ All detailed documentation lives in the [`docs/`](./docs/) directory. Each modul
 
 | Protocol | Use Case | Key Features | Guide |
 |----------|----------|--------------|-------|
-| **Modbus TCP/RTU** | Factory automation, PLCs, sensors | TCP/RTU dual mode, handler registry, sparse registers, multi-unit, fault injection | [docs/modbus-simulator](./docs/modbus-simulator/README.md) |
-| **OPC UA** | Industrial IoT, SCADA systems | Address space, subscriptions, historical access, 22+ aggregates, security policies | [docs/opcua-simulator](./docs/opcua-simulator/README.md) |
+| **Modbus TCP/RTU** | Factory automation, PLCs, sensors | TCP/RTU dual mode, handler registry, sparse registers, multi-unit, fault injection pipeline (11 types), RTU timing faults | [docs/modbus-simulator](./docs/modbus-simulator/README.md) |
+| **OPC UA** | Industrial IoT, SCADA systems | Address space, subscriptions, historical access, 22+ aggregates, event system, method calls, browse paths, security policies | [docs/opcua-simulator](./docs/opcua-simulator/README.md) |
 | **BACnet/IP** | Building automation (HVAC, lighting) | 9 object types, COV subscriptions, priority array, BBMD, APDU segmentation | [docs/bacnet-simulator](./docs/bacnet-simulator/README.md) |
 | **KNXnet/IP** | Smart home/building systems | Tunneling, 25+ datapoint types, group addressing, DPT codec system | [docs/knx-simulator](./docs/knx-simulator/README.md) |
 

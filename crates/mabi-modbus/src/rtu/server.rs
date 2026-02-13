@@ -36,6 +36,8 @@ use tracing::{debug, error, info};
 
 use crate::device::ModbusDevice;
 use crate::error::{ModbusError, ModbusResult};
+use crate::fault_injection::rtu_timing::RtuTimingFaultConfig;
+use crate::fault_injection::{FaultAction, FaultPipeline, ModbusFaultContext};
 use crate::handler::{build_exception_pdu, ExceptionCode, HandlerContext, HandlerRegistry};
 use crate::register::RegisterStore;
 
@@ -261,6 +263,12 @@ pub struct ModbusRtuServer {
     /// Request counter for latency tracking.
     request_count: AtomicU64,
     latency_sum: AtomicU64,
+
+    /// Optional fault injection pipeline.
+    fault_pipeline: Option<Arc<FaultPipeline>>,
+
+    /// Optional RTU timing fault configuration.
+    rtu_timing_fault: Option<Arc<RtuTimingFaultConfig>>,
 }
 
 impl ModbusRtuServer {
@@ -280,7 +288,21 @@ impl ModbusRtuServer {
             transport_metrics: RwLock::new(TransportMetrics::new()),
             request_count: AtomicU64::new(0),
             latency_sum: AtomicU64::new(0),
+            fault_pipeline: None,
+            rtu_timing_fault: None,
         }
+    }
+
+    /// Set fault injection pipeline.
+    pub fn with_fault_pipeline(mut self, pipeline: FaultPipeline) -> Self {
+        self.fault_pipeline = Some(Arc::new(pipeline));
+        self
+    }
+
+    /// Set RTU timing fault configuration.
+    pub fn with_rtu_timing_fault(mut self, config: RtuTimingFaultConfig) -> Self {
+        self.rtu_timing_fault = Some(Arc::new(config));
+        self
     }
 
     /// Create with custom handler registry.
@@ -401,6 +423,7 @@ impl ModbusRtuServer {
         // Main processing loop
         let mut read_buffer = vec![0u8; 256];
         let mut frame_buffer = Vec::with_capacity(256);
+        let mut rtu_request_number: u64 = 0;
         let serial_config = transport.serial_config().clone();
         let timing = RtuTiming::from_baud_rate(serial_config.baud_rate);
 
@@ -432,23 +455,179 @@ impl ModbusRtuServer {
                     if let Some(frame) = self.try_parse_frame(&mut frame_buffer)? {
                         // Process request
                         let response = self.process_request(&frame).await;
+                        rtu_request_number += 1;
 
-                        // Send response
-                        let response_bytes = response.encode();
-                        if self.config.simulate_response_delay {
-                            let delay = transport.transmission_delay(response_bytes.len());
-                            tokio::time::sleep(delay + self.config.additional_response_delay).await;
-                        }
-
-                        if let Err(e) = transport.write(&response_bytes).await {
-                            error!("Failed to send response: {}", e);
-                            let _ = self.event_tx.send(RtuServerEvent::Error {
-                                message: e.to_string(),
-                            });
+                        // Apply fault injection pipeline (if configured)
+                        let fault_action = if let Some(ref pipeline) = self.fault_pipeline {
+                            let unit_id = frame.unit_id;
+                            let function_code = frame.function_code().unwrap_or(0);
+                            let fault_ctx = ModbusFaultContext::rtu(
+                                unit_id,
+                                function_code,
+                                &frame.pdu,
+                                &response.pdu,
+                                rtu_request_number,
+                            );
+                            pipeline.apply(&fault_ctx)
                         } else {
-                            self.transport_metrics
-                                .write()
-                                .record_bytes_sent(response_bytes.len());
+                            None
+                        };
+
+                        match fault_action {
+                            Some(FaultAction::DropResponse) => {
+                                // Silent drop - no response sent
+                                debug!("Fault: dropping RTU response");
+                            }
+                            Some(FaultAction::DelayThenSend { delay, response: fault_pdu }) => {
+                                tokio::time::sleep(delay).await;
+                                // Re-encode with faulted PDU
+                                let fault_frame = RtuFrame::response(&frame, fault_pdu);
+                                let response_bytes = fault_frame.encode();
+                                if self.config.simulate_response_delay {
+                                    let tx_delay = transport.transmission_delay(response_bytes.len());
+                                    tokio::time::sleep(tx_delay + self.config.additional_response_delay).await;
+                                }
+                                if let Err(e) = transport.write(&response_bytes).await {
+                                    error!("Failed to send delayed response: {}", e);
+                                } else {
+                                    self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                }
+                            }
+                            Some(FaultAction::SendRawBytes(raw_bytes)) => {
+                                // Send raw wire bytes (used for CRC corruption, wrong unit_id)
+                                // Apply RTU timing faults if configured
+                                if let Some(ref timing_config) = self.rtu_timing_fault {
+                                    if timing_config.is_active() {
+                                        let plan = timing_config.build_timing_plan(&raw_bytes);
+                                        let mut total_sent = 0usize;
+                                        for segment in &plan.segments {
+                                            if !segment.delay_before.is_zero() {
+                                                tokio::time::sleep(segment.delay_before).await;
+                                            }
+                                            if let Err(e) = transport.write(&segment.data).await {
+                                                error!("Failed to send timing segment (raw): {}", e);
+                                                break;
+                                            }
+                                            total_sent += segment.data.len();
+                                        }
+                                        self.transport_metrics.write().record_bytes_sent(total_sent);
+                                    } else {
+                                        if self.config.simulate_response_delay {
+                                            let delay = transport.transmission_delay(raw_bytes.len());
+                                            tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                        }
+                                        if let Err(e) = transport.write(&raw_bytes).await {
+                                            error!("Failed to send raw bytes: {}", e);
+                                        } else {
+                                            self.transport_metrics.write().record_bytes_sent(raw_bytes.len());
+                                        }
+                                    }
+                                } else {
+                                    if self.config.simulate_response_delay {
+                                        let delay = transport.transmission_delay(raw_bytes.len());
+                                        tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                    }
+                                    if let Err(e) = transport.write(&raw_bytes).await {
+                                        error!("Failed to send raw bytes: {}", e);
+                                    } else {
+                                        self.transport_metrics.write().record_bytes_sent(raw_bytes.len());
+                                    }
+                                }
+                            }
+                            Some(FaultAction::SendPartial { bytes }) => {
+                                // Send partial frame bytes
+                                if self.config.simulate_response_delay {
+                                    let delay = transport.transmission_delay(bytes.len());
+                                    tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                }
+                                if let Err(e) = transport.write(&bytes).await {
+                                    error!("Failed to send partial frame: {}", e);
+                                } else {
+                                    self.transport_metrics.write().record_bytes_sent(bytes.len());
+                                }
+                            }
+                            Some(FaultAction::SendResponse(fault_pdu)) => {
+                                let fault_frame = RtuFrame::response(&frame, fault_pdu);
+                                let response_bytes = fault_frame.encode();
+                                if self.config.simulate_response_delay {
+                                    let delay = transport.transmission_delay(response_bytes.len());
+                                    tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                }
+                                if let Err(e) = transport.write(&response_bytes).await {
+                                    error!("Failed to send faulted response: {}", e);
+                                } else {
+                                    self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                }
+                            }
+                            Some(FaultAction::OverrideTransactionId { .. }) => {
+                                // TID override is TCP-only, send normal response for RTU
+                                let response_bytes = response.encode();
+                                if self.config.simulate_response_delay {
+                                    let delay = transport.transmission_delay(response_bytes.len());
+                                    tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                }
+                                if let Err(e) = transport.write(&response_bytes).await {
+                                    error!("Failed to send response: {}", e);
+                                } else {
+                                    self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                }
+                            }
+                            None => {
+                                // Normal response path (no fault)
+                                let response_bytes = response.encode();
+
+                                // Apply RTU timing faults if configured
+                                if let Some(ref timing_config) = self.rtu_timing_fault {
+                                    if timing_config.is_active() {
+                                        let plan = timing_config.build_timing_plan(&response_bytes);
+                                        let mut total_sent = 0usize;
+                                        for segment in &plan.segments {
+                                            if !segment.delay_before.is_zero() {
+                                                tokio::time::sleep(segment.delay_before).await;
+                                            }
+                                            if let Err(e) = transport.write(&segment.data).await {
+                                                error!("Failed to send timing segment: {}", e);
+                                                let _ = self.event_tx.send(RtuServerEvent::Error {
+                                                    message: e.to_string(),
+                                                });
+                                                break;
+                                            }
+                                            total_sent += segment.data.len();
+                                        }
+                                        self.transport_metrics.write().record_bytes_sent(total_sent);
+                                    } else {
+                                        // Timing config present but not active
+                                        if self.config.simulate_response_delay {
+                                            let delay = transport.transmission_delay(response_bytes.len());
+                                            tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                        }
+                                        if let Err(e) = transport.write(&response_bytes).await {
+                                            error!("Failed to send response: {}", e);
+                                            let _ = self.event_tx.send(RtuServerEvent::Error {
+                                                message: e.to_string(),
+                                            });
+                                        } else {
+                                            self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                        }
+                                    }
+                                } else {
+                                    // No timing config
+                                    if self.config.simulate_response_delay {
+                                        let delay = transport.transmission_delay(response_bytes.len());
+                                        tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                    }
+                                    if let Err(e) = transport.write(&response_bytes).await {
+                                        error!("Failed to send response: {}", e);
+                                        let _ = self.event_tx.send(RtuServerEvent::Error {
+                                            message: e.to_string(),
+                                        });
+                                    } else {
+                                        self.transport_metrics
+                                            .write()
+                                            .record_bytes_sent(response_bytes.len());
+                                    }
+                                }
+                            }
                         }
                     }
                 }

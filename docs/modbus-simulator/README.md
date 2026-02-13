@@ -57,6 +57,7 @@ The `mabi-modbus` crate provides a comprehensive Modbus protocol simulation envi
 | [`types`](#data-types) | Data type definitions and register conversion utilities |
 | [`unit`](#multi-unit-management) | Multi-unit (slave) management and broadcast handling |
 | [`runtime`](#runtime-configuration) | Dynamic runtime configuration management |
+| [`fault_injection`](#fault-injection-framework) | Protocol-aware fault injection pipeline with 11 fault types |
 | [`testing`](#testing-utilities) | Load generation, performance validation, and profiling |
 | [`scalability`](#scalability) | High-volume connection and request handling |
 
@@ -64,7 +65,7 @@ The `mabi-modbus` crate provides a comprehensive Modbus protocol simulation envi
 
 ### TCP Server
 
-The TCP server implements the Modbus TCP protocol with MBAP (Modbus Application Protocol) header framing.
+The TCP server implements the Modbus TCP protocol with MBAP (Modbus Application Protocol) header framing. The server integrates a fault injection pipeline, event broadcasting system, and per-connection statistics collection.
 
 ```rust
 use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2};
@@ -85,6 +86,23 @@ server.run().await?;
 | `tcp_nodelay` | enabled | Disable Nagle algorithm |
 | `rate_limit_rps` | 0 (unlimited) | Requests per second limit |
 
+#### TCP Server Events
+
+The server broadcasts lifecycle and connection events via `ServerEvent`:
+
+| Event | Description |
+|-------|-------------|
+| `ConnectionAccepted` | New client connection established |
+| `ConnectionClosed` | Client connection terminated |
+| `RequestProcessed` | Modbus request handled successfully |
+| `FaultInjected` | Fault pipeline activated for a request |
+| `ServerStarted` | Server bind and listen initiated |
+| `ServerStopped` | Server shutdown completed |
+
+#### TCP Fault Pipeline Integration
+
+The TCP server applies the `FaultPipeline` to all generated responses. Supported fault actions include `SendResponse`, `DropResponse`, `DelayThenSend`, `SendRawBytes`, and `OverrideTransactionId`. TCP-specific `ConnectionDisruption` configuration enables mid-frame disconnection, RST simulation, and connection hold-open scenarios for testing client reconnection logic.
+
 ### RTU Server
 
 The RTU server simulates Modbus RTU serial communication with proper framing and timing.
@@ -103,10 +121,27 @@ server.run().await?;
 #### RTU Features
 
 - Virtual serial port support (PTY-based on Unix systems)
-- CRC-16 frame validation
-- Inter-frame timing based on baud rate
+- CRC-16 frame validation with lookup table (fast path) and polynomial computation (slow path)
+- Inter-frame timing based on baud rate (3.5 character times per Modbus RTU specification)
+- Inter-character timeout detection (1.5 character times)
+- Auto-adjusted timing for high baud rates (>19200 baud)
 - Multiple transport options: VirtualSerial, TcpBridge, Channel
-- Streaming codec with frame detection
+- Streaming codec (`StreamingRtuCodec`) with byte-by-byte frame detection
+- Unit ID filtering for multi-unit setups
+- Strict timing mode for precise frame boundary detection
+- Fault injection pipeline with RTU-specific timing faults
+- Server state tracking (Stopped, Starting, Running, Stopping) with event broadcasting
+- Graceful shutdown with configurable timeout
+
+#### RTU Timing Reference
+
+The `RtuTiming` struct computes protocol-compliant timing from baud rate:
+
+| Baud Rate | 1 Character Time | Inter-Character (1.5 chars) | Inter-Frame (3.5 chars) |
+|-----------|------------------|---------------------------|------------------------|
+| 9600 | 1.042 ms | 1.563 ms | 3.646 ms |
+| 19200 | 0.521 ms | 0.781 ms | 1.823 ms |
+| 38400+ | 0.260 ms | 0.750 ms (fixed) | 1.750 ms (fixed) |
 
 ## Register Types
 
@@ -142,6 +177,7 @@ Four standard Modbus register types are implemented per the Modbus specification
 | FC06 (0x06) | Write Single Register | Write single holding register |
 | FC0F (0x0F) | Write Multiple Coils | Force multiple coils |
 | FC10 (0x10) | Write Multiple Registers | Write multiple holding registers |
+| FC16 (0x16) | Mask Write Register | Atomic AND/OR mask operation on a single holding register |
 | FC17 (0x17) | Read/Write Multiple Registers | Atomic read-write operation |
 
 ### Custom Handler Implementation
@@ -376,9 +412,129 @@ Tags are propagated to `DeviceInfo` when the device is created, making them acce
 
 ---
 
-## Fault Injection
+## Fault Injection Framework
 
-### Response Delay Simulation
+The `fault_injection` module provides a production-grade, Modbus-aware fault injection system designed for chaos engineering and protocol conformance testing. The system operates as an ordered pipeline applied to every response before transmission.
+
+### Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        FaultPipeline                                 │
+│                                                                      │
+│  Stage 1: Short-Circuit Faults                                       │
+│  ├── NoResponse (silent drop)                                        │
+│  └── PartialFrame (RTU only)                                        │
+│                    ↓ (if not activated)                               │
+│  Stage 2: Response-Replacing Faults                                  │
+│  └── ExceptionInjection (force exception code)                       │
+│                    ↓                                                  │
+│  Stage 3: Response-Modifying Faults                                  │
+│  ├── WrongUnitId                                                     │
+│  ├── WrongFunctionCode                                               │
+│  ├── TruncatedResponse                                               │
+│  └── ExtraData                                                       │
+│                    ↓                                                  │
+│  Stage 4: Wire-Level Faults                                          │
+│  └── CrcCorruption (RTU only)                                       │
+│                    ↓                                                  │
+│  Stage 5: Timing Faults                                              │
+│  └── DelayedResponse                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Supported Fault Types
+
+| Fault Type | Transport | Description | Configuration Modes |
+|------------|-----------|-------------|---------------------|
+| `CrcCorruption` | RTU | Corrupts CRC-16 checksum | Zero, Invert, RandomXor, SetValue, SwapBytes |
+| `WrongUnitId` | TCP/RTU | Modifies unit ID in response | Random, Fixed, Increment, SwapNibbles |
+| `WrongFunctionCode` | TCP/RTU | Corrupts function code | Random, Fixed, Increment, HighBitToggle |
+| `WrongTransactionId` | TCP | Overrides MBAP transaction ID | Random, Fixed, Increment, Decrement |
+| `TruncatedResponse` | TCP/RTU | Truncates response PDU | FixedBytes, RemoveLastN, Percentage, HeaderOnly |
+| `ExtraData` | TCP/RTU | Appends extra bytes to response | RandomBytes, AppendBytes, DuplicatePayload, PaddingPattern |
+| `DelayedResponse` | TCP/RTU | Adds latency with jitter | Base delay (ms) + random jitter (ms) |
+| `NoResponse` | TCP/RTU | Silently drops response | Probability-based activation |
+| `ExceptionInjection` | TCP/RTU | Forces Modbus exception code | Configurable exception code (0x01-0x0B) |
+| `PartialFrame` | RTU | Sends incomplete frame | FixedCount, Percentage, HeaderOnly, Random |
+
+### RTU Timing Faults
+
+The `RtuTimingFaultConfig` provides sub-module level timing violation injection for serial communication testing:
+
+| Timing Fault | Description | Reference |
+|--------------|-------------|-----------|
+| Inter-Frame Delay Violation | Responds faster than 3.5 character times | Modbus RTU Spec. Section 2 |
+| Inter-Character Gap Injection | Inserts gaps exceeding 1.5 character times within a frame | Modbus RTU Spec. Section 2 |
+| Bus Collision Simulation | Overlapping transmissions on RS-485 bus | RS-485 Half-Duplex |
+| Byte-Level Jitter | Random per-byte transmission delays | Serial transport noise |
+
+### Connection Disruption (TCP)
+
+The `ConnectionDisruptionConfig` enables TCP connection-level fault scenarios:
+
+| Disruption Mode | Description |
+|-----------------|-------------|
+| Mid-Frame Disconnect | Closes connection during response transmission |
+| RST After Partial Data | Sends TCP RST after partial response |
+| Connection Hold-Open | Keeps connection open without responding |
+| Clean Close | Graceful TCP FIN after configurable delay |
+
+### Fault Targeting
+
+Faults are selectively activated using the `FaultTarget` system:
+
+```rust
+use mabi_modbus::fault_injection::{FaultTarget, FaultPipeline};
+
+// Target specific unit IDs and function codes
+let target = FaultTarget::new()
+    .with_unit_ids(vec![1, 2, 3])
+    .with_function_codes(vec![0x03, 0x10])
+    .with_probability(0.1);  // 10% activation rate
+```
+
+### Fault Statistics
+
+Each fault maintains real-time counters via `FaultStats`:
+
+| Metric | Description |
+|--------|-------------|
+| `checks` | Total times the fault was evaluated |
+| `activations` | Times the fault was triggered |
+| `affected` | Requests that were modified |
+| `enabled` | Runtime enable/disable flag |
+
+### YAML Configuration
+
+Faults can be defined declaratively in scenario files:
+
+```yaml
+fault_injection:
+  faults:
+    - type: crc_corruption
+      enabled: true
+      target:
+        unit_ids: [1, 2]
+        probability: 0.05
+      config:
+        crc_mode: invert
+
+    - type: delayed_response
+      enabled: true
+      config:
+        delay_ms: 500
+        jitter_ms: 200
+
+    - type: no_response
+      target:
+        function_codes: [0x10]
+        probability: 0.02
+```
+
+### Legacy Fault Injection
+
+Simple delay and access control faults remain available for basic scenarios:
 
 ```rust
 // Per-device delay
@@ -526,6 +682,20 @@ pub use mabi_modbus::{
     MultiUnitManager,
     UnitConfig,
     BroadcastMode,
+
+    // Fault Injection
+    FaultPipeline,
+    FaultInjectionConfig,
+    FaultTarget,
+    ModbusFault,
+    ModbusFaultContext,
+    FaultAction,
+    FaultType,
+    FaultTypeConfig,
+    FaultStats,
+    FaultStatsSnapshot,
+    ConnectionDisruptionConfig,
+    RtuTimingFaultConfig,
 
     // Runtime
     RuntimeConfigManager,

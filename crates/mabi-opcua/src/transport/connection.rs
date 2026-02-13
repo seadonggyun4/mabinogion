@@ -149,6 +149,7 @@ pub async fn handle_connection(
         history_store: service_context_template.history_store.clone(),
         security_manager: service_context_template.security_manager.clone(),
         server_config: service_context_template.server_config.clone(),
+        method_registry: service_context_template.method_registry.clone(),
         channel: channel.clone(),
         session_id: parking_lot::RwLock::new(None),
         auth_token: parking_lot::RwLock::new(None),
@@ -342,6 +343,7 @@ pub struct ServiceContextTemplate {
     pub history_store: Arc<crate::services::HistoryStore>,
     pub security_manager: Arc<crate::security::SecurityManager>,
     pub server_config: Arc<crate::config::OpcUaServerConfig>,
+    pub method_registry: Arc<crate::service::method_call::MethodRegistry>,
 }
 
 // =============================================================================

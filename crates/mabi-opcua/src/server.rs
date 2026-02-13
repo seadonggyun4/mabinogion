@@ -504,8 +504,17 @@ impl OpcUaServer {
         crate::service::browse::register_handlers(&mut registry);
         crate::service::subscription::register_handlers(&mut registry);
         crate::service::monitored_item::register_handlers(&mut registry);
+        crate::service::register_nodes::register_handlers(&mut registry);
+        crate::service::translate_browse_paths::register_handlers(&mut registry);
+        crate::service::transfer_subscription::register_handlers(&mut registry);
+        crate::service::history::register_handlers(&mut registry);
+        crate::service::method_call::register_handlers(&mut registry);
 
         info!(handlers = registry.handler_count(), "Registered service handlers");
+
+        // Create method registry with sample methods
+        let method_registry = Arc::new(crate::service::method_call::MethodRegistry::new());
+        self.register_default_methods(&method_registry);
 
         // Build shared context template
         let context = Arc::new(ServiceContextTemplate {
@@ -515,6 +524,7 @@ impl OpcUaServer {
             history_store: self.history_store.clone(),
             security_manager: self.security_manager.clone(),
             server_config: Arc::new(self.config.clone()),
+            method_registry,
         });
 
         let tcp_config = TcpTransportConfig {
@@ -525,6 +535,73 @@ impl OpcUaServer {
         };
 
         Ok(OpcUaTcpListener::new(tcp_config, Arc::new(registry), context))
+    }
+
+    /// Register default server methods (sample callable methods for testing).
+    ///
+    /// Creates a Multiply method node with InputArguments/OutputArguments
+    /// property nodes so TRAP's MethodCallManager can discover and call it.
+    fn register_default_methods(&self, method_registry: &Arc<crate::service::method_call::MethodRegistry>) {
+        use crate::nodes::classes::MethodNode;
+        use crate::nodes::reference::Reference;
+
+        // Multiply method (ns=0; i=62541) — sample method for testing
+        let method_node_id = NodeId::numeric(0, 62541);
+
+        // Create method node in address space
+        let method_node = MethodNode::new(
+            method_node_id.clone(),
+            "Multiply",
+            "Multiply",
+        );
+        self.address_space.insert_node(method_node);
+        self.address_space.add_reference(Reference::has_component(
+            NodeId::server(), // Parent: Server object
+            method_node_id.clone(),
+        ));
+
+        // InputArguments property (ns=0; i=62542)
+        let input_args_id = NodeId::numeric(0, 62542);
+        let input_args_var = crate::nodes::classes::VariableNode::new(
+            input_args_id.clone(),
+            "InputArguments",
+            "InputArguments",
+            NodeId::numeric(0, 296), // Argument DataType
+            Variant::Null, // Placeholder — TRAP reads the structure via attribute
+        );
+        self.address_space.insert_node(input_args_var);
+        self.address_space.add_reference(Reference::has_property(
+            method_node_id.clone(),
+            input_args_id,
+        ));
+
+        // OutputArguments property (ns=0; i=62543)
+        let output_args_id = NodeId::numeric(0, 62543);
+        let output_args_var = crate::nodes::classes::VariableNode::new(
+            output_args_id.clone(),
+            "OutputArguments",
+            "OutputArguments",
+            NodeId::numeric(0, 296), // Argument DataType
+            Variant::Null,
+        );
+        self.address_space.insert_node(output_args_var);
+        self.address_space.add_reference(Reference::has_property(
+            method_node_id.clone(),
+            output_args_id,
+        ));
+
+        // Register the actual callback
+        method_registry.register(
+            method_node_id,
+            Arc::new(|args: &[Variant]| {
+                if args.len() < 2 {
+                    return Err(crate::types::StatusCode::BAD_INVALID_ARGUMENT);
+                }
+                let a = args[0].as_f64().ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
+                let b = args[1].as_f64().ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
+                Ok(vec![Variant::Double(a * b)])
+            }),
+        );
     }
 
     /// Stop the server.
