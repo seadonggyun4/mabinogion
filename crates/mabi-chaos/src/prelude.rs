@@ -138,6 +138,38 @@ pub use crate::protocol::{
 };
 
 // =============================================================================
+// BACnet Faults
+// =============================================================================
+
+pub use crate::bacnet::{
+    // APDU
+    ApduFault,
+    ApduFaultBuilder,
+    ApduFaultConfig,
+    ApduFaultType,
+    // Service
+    ServiceFault,
+    ServiceFaultBuilder,
+    ServiceFaultConfig,
+    ServiceFaultType,
+    // COV
+    CovFault,
+    CovFaultBuilder,
+    CovFaultConfig,
+    CovFaultType,
+    // Property
+    PropertyFault,
+    PropertyFaultBuilder,
+    PropertyFaultConfig,
+    PropertyFaultType,
+    // Segmentation
+    SegmentationFault,
+    SegmentationFaultBuilder,
+    SegmentationFaultConfig,
+    SegmentationFaultType,
+};
+
+// =============================================================================
 // Utility Re-exports
 // =============================================================================
 

@@ -104,6 +104,7 @@ pub mod scheduler;
 pub mod network;
 pub mod device;
 pub mod protocol;
+pub mod bacnet;
 
 // Configuration and prelude
 pub mod config;
@@ -149,6 +150,15 @@ pub use protocol::{
     ChecksumFault, ChecksumConfig,
     TimeoutFault, TimeoutConfig, TimeoutPattern,
     ReorderFault, ReorderConfig,
+};
+
+// BACnet faults
+pub use bacnet::{
+    ApduFault, ApduFaultConfig, ApduFaultType,
+    ServiceFault, ServiceFaultConfig, ServiceFaultType,
+    CovFault, CovFaultConfig, CovFaultType,
+    PropertyFault, PropertyFaultConfig, PropertyFaultType,
+    SegmentationFault, SegmentationFaultConfig, SegmentationFaultType,
 };
 
 // Configuration
