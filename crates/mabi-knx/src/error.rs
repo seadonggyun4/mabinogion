@@ -120,6 +120,33 @@ pub enum KnxError {
     #[error("Sequence error: expected {expected}, got {actual}")]
     SequenceError { expected: u8, actual: u8 },
 
+    /// Duplicate frame detected.
+    #[error("Duplicate frame: sequence {sequence}, expected {expected}")]
+    DuplicateFrame { sequence: u8, expected: u8 },
+
+    /// Out-of-order frame detected.
+    #[error("Out-of-order frame: sequence {sequence}, expected {expected}, distance {distance}")]
+    OutOfOrderFrame {
+        sequence: u8,
+        expected: u8,
+        distance: u8,
+    },
+
+    /// Fatal sequence desync (knxd: seqno >= rno + 5).
+    #[error("Fatal sequence desync: sequence {sequence}, expected {expected}, distance {distance} — tunnel restart required")]
+    FatalDesync {
+        sequence: u8,
+        expected: u8,
+        distance: u8,
+    },
+
+    /// Send error threshold exceeded.
+    #[error("Send error threshold exceeded: {consecutive_errors} consecutive errors (threshold: {threshold})")]
+    SendErrorThresholdExceeded {
+        consecutive_errors: u32,
+        threshold: u32,
+    },
+
     // ========================================================================
     // Tunnel Errors
     // ========================================================================
@@ -134,6 +161,52 @@ pub enum KnxError {
     /// Tunnel ACK error.
     #[error("Tunnel ACK error: status {status:#04x}")]
     TunnelAckError { status: u8 },
+
+    /// Tunnel ACK timeout after retries.
+    #[error("Tunnel ACK timeout: channel {channel_id}, sequence {sequence}, attempts {attempts}")]
+    AckTimeout {
+        channel_id: u8,
+        sequence: u8,
+        attempts: u8,
+    },
+
+    /// L_Data.con confirmation failure (Ctrl1 bit 0 = 1).
+    #[error("L_Data.con NACK: bus delivery failed for channel {channel_id}")]
+    ConfirmationNack { channel_id: u8 },
+
+    /// L_Data.con confirmation timeout.
+    #[error("L_Data.con timeout: channel {channel_id}, sequence {sequence}")]
+    ConfirmationTimeout { channel_id: u8, sequence: u8 },
+
+    /// Tunnel state transition error.
+    #[error("Invalid tunnel state transition: {from} -> {to}")]
+    InvalidStateTransition { from: String, to: String },
+
+    /// Channel ID mismatch.
+    #[error("Channel ID mismatch: expected {expected}, got {actual}")]
+    ChannelMismatch { expected: u8, actual: u8 },
+
+    // ========================================================================
+    // Flow Control Errors
+    // ========================================================================
+    /// Frame dropped by flow control filter.
+    #[error("Flow control: frame dropped — {reason}")]
+    FlowControlDrop { reason: String },
+
+    /// Frame queued by flow control (not an error, informational).
+    #[error("Flow control: frame queued for channel {channel_id}")]
+    FlowControlQueued { channel_id: u8 },
+
+    /// Circuit breaker is open, dropping frames.
+    #[error("Circuit breaker open: {consecutive_failures} consecutive failures (threshold: {threshold})")]
+    CircuitBreakerOpen {
+        consecutive_failures: u32,
+        threshold: u32,
+    },
+
+    /// PaceFilter delay exceeded maximum allowed.
+    #[error("Pace filter: delay {delay_ms}ms exceeds maximum {max_delay_ms}ms")]
+    PaceFilterDelayExceeded { delay_ms: u64, max_delay_ms: u64 },
 
     // ========================================================================
     // Group Object Errors
@@ -247,6 +320,34 @@ impl KnxError {
                 | Self::TunnelTimeout { .. }
                 | Self::SequenceError { .. }
                 | Self::ConnectionClosed(_)
+                | Self::DuplicateFrame { .. }
+                | Self::OutOfOrderFrame { .. }
+                | Self::AckTimeout { .. }
+                | Self::ConfirmationNack { .. }
+                | Self::ConfirmationTimeout { .. }
+                | Self::FlowControlDrop { .. }
+                | Self::FlowControlQueued { .. }
+                | Self::PaceFilterDelayExceeded { .. }
+        )
+    }
+
+    /// Check if this is a flow control related error.
+    pub fn is_flow_control_error(&self) -> bool {
+        matches!(
+            self,
+            Self::FlowControlDrop { .. }
+                | Self::FlowControlQueued { .. }
+                | Self::CircuitBreakerOpen { .. }
+                | Self::PaceFilterDelayExceeded { .. }
+        )
+    }
+
+    /// Check if this requires tunnel restart.
+    pub fn requires_tunnel_restart(&self) -> bool {
+        matches!(
+            self,
+            Self::FatalDesync { .. }
+                | Self::SendErrorThresholdExceeded { .. }
         )
     }
 

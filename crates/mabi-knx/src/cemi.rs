@@ -85,6 +85,39 @@ impl MessageCode {
             Self::LDataInd | Self::LBusmonInd | Self::LRawInd | Self::MResetInd
         )
     }
+
+    /// Check if this is a confirmation.
+    pub fn is_confirmation(&self) -> bool {
+        matches!(
+            self,
+            Self::LDataCon | Self::LRawCon | Self::MPropReadCon | Self::MPropWriteCon
+        )
+    }
+
+    /// Check if this is a property service message.
+    pub fn is_property_service(&self) -> bool {
+        matches!(
+            self,
+            Self::MPropReadReq | Self::MPropReadCon | Self::MPropWriteReq | Self::MPropWriteCon
+        )
+    }
+
+    /// Check if this is a reset service message.
+    pub fn is_reset_service(&self) -> bool {
+        matches!(self, Self::MResetReq | Self::MResetInd)
+    }
+
+    /// Get the corresponding confirmation message code for a request.
+    pub fn to_confirmation(&self) -> Option<Self> {
+        match self {
+            Self::LDataReq => Some(Self::LDataCon),
+            Self::LRawReq => Some(Self::LRawCon),
+            Self::MPropReadReq => Some(Self::MPropReadCon),
+            Self::MPropWriteReq => Some(Self::MPropWriteCon),
+            Self::MResetReq => Some(Self::MResetInd),
+            _ => None,
+        }
+    }
 }
 
 impl From<MessageCode> for u8 {
@@ -466,6 +499,167 @@ impl CemiFrame {
         }
     }
 
+    /// Create a Bus Monitor indication frame (MC=0x2B).
+    ///
+    /// Bus monitor frames wrap the raw bus frame data with Additional Info TLV:
+    /// - 0x03: Bus Monitor Status (error flags)
+    /// - 0x04: Timestamp Relative (2 bytes, ms since last frame)
+    /// - 0x06: Extended Timestamp (4 bytes, microseconds)
+    pub fn bus_monitor_indication(
+        raw_frame: &[u8],
+        status: u8,
+        timestamp_ms: u16,
+    ) -> Self {
+        let mut additional_info = Vec::new();
+
+        // Bus Monitor Info (type 0x03): 1 byte status
+        additional_info.push(AdditionalInfo::new(
+            AdditionalInfoType::BusMonitorInfo as u8,
+            vec![status],
+        ));
+
+        // Timestamp Relative (type 0x04): 2 bytes, milliseconds since last frame
+        additional_info.push(AdditionalInfo::new(
+            AdditionalInfoType::TimestampRelative as u8,
+            timestamp_ms.to_be_bytes().to_vec(),
+        ));
+
+        Self {
+            message_code: MessageCode::LBusmonInd,
+            additional_info,
+            source: IndividualAddress::new(0, 0, 0),
+            destination: 0,
+            address_type: AddressType::Group,
+            hop_count: 7,
+            priority: Priority::Low,
+            confirm: false,
+            ack_request: false,
+            system_broadcast: false,
+            apci: Apci::Unknown(0),
+            data: raw_frame.to_vec(),
+        }
+    }
+
+    /// Create a Bus Monitor indication with extended timestamp (microseconds).
+    pub fn bus_monitor_indication_ext(
+        raw_frame: &[u8],
+        status: u8,
+        timestamp_ms: u16,
+        timestamp_us: u32,
+    ) -> Self {
+        let mut frame = Self::bus_monitor_indication(raw_frame, status, timestamp_ms);
+
+        // Extended Relative Timestamp (type 0x06): 4 bytes, microseconds
+        frame.additional_info.push(AdditionalInfo::new(
+            AdditionalInfoType::ExtendedTimestamp as u8,
+            timestamp_us.to_be_bytes().to_vec(),
+        ));
+
+        frame
+    }
+
+    /// Create an M_PropRead.con response frame.
+    ///
+    /// Responds to M_PropRead.req with the requested property value.
+    /// The data format follows KNX cEMI property service encoding:
+    /// [object_index(2) | property_id(2) | count_index(2) | data...]
+    pub fn prop_read_con(
+        object_index: u16,
+        property_id: u16,
+        count: u8,
+        start_index: u8,
+        value: Vec<u8>,
+    ) -> Self {
+        let mut data = Vec::with_capacity(6 + value.len());
+        data.extend_from_slice(&object_index.to_be_bytes());
+        data.extend_from_slice(&property_id.to_be_bytes());
+        // Number of elements (4 bits) | start index (12 bits)
+        let count_index = ((count as u16) << 12) | (start_index as u16 & 0x0FFF);
+        data.extend_from_slice(&count_index.to_be_bytes());
+        data.extend(value);
+
+        Self {
+            message_code: MessageCode::MPropReadCon,
+            additional_info: Vec::new(),
+            source: IndividualAddress::new(0, 0, 0),
+            destination: 0,
+            address_type: AddressType::Individual,
+            hop_count: 7,
+            priority: Priority::System,
+            confirm: false,
+            ack_request: false,
+            system_broadcast: false,
+            apci: Apci::Unknown(0),
+            data,
+        }
+    }
+
+    /// Create an M_PropWrite.con response frame.
+    pub fn prop_write_con(
+        object_index: u16,
+        property_id: u16,
+        count: u8,
+        start_index: u8,
+        success: bool,
+    ) -> Self {
+        let mut data = Vec::with_capacity(6);
+        data.extend_from_slice(&object_index.to_be_bytes());
+        data.extend_from_slice(&property_id.to_be_bytes());
+        // On error: count=0 signals failure per KNX spec
+        let actual_count = if success { count } else { 0 };
+        let count_index = ((actual_count as u16) << 12) | (start_index as u16 & 0x0FFF);
+        data.extend_from_slice(&count_index.to_be_bytes());
+
+        Self {
+            message_code: MessageCode::MPropWriteCon,
+            additional_info: Vec::new(),
+            source: IndividualAddress::new(0, 0, 0),
+            destination: 0,
+            address_type: AddressType::Individual,
+            hop_count: 7,
+            priority: Priority::System,
+            confirm: !success,
+            ack_request: false,
+            system_broadcast: false,
+            apci: Apci::Unknown(0),
+            data,
+        }
+    }
+
+    /// Create an M_Reset.ind frame (response to M_Reset.req).
+    pub fn reset_ind() -> Self {
+        Self {
+            message_code: MessageCode::MResetInd,
+            additional_info: Vec::new(),
+            source: IndividualAddress::new(0, 0, 0),
+            destination: 0,
+            address_type: AddressType::Individual,
+            hop_count: 7,
+            priority: Priority::System,
+            confirm: false,
+            ack_request: false,
+            system_broadcast: false,
+            apci: Apci::Unknown(0),
+            data: Vec::new(),
+        }
+    }
+
+    /// Parse property service request data.
+    ///
+    /// Returns (object_index, property_id, count, start_index, remaining_data).
+    pub fn parse_property_request(&self) -> Option<(u16, u16, u8, u8, &[u8])> {
+        if self.data.len() < 6 {
+            return None;
+        }
+        let object_index = u16::from_be_bytes([self.data[0], self.data[1]]);
+        let property_id = u16::from_be_bytes([self.data[2], self.data[3]]);
+        let count_index = u16::from_be_bytes([self.data[4], self.data[5]]);
+        let count = (count_index >> 12) as u8;
+        let start_index = (count_index & 0x0FFF) as u8;
+        let remaining = &self.data[6..];
+        Some((object_index, property_id, count, start_index, remaining))
+    }
+
     /// Get destination as group address.
     pub fn destination_group(&self) -> Option<GroupAddress> {
         if self.address_type == AddressType::Group {
@@ -526,6 +720,22 @@ impl CemiFrame {
             info.encode(&mut buf);
         }
 
+        // Property service and reset frames use a different body format:
+        // MC | add_info_len | [add_info...] | data
+        // No Ctrl1/Ctrl2/addresses/NPDU — just raw property data.
+        if self.message_code.is_property_service() || self.message_code.is_reset_service() {
+            buf.put_slice(&self.data);
+            return buf.to_vec();
+        }
+
+        // Bus monitor frames: MC | add_info_len | [add_info...] | raw_frame_data
+        // The additional info carries status/timestamp, data is the raw bus frame.
+        if self.message_code == MessageCode::LBusmonInd {
+            buf.put_slice(&self.data);
+            return buf.to_vec();
+        }
+
+        // Standard L_Data frame encoding (L_Data.req/con/ind, L_Raw)
         // Control byte 1
         let ctrl1 = 0x80 // Standard frame
             | (if self.ack_request { 0x00 } else { 0x20 }) // L/H (ack flag inverted)
@@ -573,8 +783,8 @@ impl CemiFrame {
 
     /// Decode from bytes.
     pub fn decode(data: &[u8]) -> KnxResult<Self> {
-        if data.len() < 8 {
-            return Err(KnxError::frame_too_short(8, data.len()));
+        if data.len() < 2 {
+            return Err(KnxError::frame_too_short(2, data.len()));
         }
 
         let mut buf = data;
@@ -598,6 +808,43 @@ impl CemiFrame {
             buf = &buf[add_info_len..];
         }
 
+        // Property service frames: MC | add_info_len | [add_info...] | data
+        if message_code.is_property_service() || message_code.is_reset_service() {
+            return Ok(Self {
+                message_code,
+                additional_info,
+                source: IndividualAddress::new(0, 0, 0),
+                destination: 0,
+                address_type: AddressType::Individual,
+                hop_count: 7,
+                priority: Priority::System,
+                confirm: false,
+                ack_request: false,
+                system_broadcast: false,
+                apci: Apci::Unknown(0),
+                data: buf.to_vec(),
+            });
+        }
+
+        // Bus monitor frames: MC | add_info_len | [add_info...] | raw_frame_data
+        if message_code == MessageCode::LBusmonInd {
+            return Ok(Self {
+                message_code,
+                additional_info,
+                source: IndividualAddress::new(0, 0, 0),
+                destination: 0,
+                address_type: AddressType::Group,
+                hop_count: 7,
+                priority: Priority::Low,
+                confirm: false,
+                ack_request: false,
+                system_broadcast: false,
+                apci: Apci::Unknown(0),
+                data: buf.to_vec(),
+            });
+        }
+
+        // Standard L_Data frame decoding
         if buf.len() < 7 {
             return Err(KnxError::frame_too_short(7, buf.len()));
         }
@@ -735,5 +982,144 @@ mod tests {
 
         assert!(matches!(decoded.apci, Apci::GroupValueRead));
         assert!(decoded.data.is_empty() || decoded.data == vec![0]);
+    }
+
+    #[test]
+    fn test_message_code_confirmation_mapping() {
+        assert_eq!(MessageCode::LDataReq.to_confirmation(), Some(MessageCode::LDataCon));
+        assert_eq!(MessageCode::LRawReq.to_confirmation(), Some(MessageCode::LRawCon));
+        assert_eq!(MessageCode::MPropReadReq.to_confirmation(), Some(MessageCode::MPropReadCon));
+        assert_eq!(MessageCode::MPropWriteReq.to_confirmation(), Some(MessageCode::MPropWriteCon));
+        assert_eq!(MessageCode::MResetReq.to_confirmation(), Some(MessageCode::MResetInd));
+        assert_eq!(MessageCode::LDataCon.to_confirmation(), None);
+        assert_eq!(MessageCode::LDataInd.to_confirmation(), None);
+    }
+
+    #[test]
+    fn test_message_code_categories() {
+        assert!(MessageCode::LDataCon.is_confirmation());
+        assert!(MessageCode::LRawCon.is_confirmation());
+        assert!(MessageCode::MPropReadCon.is_confirmation());
+        assert!(!MessageCode::LDataReq.is_confirmation());
+
+        assert!(MessageCode::MPropReadReq.is_property_service());
+        assert!(MessageCode::MPropWriteReq.is_property_service());
+        assert!(MessageCode::MPropReadCon.is_property_service());
+        assert!(!MessageCode::LDataReq.is_property_service());
+
+        assert!(MessageCode::MResetReq.is_reset_service());
+        assert!(MessageCode::MResetInd.is_reset_service());
+        assert!(!MessageCode::LDataReq.is_reset_service());
+    }
+
+    #[test]
+    fn test_bus_monitor_indication() {
+        let raw_frame = vec![0x29, 0x00, 0xBC, 0x11, 0x01, 0x09, 0x01, 0x00, 0x80, 0x01];
+        let frame = CemiFrame::bus_monitor_indication(&raw_frame, 0x00, 150);
+
+        assert_eq!(frame.message_code, MessageCode::LBusmonInd);
+        assert_eq!(frame.additional_info.len(), 2);
+
+        // Bus Monitor Info (type 0x03)
+        assert_eq!(frame.additional_info[0].info_type, AdditionalInfoType::BusMonitorInfo as u8);
+        assert_eq!(frame.additional_info[0].data, vec![0x00]);
+
+        // Timestamp Relative (type 0x04)
+        assert_eq!(frame.additional_info[1].info_type, AdditionalInfoType::TimestampRelative as u8);
+        assert_eq!(frame.additional_info[1].data, vec![0x00, 0x96]); // 150 in BE
+
+        // Raw frame data
+        assert_eq!(frame.data, raw_frame);
+
+        // Verify encode/decode roundtrip
+        let encoded = frame.encode();
+        let decoded = CemiFrame::decode(&encoded).unwrap();
+        assert_eq!(decoded.message_code, MessageCode::LBusmonInd);
+        assert_eq!(decoded.additional_info.len(), 2);
+        assert_eq!(decoded.data, raw_frame);
+    }
+
+    #[test]
+    fn test_bus_monitor_indication_ext() {
+        let raw_frame = vec![0x29, 0x00, 0xBC];
+        let frame = CemiFrame::bus_monitor_indication_ext(&raw_frame, 0x80, 100, 123456);
+
+        assert_eq!(frame.additional_info.len(), 3);
+        // Extended Timestamp (type 0x06)
+        assert_eq!(frame.additional_info[2].info_type, AdditionalInfoType::ExtendedTimestamp as u8);
+        let ts_bytes = &frame.additional_info[2].data;
+        let ts = u32::from_be_bytes([ts_bytes[0], ts_bytes[1], ts_bytes[2], ts_bytes[3]]);
+        assert_eq!(ts, 123456);
+    }
+
+    #[test]
+    fn test_prop_read_con() {
+        let frame = CemiFrame::prop_read_con(0, 11, 1, 1, vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        assert_eq!(frame.message_code, MessageCode::MPropReadCon);
+
+        // Parse the property request back
+        let parsed = frame.parse_property_request().unwrap();
+        assert_eq!(parsed.0, 0);  // object_index
+        assert_eq!(parsed.1, 11); // property_id (serial number)
+        assert_eq!(parsed.2, 1);  // count
+        assert_eq!(parsed.3, 1);  // start_index
+        assert_eq!(parsed.4, &[0x00, 0x00, 0x00, 0x00, 0x00, 0x01]); // value
+
+        // Verify encode/decode roundtrip
+        let encoded = frame.encode();
+        let decoded = CemiFrame::decode(&encoded).unwrap();
+        assert_eq!(decoded.message_code, MessageCode::MPropReadCon);
+        assert_eq!(decoded.data, frame.data);
+    }
+
+    #[test]
+    fn test_prop_write_con_success() {
+        let frame = CemiFrame::prop_write_con(0, 14, 1, 1, true);
+        assert_eq!(frame.message_code, MessageCode::MPropWriteCon);
+        assert!(!frame.confirm); // success: confirm=false
+
+        let parsed = frame.parse_property_request().unwrap();
+        assert_eq!(parsed.2, 1); // count=1 on success
+    }
+
+    #[test]
+    fn test_prop_write_con_failure() {
+        let frame = CemiFrame::prop_write_con(0, 14, 1, 1, false);
+        assert!(frame.confirm); // failure: confirm=true
+
+        let parsed = frame.parse_property_request().unwrap();
+        assert_eq!(parsed.2, 0); // count=0 signals error per KNX spec
+    }
+
+    #[test]
+    fn test_reset_ind() {
+        let frame = CemiFrame::reset_ind();
+        assert_eq!(frame.message_code, MessageCode::MResetInd);
+        assert!(frame.data.is_empty());
+
+        // Verify encode/decode roundtrip
+        let encoded = frame.encode();
+        let decoded = CemiFrame::decode(&encoded).unwrap();
+        assert_eq!(decoded.message_code, MessageCode::MResetInd);
+    }
+
+    #[test]
+    fn test_parse_property_request_too_short() {
+        let frame = CemiFrame {
+            message_code: MessageCode::MPropReadReq,
+            additional_info: Vec::new(),
+            source: IndividualAddress::new(0, 0, 0),
+            destination: 0,
+            address_type: AddressType::Individual,
+            hop_count: 7,
+            priority: Priority::System,
+            confirm: false,
+            ack_request: false,
+            system_broadcast: false,
+            apci: Apci::Unknown(0),
+            data: vec![0x00, 0x00], // Only 2 bytes, need 6
+        };
+
+        assert!(frame.parse_property_request().is_none());
     }
 }

@@ -4,15 +4,18 @@
 //! point-to-point connections between client and server.
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
 use bytes::{Buf, BufMut, BytesMut};
+use tokio::sync::mpsc;
 
 use crate::address::IndividualAddress;
 use crate::cemi::CemiFrame;
 use crate::error::{KnxError, KnxResult};
 use crate::frame::Hpai;
+use super::sequence::{SequenceTracker, ReceivedValidation};
+use super::ack_waiter::AckMessage;
+use super::fsm::TunnelFsm;
 
 // ============================================================================
 // Connection Types
@@ -657,21 +660,30 @@ impl DisconnectResponse {
 // Tunnel Connection
 // ============================================================================
 
-/// Tunnel connection state.
+/// Tunnel connection with production-grade sequence validation and FSM.
+///
+/// Each connection tracks:
+/// - **SequenceTracker**: knxd-compatible rno/sno with CAS wrapping
+/// - **TunnelFsm**: 7-state FSM mapped to knxd mod 0-3
+/// - **ACK channel**: for server→client frame delivery tracking
 #[derive(Debug)]
 pub struct TunnelConnection {
     /// Channel ID.
     pub channel_id: u8,
-    /// Client address.
+    /// Client address (control endpoint).
     pub client_addr: SocketAddr,
-    /// Data endpoint.
+    /// Data endpoint (may differ from client_addr for NAT).
     pub data_endpoint: SocketAddr,
     /// Assigned individual address.
     pub individual_address: IndividualAddress,
-    /// Receive sequence counter.
-    sequence_recv: AtomicU8,
-    /// Send sequence counter.
-    sequence_send: AtomicU8,
+    /// knxd-compatible sequence tracker with CAS-based rno/sno.
+    pub sequence_tracker: SequenceTracker,
+    /// Per-connection tunnel FSM (7-state).
+    pub fsm: TunnelFsm,
+    /// Sender for incoming ACK messages (server→client delivery tracking).
+    ack_tx: mpsc::Sender<AckMessage>,
+    /// Receiver for incoming ACK messages — consumed by AckWaiter.
+    ack_rx: parking_lot::Mutex<Option<mpsc::Receiver<AckMessage>>>,
     /// Last activity time.
     last_activity: parking_lot::RwLock<Instant>,
     /// Heartbeat timeout.
@@ -679,7 +691,7 @@ pub struct TunnelConnection {
 }
 
 impl TunnelConnection {
-    /// Create a new tunnel connection.
+    /// Create a new tunnel connection with full Phase 1 support.
     pub fn new(
         channel_id: u8,
         client_addr: SocketAddr,
@@ -687,38 +699,98 @@ impl TunnelConnection {
         individual_address: IndividualAddress,
         heartbeat_timeout: Duration,
     ) -> Self {
+        let (ack_tx, ack_rx) = mpsc::channel(32);
+
         Self {
             channel_id,
             client_addr,
             data_endpoint,
             individual_address,
-            sequence_recv: AtomicU8::new(0),
-            sequence_send: AtomicU8::new(0),
+            sequence_tracker: SequenceTracker::new(),
+            fsm: TunnelFsm::connecting(),
+            ack_tx,
+            ack_rx: parking_lot::Mutex::new(Some(ack_rx)),
             last_activity: parking_lot::RwLock::new(Instant::now()),
             heartbeat_timeout,
         }
     }
 
-    /// Get next send sequence number.
-    pub fn next_send_sequence(&self) -> u8 {
-        self.sequence_send.fetch_add(1, Ordering::SeqCst)
-    }
+    /// Create with custom desync threshold.
+    pub fn with_desync_threshold(
+        channel_id: u8,
+        client_addr: SocketAddr,
+        data_endpoint: SocketAddr,
+        individual_address: IndividualAddress,
+        heartbeat_timeout: Duration,
+        desync_threshold: u8,
+    ) -> Self {
+        let (ack_tx, ack_rx) = mpsc::channel(32);
 
-    /// Get current send sequence number.
-    pub fn current_send_sequence(&self) -> u8 {
-        self.sequence_send.load(Ordering::SeqCst)
-    }
-
-    /// Check and update receive sequence.
-    pub fn check_recv_sequence(&self, seq: u8) -> bool {
-        let expected = self.sequence_recv.load(Ordering::SeqCst);
-        if seq == expected {
-            self.sequence_recv.store(expected.wrapping_add(1), Ordering::SeqCst);
-            true
-        } else {
-            false
+        Self {
+            channel_id,
+            client_addr,
+            data_endpoint,
+            individual_address,
+            sequence_tracker: SequenceTracker::with_desync_threshold(desync_threshold),
+            fsm: TunnelFsm::connecting(),
+            ack_tx,
+            ack_rx: parking_lot::Mutex::new(Some(ack_rx)),
+            last_activity: parking_lot::RwLock::new(Instant::now()),
+            heartbeat_timeout,
         }
     }
+
+    // ========================================================================
+    // Sequence management (delegates to SequenceTracker)
+    // ========================================================================
+
+    /// Get next send sequence number (CAS-safe, wraps at 255→0).
+    pub fn next_send_sequence(&self) -> u8 {
+        self.sequence_tracker.next_sno()
+    }
+
+    /// Get current send sequence number without incrementing.
+    pub fn current_send_sequence(&self) -> u8 {
+        self.sequence_tracker.current_sno()
+    }
+
+    /// Validate a received sequence number with knxd-compatible logic.
+    ///
+    /// Returns a `ReceivedValidation` with the appropriate action:
+    /// - Valid: process frame, advance rno
+    /// - Duplicate: ACK only, don't process
+    /// - OutOfOrder: log warning, ACK, process
+    /// - FatalDesync: tunnel restart required
+    pub fn validate_recv_sequence(&self, seq: u8) -> ReceivedValidation {
+        self.sequence_tracker.validate_received(seq)
+    }
+
+    /// Legacy compatibility: check and update receive sequence (returns bool).
+    pub fn check_recv_sequence(&self, seq: u8) -> bool {
+        matches!(
+            self.sequence_tracker.validate_received(seq),
+            ReceivedValidation::Valid { .. }
+        )
+    }
+
+    // ========================================================================
+    // ACK channel management
+    // ========================================================================
+
+    /// Feed an incoming ACK message to this connection's ACK channel.
+    pub fn feed_ack(&self, msg: AckMessage) {
+        // Best-effort: if receiver is dropped, this is a no-op
+        let _ = self.ack_tx.try_send(msg);
+    }
+
+    /// Take the ACK receiver (can only be taken once, for AckWaiter).
+    pub fn take_ack_rx(&self) -> Option<mpsc::Receiver<AckMessage>> {
+        self.ack_rx.lock().take()
+    }
+
+    // ========================================================================
+    // Activity tracking
+    // ========================================================================
 
     /// Update last activity time.
     pub fn touch(&self) {
@@ -733,6 +805,16 @@ impl TunnelConnection {
     /// Get idle duration.
     pub fn idle_duration(&self) -> Duration {
         self.last_activity.read().elapsed()
+    }
+
+    // ========================================================================
+    // Reset (for reconnection scenarios)
+    // ========================================================================
+
+    /// Reset sequence tracker and FSM for reconnection.
+    pub fn reset(&self) {
+        self.sequence_tracker.reset();
+        self.fsm.force_idle();
     }
 }
 

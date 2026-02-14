@@ -8,6 +8,10 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::address::IndividualAddress;
+use crate::error_tracker::SendErrorTrackerConfig;
+use crate::filter::FilterChainConfig;
+use crate::group_cache::GroupValueCacheConfig;
+use crate::heartbeat::HeartbeatSchedulerConfig;
 
 // ============================================================================
 // Server Configuration
@@ -63,6 +67,10 @@ pub struct KnxServerConfig {
     /// Enable device management mode.
     #[serde(default)]
     pub device_management_enabled: bool,
+
+    /// Tunnel behavior configuration for protocol simulation fidelity.
+    #[serde(default)]
+    pub tunnel_behavior: TunnelBehaviorConfig,
 }
 
 fn default_bind_addr() -> SocketAddr {
@@ -121,6 +129,7 @@ impl Default for KnxServerConfig {
             routing_enabled: false,
             tunneling_enabled: true,
             device_management_enabled: false,
+            tunnel_behavior: TunnelBehaviorConfig::default(),
         }
     }
 }
@@ -361,6 +370,22 @@ pub struct TunnelConfig {
     /// Maximum retry count.
     #[serde(default = "default_max_retries")]
     pub max_retries: u8,
+
+    /// ACK timeout in milliseconds (knxd default: 1000ms).
+    #[serde(default = "default_ack_timeout_ms")]
+    pub ack_timeout_ms: u64,
+
+    /// L_Data.con confirmation timeout in milliseconds (default: 3000ms).
+    #[serde(default = "default_confirmation_timeout_ms")]
+    pub confirmation_timeout_ms: u64,
+
+    /// Consecutive send error threshold for tunnel restart (knxd: 5).
+    #[serde(default = "default_send_error_threshold")]
+    pub send_error_threshold: u32,
+
+    /// Fatal desync threshold — sequence distance triggering tunnel restart (knxd: 5).
+    #[serde(default = "default_fatal_desync_threshold")]
+    pub fatal_desync_threshold: u8,
 }
 
 fn default_request_timeout_ms() -> u64 {
@@ -371,12 +396,32 @@ fn default_max_retries() -> u8 {
     3
 }
 
+fn default_ack_timeout_ms() -> u64 {
+    1000
+}
+
+fn default_confirmation_timeout_ms() -> u64 {
+    3000
+}
+
+fn default_send_error_threshold() -> u32 {
+    5
+}
+
+fn default_fatal_desync_threshold() -> u8 {
+    5
+}
+
 impl Default for TunnelConfig {
     fn default() -> Self {
         Self {
             layer: KnxLayerConfig::default(),
             request_timeout_ms: default_request_timeout_ms(),
             max_retries: default_max_retries(),
+            ack_timeout_ms: default_ack_timeout_ms(),
+            confirmation_timeout_ms: default_confirmation_timeout_ms(),
+            send_error_threshold: default_send_error_threshold(),
+            fatal_desync_threshold: default_fatal_desync_threshold(),
         }
     }
 }
@@ -385,6 +430,139 @@ impl TunnelConfig {
     /// Get request timeout as Duration.
     pub fn request_timeout(&self) -> Duration {
         Duration::from_millis(self.request_timeout_ms)
+    }
+
+    /// Get ACK timeout as Duration.
+    pub fn ack_timeout(&self) -> Duration {
+        Duration::from_millis(self.ack_timeout_ms)
+    }
+
+    /// Get confirmation timeout as Duration.
+    pub fn confirmation_timeout(&self) -> Duration {
+        Duration::from_millis(self.confirmation_timeout_ms)
+    }
+}
+
+/// Server-side tunnel behavior configuration.
+///
+/// Controls how the simulator behaves from the gateway perspective,
+/// enabling realistic protocol testing for trap-knx clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TunnelBehaviorConfig {
+    /// Enable L_Data.con confirmation flow (MC=0x2E).
+    /// When true, the server sends L_Data.con after processing L_Data.req.
+    #[serde(default = "default_true")]
+    pub ldata_con_enabled: bool,
+
+    /// Base probability of L_Data.con success (0.0 - 1.0).
+    /// 1.0 = always succeed, 0.0 = always NACK.
+    #[serde(default = "default_confirmation_success_rate")]
+    pub confirmation_success_rate: f64,
+
+    /// Simulated bus delivery delay in milliseconds before sending L_Data.con.
+    #[serde(default = "default_bus_delivery_delay_ms")]
+    pub bus_delivery_delay_ms: u64,
+
+    /// Enable sequence validation with duplicate/out-of-order detection.
+    #[serde(default = "default_true")]
+    pub sequence_validation_enabled: bool,
+
+    /// Enable ACK timeout and retry tracking for server→client frames.
+    #[serde(default = "default_true")]
+    pub ack_tracking_enabled: bool,
+
+    /// Heartbeat response status override.
+    /// None = use normal behavior, Some(status) = always respond with this status.
+    #[serde(default)]
+    pub heartbeat_status_override: Option<u8>,
+
+    /// Per-connection ACK timeout in milliseconds for server→client frames.
+    #[serde(default = "default_server_ack_timeout_ms")]
+    pub server_ack_timeout_ms: u64,
+
+    /// Maximum retries for server→client frame delivery.
+    #[serde(default = "default_max_retries")]
+    pub server_max_retries: u8,
+
+    /// Enable Bus Monitor frame generation (MC=0x2B).
+    /// When true, L_Busmon.ind frames with Additional Info TLV are sent
+    /// for every bus frame to connections in BusMonitor mode.
+    #[serde(default)]
+    pub bus_monitor_enabled: bool,
+
+    /// Enable L_Data.ind broadcast to other tunnel connections.
+    /// When true, group value writes are forwarded to all other connected tunnels.
+    #[serde(default = "default_true")]
+    pub ldata_ind_broadcast_enabled: bool,
+
+    /// Enable cEMI property service handling (M_PropRead, M_PropWrite).
+    /// When true, the server processes property read/write requests and
+    /// sends appropriate confirmations.
+    #[serde(default = "default_true")]
+    pub property_service_enabled: bool,
+
+    /// Enable M_Reset handling.
+    /// When true, the server responds to M_Reset.req with M_Reset.ind.
+    #[serde(default = "default_true")]
+    pub reset_service_enabled: bool,
+
+    /// Flow control filter chain configuration.
+    /// Enables bus timing simulation, priority queuing, and circuit breaker
+    /// for realistic KNX bus behavior testing.
+    #[serde(default)]
+    pub flow_control: FilterChainConfig,
+
+    /// Heartbeat scheduler configuration.
+    /// When enabled, the scheduler determines the heartbeat response action
+    /// for each connection state request, supporting 5 action types.
+    #[serde(default)]
+    pub heartbeat_scheduler: HeartbeatSchedulerConfig,
+
+    /// Group value cache configuration.
+    /// Caches group values with TTL/LRU eviction and auto-updates on
+    /// L_Data.ind indications for consistent multi-client simulation.
+    #[serde(default)]
+    pub group_value_cache: GroupValueCacheConfig,
+
+    /// Send error tracker configuration.
+    /// Monitors consecutive and sliding window error rates for each channel,
+    /// triggering tunnel restart when thresholds are exceeded.
+    #[serde(default)]
+    pub send_error_tracker: SendErrorTrackerConfig,
+}
+
+fn default_confirmation_success_rate() -> f64 {
+    1.0
+}
+
+fn default_bus_delivery_delay_ms() -> u64 {
+    0
+}
+
+fn default_server_ack_timeout_ms() -> u64 {
+    1000
+}
+
+impl Default for TunnelBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            ldata_con_enabled: true,
+            confirmation_success_rate: default_confirmation_success_rate(),
+            bus_delivery_delay_ms: default_bus_delivery_delay_ms(),
+            sequence_validation_enabled: true,
+            ack_tracking_enabled: true,
+            heartbeat_status_override: None,
+            server_ack_timeout_ms: default_server_ack_timeout_ms(),
+            server_max_retries: default_max_retries(),
+            bus_monitor_enabled: false,
+            ldata_ind_broadcast_enabled: true,
+            property_service_enabled: true,
+            reset_service_enabled: true,
+            flow_control: FilterChainConfig::default(),
+            heartbeat_scheduler: HeartbeatSchedulerConfig::default(),
+            group_value_cache: GroupValueCacheConfig::default(),
+            send_error_tracker: SendErrorTrackerConfig::default(),
+        }
     }
 }
 

@@ -56,7 +56,13 @@ pub mod frame;
 
 // Device and server modules
 pub mod group;
+pub mod group_cache;
 pub mod tunnel;
+pub mod filter;
+pub mod heartbeat;
+pub mod error_tracker;
+pub mod metrics;
+pub mod diagnostics;
 pub mod server;
 pub mod device;
 pub mod factory;
@@ -72,7 +78,7 @@ pub use dpt::{
     DptId, DptValue, DptCodec, DptRegistry, BoxedDptCodec,
     encode_dpt9, decode_dpt9,
 };
-pub use cemi::{CemiFrame, MessageCode, Priority, Apci};
+pub use cemi::{CemiFrame, MessageCode, Priority, Apci, AdditionalInfo, AdditionalInfoType};
 pub use frame::{KnxFrame, FrameBuilder, KnxNetIpHeader, ServiceType, Hpai, DibDeviceInfo, SupportedServiceFamilies, ServiceFamily};
 pub use group::{GroupObject, GroupObjectTable, GroupObjectFlags, GroupEvent};
 pub use tunnel::{
@@ -81,6 +87,37 @@ pub use tunnel::{
     TunnellingRequest, TunnellingAck,
     ConnectionStateRequest, ConnectionStateResponse,
     DisconnectRequest, DisconnectResponse,
+    // Phase 1: Sequence tracking, ACK management, FSM
+    SequenceTracker, ReceivedValidation, AckValidation, SequenceStatsSnapshot,
+    AckWaiter, AckResult, AckMessage, AckWaiterStatsSnapshot,
+    TunnelFsm, TunnelState, TunnelErrorReason, FsmStatsSnapshot,
+};
+pub use config::TunnelBehaviorConfig;
+pub use filter::{
+    FilterChain, FilterChainConfig, FilterChainStats, FilterChainStatsSnapshot,
+    FilterDirection, FilterResult, FrameEnvelope,
+    PaceFilter, PaceFilterConfig, PaceState, PaceFilterStats, PaceFilterStatsSnapshot,
+    QueueFilter, QueueFilterConfig, QueuePriority, QueueFilterStats, QueueFilterStatsSnapshot,
+    RetryFilter, RetryFilterConfig, CircuitBreakerState, RetryFilterStats, RetryFilterStatsSnapshot,
+};
+pub use heartbeat::{
+    HeartbeatAction, HeartbeatSchedule, HeartbeatScheduler, HeartbeatSchedulerConfig,
+    HeartbeatStatsSnapshot,
+};
+pub use group_cache::{
+    GroupValueCache, GroupValueCacheConfig, CacheEntry, CacheEntryInfo,
+    CacheStatsSnapshot, UpdateSource,
+};
+pub use error_tracker::{
+    SendErrorTracker, SendErrorTrackerConfig, ErrorCategory, TrackingResult,
+    ChannelErrorSummary, TrackerStatsSnapshot,
+};
+pub use metrics::{
+    KnxMetricsSnapshot, KnxMetricsCollector, ConnectionMetricsSnapshot,
+};
+pub use diagnostics::{
+    KnxDiagnostics, DiagnosticResult, DiagnosticSeverity, DiagnosticRule,
+    DiagnosticConfig,
 };
 pub use server::{KnxServer, ServerState, ServerEvent, ConnectionManager};
 pub use device::{KnxDevice, KnxDeviceBuilder};
