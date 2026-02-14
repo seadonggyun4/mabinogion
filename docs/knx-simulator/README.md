@@ -25,25 +25,41 @@ The `mabi-knx` crate provides a KNXnet/IP server simulator that implements the t
 ```
 mabi-knx/
 ├── src/
-│   ├── lib.rs           # Public API exports
-│   ├── error.rs         # Error types
-│   ├── config.rs        # Configuration structures
-│   ├── address.rs       # Individual and group addressing
-│   ├── cemi.rs          # Common EMI frame handling
-│   ├── server.rs        # KNXnet/IP server implementation
-│   ├── device.rs        # KNX device abstraction
-│   ├── factory.rs       # Device factory for core integration
-│   ├── tunnel.rs        # Tunneling connection management
-│   ├── frame/           # KNXnet/IP frame parsing
+│   ├── lib.rs              # Public API exports
+│   ├── error.rs            # Error types (with flow control/sequence errors)
+│   ├── config.rs           # Configuration (server, tunnel behavior, filters)
+│   ├── address.rs          # Individual and group addressing
+│   ├── cemi.rs             # cEMI frames (L_Data, M_Prop, M_Reset, L_Busmon)
+│   ├── server.rs           # KNXnet/IP server (full pipeline)
+│   ├── device.rs           # KNX device abstraction
+│   ├── factory.rs          # Device factory for core integration
+│   ├── frame/              # KNXnet/IP frame parsing
 │   │   ├── mod.rs
-│   │   ├── header.rs    # Protocol header
-│   │   └── hpai.rs      # Host Protocol Address Information
-│   └── dpt/             # Datapoint type system
-│       ├── mod.rs
-│       ├── codec.rs     # DPT encoding/decoding trait
-│       ├── registry.rs  # Dynamic codec registry
-│       ├── types.rs     # Standard DPT implementations
-│       └── values.rs    # DPT value enumeration
+│   │   ├── header.rs       # Protocol header
+│   │   └── hpai.rs         # Host Protocol Address Information
+│   ├── dpt/                # Datapoint type system
+│   │   ├── mod.rs
+│   │   ├── codec.rs        # DPT encoding/decoding trait
+│   │   ├── registry.rs     # Dynamic codec registry
+│   │   ├── types.rs        # Standard DPT implementations
+│   │   └── values.rs       # DPT value enumeration
+│   ├── tunnel/             # Tunneling protocol (Phase 1)
+│   │   ├── mod.rs          # Module exports
+│   │   ├── connection.rs   # Connect/Disconnect/Tunnel handshake
+│   │   ├── sequence.rs     # knxd-compatible dual CAS sequence tracking
+│   │   ├── ack_waiter.rs   # ACK timeout and retry management
+│   │   └── fsm.rs          # 7-state per-connection FSM
+│   ├── filter/             # Flow control pipeline (Phase 3)
+│   │   ├── mod.rs          # Module exports
+│   │   ├── chain.rs        # Bidirectional filter pipeline
+│   │   ├── pace.rs         # Bus timing simulation (9600 baud)
+│   │   ├── queue.rs        # 3-priority FIFO with backpressure
+│   │   └── retry.rs        # Circuit breaker + retry logic
+│   ├── heartbeat.rs        # Heartbeat fault injection scheduler
+│   ├── group_cache.rs      # Group value cache with TTL/LRU
+│   ├── error_tracker.rs    # Consecutive/sliding window error monitoring
+│   ├── metrics.rs          # Unified 62-field metrics (Prometheus export)
+│   └── diagnostics.rs      # 9-rule automatic health analysis
 ```
 
 ---
@@ -54,11 +70,17 @@ mabi-knx/
 
 | Component | Description |
 |-----------|-------------|
-| `KnxServer` | UDP server handling KNXnet/IP protocol communication |
+| `KnxServer` | UDP server with full tunneling pipeline, multi-client support |
 | `KnxDevice` | Device abstraction implementing the core `Device` trait |
 | `GroupObjectTable` | Storage and management of group objects |
 | `DptRegistry` | Dynamic registry for datapoint type codecs |
-| `ConnectionManager` | Tunneling connection lifecycle management |
+| `TunnelConnection` | Per-connection state with sequence tracking and FSM |
+| `FilterChain` | Bidirectional flow control pipeline (Pace/Queue/Retry) |
+| `HeartbeatScheduler` | Heartbeat fault injection with multiple scheduling strategies |
+| `GroupValueCache` | Client-side group value cache with TTL/LRU eviction |
+| `SendErrorTracker` | Consecutive and sliding window error monitoring |
+| `KnxMetricsCollector` | Unified metrics aggregation (62 fields, Prometheus export) |
+| `KnxDiagnostics` | 9-rule automatic health analysis engine |
 
 ### Communication Flow
 
@@ -73,19 +95,25 @@ Client Request
          │
          ▼
 ┌─────────────────┐
-│ ConnectionMgr   │  ◄── Tunnel connection handling
+│ TunnelConnection│  ◄── Per-connection FSM + sequence validation
 │ (Session Layer) │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│   CemiFrame     │  ◄── cEMI frame parsing
+│  FilterChain    │  ◄── PaceFilter → QueueFilter → RetryFilter
+│ (Flow Control)  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   CemiFrame     │  ◄── cEMI parsing (L_Data, M_Prop, M_Reset, L_Busmon)
 │ (Transport)     │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│ GroupObjectTbl  │  ◄── Group object operations
+│ GroupObjectTbl  │  ◄── Group object operations + cache
 │ (Application)   │
 └─────────────────┘
 ```
@@ -700,6 +728,238 @@ The following errors are classified as recoverable:
 - `TunnelTimeout`
 - `SequenceError`
 - `ConnectionClosed`
+
+---
+
+## Tunnel Protocol (Phase 1)
+
+The tunneling subsystem has been redesigned as a modular, production-grade implementation.
+
+### Sequence Tracking
+
+The `SequenceTracker` provides knxd-compatible dual CAS (Compare-And-Swap) tracking for receive (rno) and send (sno) sequences:
+
+| Validation Result | Description | Action |
+|-------------------|-------------|--------|
+| `Valid` | Normal sequence progression | Process frame |
+| `Duplicate` | Same sequence as expected | ACK only, skip processing |
+| `OutOfOrder` | Future sequence within threshold | Warn and process |
+| `FatalDesync` | Distance exceeds threshold (default: 5) | Trigger tunnel restart |
+
+### ACK Management
+
+The `AckWaiter` provides timeout-based ACK management with retry support:
+
+- Per-connection server-to-client ACK tracking
+- Configurable timeout and max retries
+- Statistics: ACK timeouts, retries, success rate
+
+### 7-State Per-Connection FSM
+
+```
+Connecting → Idle ⇄ WaitingForAck ⇄ WaitingForConfirmation
+                        ↓ (FatalDesync)
+                   Disconnecting
+```
+
+The FSM maps to knxd mod 0-3 state machine with guards against invalid transitions.
+
+---
+
+## Flow Control Filter Chain (Phase 3)
+
+A bidirectional filter pipeline simulating real KNX bus flow control:
+
+```
+Client → [QueueFilter] → [PaceFilter] → [RetryFilter] → Bus (send path)
+Client ← [QueueFilter] ← [PaceFilter] ← [RetryFilter] ← Bus (recv path)
+```
+
+### PaceFilter
+
+3-state FSM (P_DOWN/P_IDLE/P_BUSY) enforcing minimum inter-frame delay based on KNX TP1 bus timing (9600 baud):
+
+- **byte_delay**: ~1.146ms per byte (1/9600 * 11 bits)
+- **Frame delay**: byte_delay * frame_length
+- **Margin**: Configurable safety margin (default: 50ms)
+
+### QueueFilter
+
+3-priority FIFO (High/Normal/Low) with WaitingForAck backpressure:
+
+- Per-channel queue tracking
+- Configurable max queue depth
+- ACK-triggered queue draining
+
+### RetryFilter
+
+3-state circuit breaker (Closed/Open/HalfOpen):
+
+- Tracks consecutive send failures per channel
+- Configurable failure threshold and recovery time
+- Prevents cascading failures when bus is unavailable
+
+---
+
+## Heartbeat Fault Injection (Phase 4)
+
+The `HeartbeatScheduler` supports 5 scheduling strategies:
+
+| Strategy | Description |
+|----------|-------------|
+| Override | Static action for all heartbeats |
+| Sequence | Ordered list of actions, one per heartbeat |
+| Periodic | Inject fault every N heartbeats |
+| Probabilistic | Random selection from weighted actions |
+| CountdownToFailure | Normal responses then permanent failure |
+
+Heartbeat actions:
+
+| Action | Status Code | Effect |
+|--------|-------------|--------|
+| Continue | 0x00 | Normal heartbeat response |
+| ImmediateReconnect | 0x21 | E_CONNECTION_ID error |
+| AbandonTunnel | 0x27 | E_KNX_CONNECTION error |
+| DelayedReconnect | 0x29 | E_TUNNELLING_LAYER error |
+| NoResponse | - | Timeout simulation (no reply) |
+
+---
+
+## Group Value Cache
+
+The `GroupValueCache` provides client-side caching with TTL/LRU eviction:
+
+- Configurable max entries (default: 1024) and TTL
+- Auto-update on L_Data.ind broadcasts for multi-client consistency
+- Statistics: hit/miss rates, eviction counts, staleness tracking
+
+---
+
+## Error Tracking
+
+The `SendErrorTracker` supports dual monitoring strategies:
+
+| Strategy | Description |
+|----------|-------------|
+| Consecutive | Count consecutive failures, trigger at threshold (default: 5) |
+| Sliding Window | Track error rate over time window (default: 60s) |
+
+Error categories: SendFailure, AckError, AckTimeout, ConfirmationNack, ConfirmationTimeout, FlowControlDrop
+
+---
+
+## Metrics & Diagnostics
+
+### Unified Metrics
+
+The `KnxMetricsSnapshot` aggregates 62 fields from all components:
+
+- Server state, connection counts
+- Sequence tracker stats (frames, duplicates, desyncs)
+- FSM state transitions and error counts
+- Filter chain stats (pace delays, queue depths, retry counts)
+- Heartbeat action counts and fault rates
+- Cache hit/miss rates
+- Error tracker statistics
+
+Export formats: Prometheus text, JSON, YAML, summary text.
+
+### Automatic Health Analysis
+
+The `KnxDiagnostics` engine applies 9 diagnostic rules:
+
+| Rule | Threshold | Severity |
+|------|-----------|----------|
+| CacheHitRate | < 50% | Warning |
+| AckRetryRate | > 10% | Warning |
+| SequenceErrors | Any fatal desync | Critical |
+| HeartbeatFaults | > 50% fault rate | Warning |
+| FilterDropRate | > 5% drop rate | Warning |
+| CircuitBreakerTrips | Any trip | Warning |
+| ErrorTrackerThresholds | Any trigger | Warning |
+| ConnectionCapacity | > 80% utilization | Warning |
+| QueueBackpressure | > 20% queued | Warning |
+
+---
+
+## Extended cEMI Support
+
+Beyond standard L_Data frames, the cEMI layer now supports:
+
+| Message Type | Code | Description |
+|-------------|------|-------------|
+| L_Data.req | 0x11 | Data request |
+| L_Data.con | 0x2E | Data confirmation |
+| L_Data.ind | 0x29 | Data indication |
+| L_Busmon.ind | 0x2B | Bus monitor indication (with Additional Info TLV) |
+| M_PropRead.con | - | Property read response |
+| M_PropWrite.con | - | Property write response |
+| M_Reset.ind | 0xF1 | Reset indication |
+
+Additional Info types for bus monitor frames:
+- BusMonitorInfo (0x03)
+- TimestampRelative (0x04)
+- ExtendedTimestamp (0x06)
+
+---
+
+## Extended Configuration
+
+### TunnelBehaviorConfig
+
+```rust
+pub struct TunnelBehaviorConfig {
+    // Core tunnel behavior
+    pub ldata_con_enabled: bool,
+    pub confirmation_success_rate: f64,
+    pub bus_delivery_delay_ms: u64,
+    pub sequence_validation_enabled: bool,
+    pub ack_tracking_enabled: bool,
+
+    // Heartbeat injection
+    pub heartbeat_status_override: Option<u8>,
+    pub server_ack_timeout_ms: u64,
+    pub server_max_retries: u8,
+
+    // Extended cEMI
+    pub bus_monitor_enabled: bool,
+    pub ldata_ind_broadcast_enabled: bool,
+    pub property_service_enabled: bool,
+    pub reset_service_enabled: bool,
+
+    // Filter chain
+    pub flow_control: FilterChainConfig,
+
+    // Advanced features
+    pub heartbeat_scheduler: HeartbeatSchedulerConfig,
+    pub group_value_cache: GroupValueCacheConfig,
+    pub send_error_tracker: SendErrorTrackerConfig,
+}
+```
+
+---
+
+## Extended Error Types
+
+New error variants for the enhanced protocol stack:
+
+| Error | Recoverable | Description |
+|-------|-------------|-------------|
+| `FatalDesync` | No | Sequence distance exceeds threshold |
+| `SendErrorThresholdExceeded` | No | Consecutive error limit reached |
+| `SequenceError` | Yes | Sequence validation failure |
+| `DuplicateFrame` | Yes | Duplicate frame detected |
+| `OutOfOrderFrame` | Yes | Frame received out of order |
+| `FlowControlDrop` | Yes | Frame dropped by filter chain |
+| `FlowControlQueued` | Yes | Frame queued by filter chain |
+| `CircuitBreakerOpen` | Yes | Circuit breaker in open state |
+| `PaceFilterDelayExceeded` | Yes | Pace filter timing violation |
+
+Error classification methods:
+- `is_recoverable()`: ConnectionTimeout, DuplicateFrame, etc.
+- `is_flow_control_error()`: Filter chain errors
+- `is_protocol_error()`: Frame/APCI validation errors
+- `requires_tunnel_restart()`: Fatal errors requiring reconnection
 
 ---
 

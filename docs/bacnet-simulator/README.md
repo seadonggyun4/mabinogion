@@ -54,7 +54,9 @@ The simulator follows a layered architecture conforming to the BACnet protocol s
 
 ## Supported Object Types
 
-The simulator implements the following BACnet object types:
+The simulator implements 14 BACnet object types conforming to ASHRAE Standard 135:
+
+### Standard I/O Objects
 
 | Object Type | Type ID | Description | Writable | COV Support |
 |-------------|---------|-------------|----------|-------------|
@@ -68,9 +70,66 @@ The simulator implements the following BACnet object types:
 | Multi-State Output (MSO) | 14 | Multi-state control output with priority array | Yes | Yes |
 | Multi-State Value (MSV) | 19 | Writable multi-state data point | Yes | Yes |
 
+### Extended Object Types
+
+| Object Type | Type ID | Description | ASHRAE 135 Clause |
+|-------------|---------|-------------|-------------------|
+| Device | 8 | Mandatory device object with system status, vendor info, protocol services supported | Clause 12.11 |
+| Event Enrollment | 9 | Event monitoring with 23+ event types, transition bits, notification classes | Clause 12.12 |
+| File | 10 | Data file access with stream and record modes, atomic read/write | Clause 12.13 |
+| Schedule | 17 | Time-based value switching with weekly/exception schedules | Clause 12.24 |
+| Trend Log | 20 | Property value logging with circular buffer, COV/interval modes | Clause 12.25 |
+
 ### Priority Array
 
 Output objects (AO, BO, MSO) implement a 16-level priority array as defined in BACnet. The priority array allows multiple control sources to write to the same object, with the highest priority (lowest number) taking precedence.
+
+### Device Object
+
+The Device object (mandatory per ASHRAE 135) provides:
+
+- `DeviceSystemStatus`: Operational, OperationalReadOnly, DownloadRequired, DownloadInProgress, NonOperational, BackupInProgress
+- Protocol services supported bitmask
+- Clock synchronization (Local and UTC)
+- Communication control state management
+- Vendor information, model name, firmware revision
+
+### Event Enrollment Object
+
+Monitors properties of other objects and generates event notifications:
+
+- 23+ `EventType` variants (ChangeOfState, ChangeOfValue, OutOfRange, FloatingLimit, CommandFailure, etc.)
+- `EventTransitionBits` tracking (to_offnormal, to_fault, to_normal)
+- `NotificationClass` for recipient distribution rules
+- Confirmed and unconfirmed notification delivery
+
+### File Object
+
+Provides data file access with two modes:
+
+- **Stream Access**: Contiguous byte-level positioning and read/write
+- **Record Access**: Variable-length records with record-level positioning
+- Atomic read/write operations with modification counter tracking
+- Read-only flag support
+
+### Schedule Object
+
+Time-based value switching:
+
+- **Weekly Schedule**: 7-day time/value lists (Monday through Sunday)
+- **Exception Schedule**: Date/date-range overrides with higher priority
+- Effective period with start/end date bounds
+- Calendar entries: Date, DateRange, WeekNDay patterns
+
+### Trend Log Object
+
+Property value logging with a circular buffer:
+
+- Configurable buffer capacity using `VecDeque<LogRecord>`
+- COV-based or interval-based logging modes
+- `LogRecord` with timestamp, datum, status flags, sequence numbers
+- Stop-when-full and enable/disable controls
+- Supports `ReadRange` service for historical data access
 
 ### Object Properties
 
@@ -93,25 +152,65 @@ Each object type supports the following property categories:
 **Output-specific:**
 - `PriorityArray`, `RelinquishDefault`
 
+**Device-specific:**
+- `SystemStatus`, `VendorName`, `ModelName`, `FirmwareRevision`, `ProtocolServicesSupported`
+- `MaxApduLengthAccepted`, `SegmentationSupported`, `DatabaseRevision`
+
+**Event-specific:**
+- `EventType`, `NotifyType`, `EventEnable`, `AckedTransitions`, `EventState`
+
+**File-specific:**
+- `FileAccessMethod`, `FileSize`, `ModificationDate`, `ReadOnly`
+
+**Schedule-specific:**
+- `WeeklySchedule`, `ExceptionSchedule`, `ScheduleDefault`, `EffectivePeriod`
+
+**Trend Log-specific:**
+- `LogBuffer`, `RecordCount`, `TotalRecordCount`, `BufferSize`, `LoggingObject`
+
 ## Supported Services
 
 ### Confirmed Services
 
 | Service | Choice | Description |
 |---------|--------|-------------|
+| AcknowledgeAlarm | 0 | Acknowledge an alarm event |
+| ConfirmedEventNotification | 2 | Receive and process event notifications |
+| GetAlarmSummary | 3 | Retrieve list of active alarms |
+| GetEnrollmentSummary | 4 | Query EventEnrollment objects |
+| SubscribeCOV | 5 | Subscribe to Change of Value notifications |
+| AtomicReadFile | 6 | Atomic file read (stream or record mode) |
+| AtomicWriteFile | 7 | Atomic file write (stream or record mode) |
+| CreateObject | 10 | Dynamically create BACnet objects |
+| DeleteObject | 11 | Remove dynamically-created objects |
 | ReadProperty | 12 | Read a single property from an object |
 | ReadPropertyMultiple | 14 | Batch read properties across multiple objects |
 | WriteProperty | 15 | Write a single property to an object |
 | WritePropertyMultiple | 16 | Batch write properties to multiple objects |
-| SubscribeCOV | 5 | Subscribe to Change of Value notifications |
+| DeviceCommunicationControl | 17 | Enable/disable device communication |
+| ReinitializeDevice | 20 | Coldstart or warmstart the device |
+| ReadRange | 26 | Read range of log records (by position, sequence, or time) |
+| GetEventInformation | 29 | Retrieve detailed event state information |
 
 ### Unconfirmed Services
 
 | Service | Choice | Description |
 |---------|--------|-------------|
-| Who-Is | 8 | Device discovery with optional instance range filtering |
 | I-Am | 0 | Device identification response |
 | UnconfirmedCOVNotification | 2 | COV notification without acknowledgment |
+| TimeSynchronization | 6 | Synchronize device local clock |
+| Who-Is | 8 | Device discovery with optional instance range filtering |
+| UTCTimeSynchronization | 9 | Synchronize device UTC clock |
+
+### Transaction State Machine (TSM)
+
+The simulator implements a server-side TSM per ASHRAE 135 Clause 5.4:
+
+- Duplicate request detection within configurable time windows
+- Transaction tracking by `(SocketAddr, invoke_id)` keys
+- Cached responses for duplicate requests
+- Configurable `TsmConfig`: duplicate window, max concurrent transactions
+- Chaos testing support: intentional delays and drop probability for resilience testing
 
 ### Service Handler Architecture
 
@@ -163,11 +262,17 @@ The simulator includes BBMD support for cross-subnet communication:
 
 ### APDU Encoding
 
-`ApduEncoder`는 BACnet APDU 메시지의 구조화된 인코딩을 담당합니다. Application Tag 기반의 타입 안전 인코딩을 제공하며, Error PDU 등 복합 PDU 구성을 위한 전용 메서드를 포함합니다.
+The `ApduEncoder` handles structured encoding of BACnet APDU messages. It provides type-safe encoding based on Application Tags and includes dedicated methods for constructing complex PDUs such as Error PDUs, Abort PDUs, Reject PDUs, and Segment ACKs.
+
+Supported encoding features:
+- Application tags: Null, Boolean, Unsigned, Signed, Real, Double, OctetString, CharacterString, BitString, Enumerated, ObjectIdentifier
+- Context tags with implicit/explicit encoding
+- Opening/closing tags for constructed types
+- Segmented ComplexACK header encoding
 
 #### Error PDU (ASHRAE 135, Clause 21.8)
 
-Error PDU는 Confirmed Service 요청 실패 시 반환되며, `error-class`와 `error-code`를 **Enumerated** (Application Tag 9)로 인코딩합니다.
+Error PDUs are returned when a Confirmed Service request fails. The `error-class` and `error-code` are encoded as **Enumerated** values (Application Tag 9).
 
 ```rust
 let mut encoder = ApduEncoder::new();
@@ -257,19 +362,19 @@ server.run().await?;
 
 ### Bulk Object Creation
 
-CLI 및 대량 시뮬레이션 시나리오에서는 `ObjectTypeDescriptor` 기반의 데이터 주도 생성을 사용합니다. 인스턴스 번호는 ASHRAE 135 표준에 따라 **0부터** 시작하며, 이름은 `{prefix}_{instance}` 패턴을 따릅니다.
+For CLI and large-scale simulation scenarios, data-driven creation via `ObjectTypeDescriptor` is used. Instance numbers start from **0** per ASHRAE 135 conventions, and names follow the `{prefix}_{instance}` pattern.
 
 ```rust
 use mabi_bacnet::prelude::*;
 
 let registry = ObjectRegistry::new();
 
-// 기본 4개 타입 (AI, AO, BI, BO) 디스크립터 사용
+// Use default 4 types (AI, AO, BI, BO) descriptors
 let descriptors = default_object_descriptors();
 registry.populate_standard_objects(&descriptors, 50);
-// → AI_0..AI_49, AO_0..AO_49, BI_0..BI_49, BO_0..BO_49 (총 200개)
+// → AI_0..AI_49, AO_0..AO_49, BI_0..BI_49, BO_0..BO_49 (200 total)
 
-// 커스텀 디스크립터로 특정 타입만 생성 가능
+// Custom descriptors for specific types
 let custom = vec![
     ObjectTypeDescriptor {
         prefix: "AI",
@@ -277,6 +382,20 @@ let custom = vec![
     },
 ];
 registry.populate_standard_objects(&custom, 100);
+```
+
+### Dynamic Object Creation
+
+The `CreateObject` service enables runtime object instantiation using the `ObjectFactory`:
+
+```rust
+use mabi_bacnet::prelude::*;
+
+// ObjectFactory is pre-loaded with 11 standard types
+let factory = default_object_factory();
+
+// Objects can be created/deleted at runtime via BACnet services
+// CreateObject (service 10) and DeleteObject (service 11)
 ```
 
 ### Custom Service Handler
@@ -409,6 +528,45 @@ The server collects operational metrics accessible via `ServerMetrics`:
 - Request counts (total, confirmed, unconfirmed)
 - Error counts
 - Bytes sent/received
-- Service-specific counters (ReadProperty, WriteProperty, Who-Is, etc.)
+- Service-specific counters (ReadProperty, WriteProperty, Who-Is, COV, etc.)
 - COV subscription and notification counts
-- Latency statistics
+- Segmentation metrics (segments sent/received, ACKs, reassembly)
+- BBMD statistics (forwarded broadcasts, foreign device registrations)
+- Latency statistics with sample counting
+- Uptime tracking
+
+## Module Structure
+
+```
+crates/mabi-bacnet/src/
+├── lib.rs                      # Public API exports and prelude
+├── apdu/
+│   ├── encoding.rs             # APDU encoder (tags, PDUs, segmentation)
+│   └── types.rs                # APDU type definitions
+├── object/
+│   ├── mod.rs                  # Object module exports
+│   ├── traits.rs               # BACnetObject, WritableObject, CovSupport traits
+│   ├── types.rs                # ObjectType (60+ variants), ObjectId
+│   ├── property.rs             # PropertyId (200+), BACnetValue, PropertyStore
+│   ├── registry.rs             # ObjectRegistry (DashMap-based)
+│   ├── standard.rs             # AI/AO/AV/BI/BO/BV/MSI/MSO/MSV implementations
+│   ├── device.rs               # Device object (ASHRAE 135 Clause 12.11)
+│   ├── event_enrollment.rs     # EventEnrollment + NotificationClass
+│   ├── file.rs                 # File object (stream/record access)
+│   ├── schedule.rs             # Schedule object (weekly/exception)
+│   └── trend_log.rs            # TrendLog object (circular buffer)
+├── server/
+│   ├── bacnet_server.rs        # Main server (UDP, BVLC, service dispatch, TSM)
+│   └── metrics.rs              # ServerMetrics (24+ atomic counters)
+└── service/
+    ├── mod.rs                  # Service registry and handler dispatch
+    ├── handler.rs              # ServiceContext, ServiceResult, handler traits
+    ├── cov.rs                  # CovManager (subscription lifecycle)
+    ├── subscribe_cov.rs        # SubscribeCOV handler (service 5)
+    ├── alarm.rs                # Alarm services (Acknowledge, GetSummary, GetEventInfo)
+    ├── create_delete.rs        # CreateObject/DeleteObject with ObjectFactory
+    ├── device_control.rs       # TimeSynchronization, DeviceCommunicationControl, Reinitialize
+    ├── file_access.rs          # AtomicReadFile/AtomicWriteFile
+    ├── read_range.rs           # ReadRange (by position, sequence, time)
+    └── tsm.rs                  # Transaction State Machine (duplicate detection)
+```

@@ -497,6 +497,109 @@ The `ChaosError` type provides comprehensive error categorization:
 | `InvalidStateTransition` | No | Invalid engine state change |
 | `Timeout` | Yes | Operation timed out |
 
+## BACnet-Specific Fault Types
+
+The chaos engine includes a dedicated `bacnet` module with 5 protocol-aware fault types for building automation testing. All faults support probability-based activation, glob target matching, builder patterns, and severity levels.
+
+### ApduFault
+
+APDU-level corruption simulating wire-level protocol violations:
+
+| Fault Type | Description |
+|------------|-------------|
+| `InvalidApduType` | Corrupt APDU type nibble (invalid values 8-15) |
+| `CorruptInvokeId` | Replace invoke ID with forced or random value |
+| `InvalidServiceChoice` | Replace service code with unsupported value (128-255) |
+| `TruncatePayload` | Truncate APDU after header (incomplete messages) |
+| `InvalidMaxApduLength` | Advertise impossibly small max-APDU-length |
+| `DuplicateInvokeId` | Reuse recently-seen invoke IDs (TSM duplicate detection) |
+| `GarbageApdu` | Replace entire APDU with random garbage bytes |
+| `WrongSegmentationFlags` | Flip segmentation flag bits |
+
+Configuration: Per-request or per-response direction control.
+
+### ServiceFault
+
+Application-layer service response manipulation:
+
+| Fault Type | Description |
+|------------|-------------|
+| `RejectService` | Return REJECT PDU with configurable reason codes (0-9) |
+| `AbortService` | Return ABORT PDU with reason codes (0-11) |
+| `ErrorResponse` | Return ERROR PDU with configurable error class/code |
+| `DropRequest` | Drop request entirely (triggers client timeout) |
+| `WrongServiceResponse` | Return response for wrong service type |
+| `SimpleAckInsteadOfComplex` | Return SimpleAck when ComplexAck expected |
+| `EmptyComplexAck` | Return ComplexAck with empty payload |
+
+Configuration: Target specific service choice codes.
+
+### CovFault
+
+COV (Change of Value) notification corruption:
+
+| Fault Type | Description |
+|------------|-------------|
+| `DropNotification` | Block notification until subscription expires |
+| `DelayNotification` | Delay notifications (creates stale data window) |
+| `CorruptPresentValue` | Corrupt present-value (FixedValue, Noise, NaN, Negate, Zero, MaxValue) |
+| `WrongProcessIdentifier` | Send notification with wrong subscriber process ID |
+| `DuplicateNotification` | Send same notification twice |
+| `UnsolicitedNotification` | Send notification for unsubscribed object |
+| `IncompleteNotification` | Omit required properties (present-value, status-flags) |
+| `WrongConfirmationStatus` | Flip confirmed/unconfirmed notification status |
+
+Configuration: Target by object type, confirmed/unconfirmed filtering.
+
+### PropertyFault
+
+Property read/write response tampering:
+
+| Fault Type | Description |
+|------------|-------------|
+| `WrongDataType` | Force wrong application tag (e.g., Unsigned instead of Real) |
+| `OutOfRange` | Return out-of-range values (offset or fixed) |
+| `StaleValue` | Cache-based staleness (return same value N times) |
+| `FloatingPointCorruption` | NaN, PosInfinity, NegInfinity, Denormalized, NegativeZero |
+| `PropertyAccessError` | Return BACnet error with class/code pair |
+| `WrongPropertyId` | Return response for different property |
+| `ArrayIndexError` | Return invalid-array-index error |
+| `CorruptStatusFlags` | Flip status flag bits (in_alarm, fault, overridden, out_of_service) |
+
+Configuration: Target by property ID and object type, read/write filtering.
+
+### SegmentationFault
+
+Segmented message handling corruption:
+
+| Fault Type | Description |
+|------------|-------------|
+| `DropSegment` | Drop specific or random segment (triggers reassembly timeout) |
+| `ReorderSegments` | Deliver segments in wrong order |
+| `DuplicateSegment` | Send same segment twice |
+| `WrongSequenceNumber` | Offset sequence number by configurable amount |
+| `InvalidWindowSize` | Inject invalid window size value |
+| `WrongMoreSegmentsFlag` | Incorrectly mark middle as last or vice versa |
+| `OversizedSegment` | Exceed negotiated max-APDU-length |
+| `WrongSegmentAckInvokeId` | Return Segment-Ack with wrong invoke ID |
+| `InterSegmentDelay` | Delay between segments (timeout testing) |
+
+Configuration: Minimum segment count filter, probability-based activation.
+
+### BACnet Fault Module Structure
+
+```
+crates/mabi-chaos/src/bacnet/
+├── mod.rs                  # Module hub and re-exports
+├── apdu_fault.rs           # APDU-level corruption (8 fault types)
+├── service_fault.rs        # Service-level failures (7 fault types)
+├── cov_fault.rs            # COV notification faults (8 fault types)
+├── property_fault.rs       # Property access faults (8 fault types)
+└── segmentation_fault.rs   # Segmentation faults (9 fault types)
+```
+
+All BACnet fault types are exported via `mabi_chaos::prelude`.
+
 ## Dependencies
 
 | Crate | Purpose |

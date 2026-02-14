@@ -571,19 +571,82 @@ executor.run().await?;
 
 ---
 
+## BACnet Scenario Templates
+
+The scenario engine includes 5 production-quality BACnet templates accessible via `register_bacnet_templates()`:
+
+### bacnet-hvac
+
+Full building HVAC simulation with AHU controllers, VAV zone controllers, and outdoor air sensors:
+
+- AHU: Supply/return/mixed air temp, damper position, fan status/speed, filter DP, schedule
+- VAV zones: Zone temp (daily sine), setpoint (occupancy-driven steps), damper, reheat, CO2
+- Events: High temp alarm, filter DP alarm, schedule transitions, CO2 demand ventilation
+- **12+ devices, 120+ points**
+
+### bacnet-alarm
+
+Alarm and event management system with multiple failure modes:
+
+- Out-of-range alarming (oscillating temperatures crossing thresholds)
+- Change-of-state alarming (door contacts)
+- Floating-limit alarming (pressure drift)
+- EventEnrollment with event states, acknowledgment tracking
+- Alarm storm trigger/recovery simulation
+- **8 devices, 64+ points**
+
+### bacnet-trend
+
+Trend logging and historical data accumulation:
+
+- Periodic-sampled, COV-sampled, and polled trend sources
+- TrendLog properties (record count, buffer size, enable/disable)
+- High-frequency vibration sensor, operating modes, demand power profiling
+- Buffer full warnings and ReadRange simulation
+- **6 devices, 72+ points**
+
+### bacnet-resilience
+
+Chaos-integrated resilience testing with 7 progressive phases:
+
+1. **Baseline** (0%): Reference readings
+2. **Network Latency** (10%): 100-500ms delays
+3. **Packet Loss** (25%): 10% random drop
+4. **Device Offline** (40%): Devices unreachable
+5. **COV Disruption** (55%): Dropped notifications
+6. **APDU Corruption** (70%): Malformed PDUs
+7. **Recovery** (85%): Fault clearance and restoration
+- **10 devices, 80+ points**
+
+### bacnet-bems
+
+Full Building Energy Management System (multi-network):
+
+- Energy meters: Active power, accumulators, power factor, 15-min demand
+- Chillers: kW, chilled water temp, enable command, COP monitoring
+- AHUs: Supply air temp, fan kW, occupancy schedules
+- Zones: Temperature and setpoints with floor offsets
+- Events: Demand limit, load shed, chiller COP alarm, hourly reports
+- **20+ devices (scalable), 200+ points**
+
+All templates support dynamic scaling via `device_count`, time scaling, and full device tagging.
+
+---
+
 ## Module Structure
 
 ```
 crates/mabi-scenario/src/
-├── lib.rs          # Module exports and error types
-├── schema.rs       # Scenario, ScenarioPoint, PatternConfig, EventTrigger, EventAction
-├── generator.rs    # PatternGenerator implementation
-├── player.rs       # ScenarioPlayer, ValueUpdate, PlayerState
-├── event.rs        # EventManager, EventInstance, EventBuilder
-├── executor.rs     # ScenarioExecutor, DeviceRegistry, ExecutorMetrics
-├── follow.rs       # FollowManager, DelayBuffer, SourceRegistry
-├── replay.rs       # ReplayManager, ReplaySeries, ReplayLoader
-├── validation.rs   # ScenarioValidator, ValidationResult
-├── templates.rs    # Template registry and factories
-└── parser.rs       # ScenarioParser for file I/O
+├── lib.rs              # Module exports and error types
+├── schema.rs           # Scenario, ScenarioPoint, PatternConfig, EventTrigger, EventAction
+├── generator.rs        # PatternGenerator implementation
+├── player.rs           # ScenarioPlayer, ValueUpdate, PlayerState
+├── event.rs            # EventManager, EventInstance, EventBuilder
+├── executor.rs         # ScenarioExecutor, DeviceRegistry, ExecutorMetrics
+├── follow.rs           # FollowManager, DelayBuffer, SourceRegistry
+├── replay.rs           # ReplayManager, ReplaySeries, ReplayLoader
+├── validation.rs       # ScenarioValidator, ValidationResult
+├── templates.rs        # Template registry and factories
+├── bacnet_templates.rs # BACnet-specific templates (5 templates)
+└── parser.rs           # ScenarioParser for file I/O
 ```
