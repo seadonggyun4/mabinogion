@@ -72,6 +72,7 @@ pub mod player;
 pub mod replay;
 pub mod schema;
 pub mod templates;
+pub mod bacnet_templates;
 pub mod validation;
 
 pub use generator::{PatternGenerator, PatternType};
@@ -105,6 +106,7 @@ pub mod prelude {
     pub use crate::templates::{
         Template, TemplateCategory, TemplateInfo, TemplateOptions, TemplateRegistry,
     };
+    pub use crate::bacnet_templates::register_bacnet_templates;
     pub use crate::validation::{
         ScenarioValidator, ValidationCode, ValidationIssue, ValidationOptions, ValidationResult,
         ValidationSeverity,

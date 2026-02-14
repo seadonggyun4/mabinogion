@@ -144,6 +144,9 @@ impl TemplateRegistry {
         registry.register(create_water_template());
         registry.register(create_datacenter_template());
 
+        // Register BACnet-specific templates
+        crate::bacnet_templates::register_bacnet_templates(&mut registry);
+
         registry
     }
 
@@ -834,6 +837,13 @@ mod tests {
         assert!(!templates.is_empty());
         assert!(templates.iter().any(|t| t.id == "hvac-building"));
         assert!(templates.iter().any(|t| t.id == "manufacturing-line"));
+
+        // BACnet templates are also registered
+        assert!(templates.iter().any(|t| t.id == "bacnet-hvac"));
+        assert!(templates.iter().any(|t| t.id == "bacnet-alarm"));
+        assert!(templates.iter().any(|t| t.id == "bacnet-trend"));
+        assert!(templates.iter().any(|t| t.id == "bacnet-resilience"));
+        assert!(templates.iter().any(|t| t.id == "bacnet-bems"));
     }
 
     #[test]
