@@ -3,6 +3,7 @@
 //! This module defines the core traits that all BACnet objects must implement,
 //! enabling polymorphic object handling and extensibility.
 
+use std::any::Any;
 use std::sync::Arc;
 
 use super::property::{BACnetValue, PropertyError, PropertyId, StatusFlags};
@@ -13,7 +14,7 @@ use super::types::{ObjectId, ObjectType};
 /// This trait defines the fundamental interface that all BACnet objects
 /// must implement, providing access to object identification, properties,
 /// and basic operations.
-pub trait BACnetObject: Send + Sync {
+pub trait BACnetObject: Send + Sync + 'static {
     /// Get the object identifier.
     fn object_identifier(&self) -> ObjectId;
 
@@ -95,6 +96,12 @@ pub trait BACnetObject: Send + Sync {
     fn present_value(&self) -> Result<BACnetValue, PropertyError> {
         self.read_property(PropertyId::PresentValue)
     }
+
+    /// Downcast support for concrete type access.
+    ///
+    /// Enables service handlers to access type-specific operations
+    /// (e.g., `FileObject::read_stream()`) beyond the trait interface.
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// Trait for objects that support writing (outputs and values).
@@ -266,6 +273,10 @@ mod tests {
                 PropertyId::ObjectType,
                 PropertyId::PresentValue,
             ]
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
         }
     }
 

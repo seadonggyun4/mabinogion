@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::apdu::types::{ConfirmedService, ErrorClass, ErrorCode, UnconfirmedService};
+use crate::apdu::types::{AbortReason, ConfirmedService, ErrorClass, ErrorCode, RejectReason, UnconfirmedService};
 use crate::object::ObjectRegistry;
 
 /// Context provided to service handlers.
@@ -19,6 +19,8 @@ pub struct ServiceContext {
     pub invoke_id: Option<u8>,
     /// Max APDU length for responses.
     pub max_apdu_length: u16,
+    /// Source address of the request (for COV subscriptions).
+    pub source_address: Option<std::net::SocketAddr>,
 }
 
 impl ServiceContext {
@@ -29,6 +31,7 @@ impl ServiceContext {
             device_instance,
             invoke_id: None,
             max_apdu_length: 1476,
+            source_address: None,
         }
     }
 
@@ -37,26 +40,121 @@ impl ServiceContext {
         self.invoke_id = Some(invoke_id);
         self
     }
+
+    /// Set the source address.
+    pub fn with_source_address(mut self, addr: std::net::SocketAddr) -> Self {
+        self.source_address = Some(addr);
+        self
+    }
 }
 
 /// Result of handling a service request.
+///
+/// BACnet defines a 3-tier error protocol:
+/// - **Error**: Service-level error (known service, known object, but operation failed).
+/// - **Reject**: Protocol violation in the request PDU (invalid tags, missing parameters).
+/// - **Abort**: Server-side inability to process (resource exhaustion, segmentation failure).
 #[derive(Debug)]
 pub enum ServiceResult {
     /// Simple ACK (no data).
     SimpleAck,
     /// Complex ACK with response data.
     ComplexAck(Vec<u8>),
-    /// Error response.
+    /// Error response (service-level failure).
     Error {
         error_class: ErrorClass,
         error_code: ErrorCode,
     },
-    /// Reject the request.
+    /// Reject the request (protocol violation in request PDU).
     Reject(u8),
+    /// Abort the transaction (server-side inability to process).
+    Abort(AbortReason),
     /// No response needed (for unconfirmed services).
     NoResponse,
     /// Broadcast response (for I-Am, etc.).
     Broadcast(Vec<u8>),
+}
+
+impl ServiceResult {
+    /// Create an error result for an unknown property.
+    pub fn unknown_property() -> Self {
+        Self::Error {
+            error_class: ErrorClass::Property,
+            error_code: ErrorCode::UnknownProperty,
+        }
+    }
+
+    /// Create an error result for an unknown object.
+    pub fn unknown_object() -> Self {
+        Self::Error {
+            error_class: ErrorClass::Object,
+            error_code: ErrorCode::UnknownObject,
+        }
+    }
+
+    /// Create a reject result for an unrecognized service.
+    pub fn unrecognized_service() -> Self {
+        Self::Reject(RejectReason::UnrecognizedService as u8)
+    }
+
+    /// Create a reject result for missing required parameter.
+    pub fn missing_required_parameter() -> Self {
+        Self::Reject(RejectReason::MissingRequiredParameter as u8)
+    }
+
+    /// Create a reject result for invalid tag.
+    pub fn invalid_tag() -> Self {
+        Self::Reject(RejectReason::InvalidTag as u8)
+    }
+
+    /// Create a reject result for too many arguments.
+    pub fn too_many_arguments() -> Self {
+        Self::Reject(RejectReason::TooManyArguments as u8)
+    }
+
+    /// Create an abort result for segmentation not supported.
+    pub fn segmentation_not_supported() -> Self {
+        Self::Abort(AbortReason::SegmentationNotSupported)
+    }
+
+    /// Create an abort result for buffer overflow.
+    pub fn buffer_overflow() -> Self {
+        Self::Abort(AbortReason::BufferOverflow)
+    }
+
+    /// Create an abort result for out of resources.
+    pub fn out_of_resources() -> Self {
+        Self::Abort(AbortReason::OutOfResources)
+    }
+
+    /// Create an abort result for APDU too long.
+    pub fn apdu_too_long() -> Self {
+        Self::Abort(AbortReason::ApduTooLong)
+    }
+
+    /// Create an error result for write access denied.
+    pub fn write_access_denied() -> Self {
+        Self::Error {
+            error_class: ErrorClass::Property,
+            error_code: ErrorCode::WriteAccessDenied,
+        }
+    }
+
+    /// Create an error for service request denied.
+    pub fn service_request_denied() -> Self {
+        Self::Error {
+            error_class: ErrorClass::Services,
+            error_code: ErrorCode::ServiceRequestDenied,
+        }
+    }
+
+    /// Create an error for communication disabled.
+    pub fn communication_disabled() -> Self {
+        Self::Error {
+            error_class: ErrorClass::Device,
+            error_code: ErrorCode::CommunicationDisabled,
+        }
+    }
 }
 
 /// Trait for confirmed service handlers.
@@ -142,21 +240,19 @@ impl ServiceRegistry {
     }
 
     /// Dispatch a confirmed service request.
+    ///
+    /// Per ASHRAE 135 Clause 5.4.4, an unrecognized service gets a
+    /// Reject(UnrecognizedService), not an Error. A data-length violation
+    /// gets Reject(MissingRequiredParameter).
     pub fn dispatch_confirmed(&self, service: u8, data: &[u8], ctx: &ServiceContext) -> ServiceResult {
         match self.confirmed_handlers.get(&service) {
             Some(handler) => {
                 if data.len() < handler.min_data_length() {
-                    return ServiceResult::Error {
-                        error_class: ErrorClass::Services,
-                        error_code: ErrorCode::MissingRequiredParameter,
-                    };
+                    return ServiceResult::missing_required_parameter();
                 }
                 handler.handle(data, ctx)
             }
-            None => ServiceResult::Error {
-                error_class: ErrorClass::Services,
-                error_code: ErrorCode::ServiceRequestDenied,
-            },
+            None => ServiceResult::unrecognized_service(),
         }
     }
 

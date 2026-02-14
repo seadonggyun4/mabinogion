@@ -211,6 +211,30 @@ impl ObjectRegistry {
         }
     }
 
+    /// Find the next available instance number for a given object type.
+    ///
+    /// Scans existing objects of that type and returns max_instance + 1.
+    /// Returns 0 if no objects of that type exist.
+    pub fn next_available_instance(&self, object_type: ObjectType) -> Option<u32> {
+        let max = self
+            .objects
+            .iter()
+            .filter(|r| r.key().object_type == object_type)
+            .map(|r| r.key().instance)
+            .max();
+
+        let next = match max {
+            Some(m) => m.checked_add(1)?,
+            None => 0,
+        };
+
+        if next > ObjectId::MAX_INSTANCE {
+            None
+        } else {
+            Some(next)
+        }
+    }
+
     /// Get statistics about the registry.
     pub fn statistics(&self) -> RegistryStatistics {
         let mut type_counts = Vec::new();

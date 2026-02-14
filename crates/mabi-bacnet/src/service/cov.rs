@@ -102,8 +102,8 @@ pub struct CovNotification {
 }
 
 impl CovNotification {
-    /// Encode as unconfirmed COV notification APDU.
-    pub fn encode_unconfirmed(&self) -> Vec<u8> {
+    /// Encode the COV notification service data (shared between confirmed and unconfirmed).
+    fn encode_service_data(&self) -> Vec<u8> {
         let mut encoder = ApduEncoder::new();
 
         // Context tag 0: Subscriber Process Identifier
@@ -131,6 +131,27 @@ impl CovNotification {
         encoder.encode_closing_tag(4);
 
         encoder.into_bytes()
+    }
+
+    /// Encode as unconfirmed COV notification APDU service data.
+    pub fn encode_unconfirmed(&self) -> Vec<u8> {
+        self.encode_service_data()
+    }
+
+    /// Encode as confirmed COV notification APDU.
+    ///
+    /// Returns the full APDU including the confirmed request header.
+    /// `invoke_id` is the invoke ID for the confirmed transaction.
+    pub fn encode_confirmed(&self, invoke_id: u8) -> Vec<u8> {
+        let service_data = self.encode_service_data();
+        let mut apdu = Vec::with_capacity(4 + service_data.len());
+        // Confirmed Request header: PDU type 0 (ConfirmedRequest), no segmentation
+        apdu.push(0x00); // PDU type 0, no segmentation, no more-follows
+        apdu.push(0x05); // max-segments=0, max-apdu=5 (1476 bytes)
+        apdu.push(invoke_id);
+        apdu.push(crate::apdu::types::ConfirmedService::ConfirmedCovNotification as u8);
+        apdu.extend_from_slice(&service_data);
+        apdu
     }
 }
 
@@ -322,5 +343,208 @@ mod tests {
             ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
         );
         assert_eq!(manager.subscription_count(), 0);
+    }
+
+    #[test]
+    fn test_subscription_remaining_lifetime() {
+        let sub = CovSubscription::new(
+            "127.0.0.1:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            Some(Duration::from_secs(300)),
+        );
+
+        let remaining = sub.remaining_lifetime().unwrap();
+        assert!(remaining > 0 && remaining <= 300);
+
+        // Infinite lifetime returns None
+        let sub_inf = CovSubscription::new(
+            "127.0.0.1:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            None,
+        );
+        assert!(sub_inf.remaining_lifetime().is_none());
+    }
+
+    #[test]
+    fn test_subscription_cov_increment() {
+        let mut sub = CovSubscription::new(
+            "127.0.0.1:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            None,
+        );
+
+        assert!(sub.cov_increment.is_none());
+        sub.cov_increment = Some(1.5);
+        assert_eq!(sub.cov_increment, Some(1.5));
+    }
+
+    #[test]
+    fn test_encode_unconfirmed_notification() {
+        let notification = CovNotification {
+            destination: "10.0.0.1:47808".parse().unwrap(),
+            subscriber_process_id: 42,
+            initiating_device: ObjectId::device(1234),
+            monitored_object: ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            time_remaining: 300,
+            list_of_values: vec![
+                (PropertyId::PresentValue, BACnetValue::Real(72.5)),
+                (PropertyId::StatusFlags, BACnetValue::BitString(vec![false, false, false, false])),
+            ],
+            confirmed: false,
+        };
+
+        let data = notification.encode_unconfirmed();
+        assert!(!data.is_empty());
+        // Should start with context tag 0 (subscriber process id)
+        assert_eq!(data[0] & 0x0F, 0x09); // context tag 0, length 1
+    }
+
+    #[test]
+    fn test_encode_confirmed_notification() {
+        let notification = CovNotification {
+            destination: "10.0.0.1:47808".parse().unwrap(),
+            subscriber_process_id: 1,
+            initiating_device: ObjectId::device(1234),
+            monitored_object: ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            time_remaining: 0,
+            list_of_values: vec![
+                (PropertyId::PresentValue, BACnetValue::Real(25.0)),
+            ],
+            confirmed: true,
+        };
+
+        let apdu = notification.encode_confirmed(7);
+        // ConfirmedRequest header
+        assert_eq!(apdu[0], 0x00); // PDU type 0, no segmentation
+        assert_eq!(apdu[1], 0x05); // max-segments=0, max-apdu=5 (1476)
+        assert_eq!(apdu[2], 7);    // invoke_id
+        assert_eq!(apdu[3], crate::apdu::types::ConfirmedService::ConfirmedCovNotification as u8);
+        // Service data follows
+        assert!(apdu.len() > 4);
+    }
+
+    #[tokio::test]
+    async fn test_cov_manager_max_subscriptions() {
+        let (manager, _rx) = CovManager::new(1234, 2);
+
+        let sub1 = CovSubscription::new(
+            "10.0.0.1:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            None,
+        );
+        let sub2 = CovSubscription::new(
+            "10.0.0.2:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            None,
+        );
+        let sub3 = CovSubscription::new(
+            "10.0.0.3:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            None,
+        );
+
+        manager.subscribe(sub1).unwrap();
+        manager.subscribe(sub2).unwrap();
+        assert!(manager.subscribe(sub3).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_cov_manager_cleanup_expired() {
+        let (manager, _rx) = CovManager::new(1234, 100);
+
+        let sub = CovSubscription::new(
+            "127.0.0.1:47808".parse().unwrap(),
+            1,
+            ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
+            false,
+            Some(Duration::from_secs(0)), // Expires immediately
+        );
+
+        manager.subscribe(sub).unwrap();
+        assert_eq!(manager.subscription_count(), 1);
+
+        std::thread::sleep(Duration::from_millis(10));
+        manager.cleanup_expired();
+        assert_eq!(manager.subscription_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_cov_manager_subscriptions_for_object() {
+        let (manager, _rx) = CovManager::new(1234, 100);
+        let obj1 = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1);
+        let obj2 = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 2);
+
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.1:47808".parse().unwrap(), 1, obj1, false, None,
+        )).unwrap();
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.2:47808".parse().unwrap(), 1, obj1, true, None,
+        )).unwrap();
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.3:47808".parse().unwrap(), 1, obj2, false, None,
+        )).unwrap();
+
+        let subs = manager.subscriptions_for_object(obj1);
+        assert_eq!(subs.len(), 2);
+
+        let subs2 = manager.subscriptions_for_object(obj2);
+        assert_eq!(subs2.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_cov_notify_change() {
+        let (manager, mut rx) = CovManager::new(1234, 100);
+        let obj = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1);
+
+        // Subscribe two subscribers, one confirmed, one unconfirmed
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.1:47808".parse().unwrap(), 1, obj, false, None,
+        )).unwrap();
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.2:47808".parse().unwrap(), 2, obj, true, None,
+        )).unwrap();
+
+        // Trigger notification
+        let values = vec![(PropertyId::PresentValue, BACnetValue::Real(42.0))];
+        manager.notify_change(obj, values).await;
+
+        // Should receive 2 notifications
+        let n1 = rx.try_recv().unwrap();
+        let n2 = rx.try_recv().unwrap();
+
+        // One confirmed, one not
+        let (confirmed_count, unconfirmed_count) = [n1, n2].iter().fold((0, 0), |(c, u), n| {
+            if n.confirmed { (c + 1, u) } else { (c, u + 1) }
+        });
+        assert_eq!(confirmed_count, 1);
+        assert_eq!(unconfirmed_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cov_manager_list_subscriptions() {
+        let (manager, _rx) = CovManager::new(1234, 100);
+        let obj = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1);
+
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.1:47808".parse().unwrap(), 1, obj, false, None,
+        )).unwrap();
+        manager.subscribe(CovSubscription::new(
+            "10.0.0.2:47808".parse().unwrap(), 2, obj, true, Some(Duration::from_secs(600)),
+        )).unwrap();
+
+        let list = manager.list_subscriptions();
+        assert_eq!(list.len(), 2);
     }
 }

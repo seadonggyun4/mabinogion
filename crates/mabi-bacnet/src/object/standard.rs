@@ -196,6 +196,10 @@ impl BACnetObject for AnalogInput {
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl CovSupport for AnalogInput {
@@ -424,6 +428,10 @@ impl BACnetObject for AnalogOutput {
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl WritableObject for AnalogOutput {
@@ -646,6 +654,10 @@ impl BACnetObject for AnalogValue {
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl WritableObject for AnalogValue {
@@ -831,6 +843,10 @@ impl BACnetObject for BinaryInput {
             overridden: false,
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -1046,6 +1062,10 @@ impl BACnetObject for BinaryOutput {
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl WritableObject for BinaryOutput {
@@ -1229,6 +1249,10 @@ impl BACnetObject for BinaryValue {
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl WritableObject for BinaryValue {
@@ -1411,6 +1435,10 @@ impl BACnetObject for MultiStateInput {
             overridden: false,
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -1610,6 +1638,10 @@ impl BACnetObject for MultiStateOutput {
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl WritableObject for MultiStateOutput {
@@ -1788,6 +1820,10 @@ impl BACnetObject for MultiStateValue {
             overridden: false,
             out_of_service: self.out_of_service.load(Ordering::Acquire),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

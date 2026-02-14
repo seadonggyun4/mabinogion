@@ -28,6 +28,22 @@ pub struct ServerMetrics {
     pub cov_subscriptions: AtomicU64,
     /// Total COV notifications sent.
     pub cov_notifications_sent: AtomicU64,
+    /// Total segmented requests reassembled.
+    pub segmented_requests_reassembled: AtomicU64,
+    /// Total segmented responses transmitted.
+    pub segmented_responses_transmitted: AtomicU64,
+    /// Total individual segments sent.
+    pub segments_sent: AtomicU64,
+    /// Total individual segments received.
+    pub segments_received: AtomicU64,
+    /// Total segment ACKs sent.
+    pub segment_acks_sent: AtomicU64,
+    /// Total segment ACKs received.
+    pub segment_acks_received: AtomicU64,
+    /// Total BBMD forwarded broadcasts.
+    pub bbmd_forwarded: AtomicU64,
+    /// Total foreign device registrations.
+    pub bbmd_foreign_registrations: AtomicU64,
     /// Total bytes received.
     pub bytes_received: AtomicU64,
     /// Total bytes sent.
@@ -104,6 +120,46 @@ impl ServerMetrics {
         self.cov_notifications_sent.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Record a segmented request fully reassembled.
+    pub fn record_segmented_request_reassembled(&self) {
+        self.segmented_requests_reassembled.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a segmented response transmitted.
+    pub fn record_segmented_response_transmitted(&self) {
+        self.segmented_responses_transmitted.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record individual segments sent.
+    pub fn record_segments_sent(&self, count: u64) {
+        self.segments_sent.fetch_add(count, Ordering::Relaxed);
+    }
+
+    /// Record individual segments received.
+    pub fn record_segment_received(&self) {
+        self.segments_received.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a segment ACK sent.
+    pub fn record_segment_ack_sent(&self) {
+        self.segment_acks_sent.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a segment ACK received.
+    pub fn record_segment_ack_received(&self) {
+        self.segment_acks_received.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a BBMD forwarded broadcast.
+    pub fn record_bbmd_forwarded(&self) {
+        self.bbmd_forwarded.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a foreign device registration.
+    pub fn record_bbmd_foreign_registration(&self) {
+        self.bbmd_foreign_registrations.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Record bytes received.
     pub fn record_bytes_received(&self, bytes: u64) {
         self.bytes_received.fetch_add(bytes, Ordering::Relaxed);
@@ -153,6 +209,14 @@ impl ServerMetrics {
             write_property_requests: self.write_property_requests.load(Ordering::Relaxed),
             cov_subscriptions: self.cov_subscriptions.load(Ordering::Relaxed),
             cov_notifications_sent: self.cov_notifications_sent.load(Ordering::Relaxed),
+            segmented_requests_reassembled: self.segmented_requests_reassembled.load(Ordering::Relaxed),
+            segmented_responses_transmitted: self.segmented_responses_transmitted.load(Ordering::Relaxed),
+            segments_sent: self.segments_sent.load(Ordering::Relaxed),
+            segments_received: self.segments_received.load(Ordering::Relaxed),
+            segment_acks_sent: self.segment_acks_sent.load(Ordering::Relaxed),
+            segment_acks_received: self.segment_acks_received.load(Ordering::Relaxed),
+            bbmd_forwarded: self.bbmd_forwarded.load(Ordering::Relaxed),
+            bbmd_foreign_registrations: self.bbmd_foreign_registrations.load(Ordering::Relaxed),
             bytes_received: self.bytes_received.load(Ordering::Relaxed),
             bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
             average_latency_us: self.average_latency_us(),
@@ -175,6 +239,14 @@ pub struct ServerMetricsSnapshot {
     pub write_property_requests: u64,
     pub cov_subscriptions: u64,
     pub cov_notifications_sent: u64,
+    pub segmented_requests_reassembled: u64,
+    pub segmented_responses_transmitted: u64,
+    pub segments_sent: u64,
+    pub segments_received: u64,
+    pub segment_acks_sent: u64,
+    pub segment_acks_received: u64,
+    pub bbmd_forwarded: u64,
+    pub bbmd_foreign_registrations: u64,
     pub bytes_received: u64,
     pub bytes_sent: u64,
     pub average_latency_us: u64,

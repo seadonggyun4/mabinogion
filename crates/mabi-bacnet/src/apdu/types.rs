@@ -390,6 +390,79 @@ impl RejectReason {
     }
 }
 
+/// Abort reason codes per ASHRAE 135 Clause 21.7.
+///
+/// The Abort PDU is used to terminate a transaction when a device
+/// cannot process a request. Unlike Reject (which indicates a protocol
+/// violation in the request), Abort indicates a server-side issue
+/// (resource exhaustion, segmentation failure, internal error).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AbortReason {
+    /// Abort for a reason other than those listed.
+    Other = 0,
+    /// The buffer used to assemble segmented messages is too small.
+    BufferOverflow = 1,
+    /// The PDU received is not valid for the current state of the transaction.
+    InvalidApduInThisState = 2,
+    /// The request was preempted by a higher priority task.
+    PreemptedByHigherPriorityTask = 3,
+    /// The device does not support segmentation.
+    SegmentationNotSupported = 4,
+    /// A security-related error occurred.
+    SecurityError = 5,
+    /// Insufficient security for the requested operation.
+    InsufficientSecurity = 6,
+    /// Window size out of range (segmentation window negotiation failure).
+    WindowSizeOutOfRange = 7,
+    /// The APDU is too long for the device to process.
+    ApplicationExceededReplyTime = 8,
+    /// Out of resources (e.g., memory, file handles).
+    OutOfResources = 9,
+    /// The TSM (Transaction State Machine) timed out.
+    TsmTimeout = 10,
+    /// APDU too long for the device to accept.
+    ApduTooLong = 11,
+}
+
+impl AbortReason {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Other),
+            1 => Some(Self::BufferOverflow),
+            2 => Some(Self::InvalidApduInThisState),
+            3 => Some(Self::PreemptedByHigherPriorityTask),
+            4 => Some(Self::SegmentationNotSupported),
+            5 => Some(Self::SecurityError),
+            6 => Some(Self::InsufficientSecurity),
+            7 => Some(Self::WindowSizeOutOfRange),
+            8 => Some(Self::ApplicationExceededReplyTime),
+            9 => Some(Self::OutOfResources),
+            10 => Some(Self::TsmTimeout),
+            11 => Some(Self::ApduTooLong),
+            _ => None,
+        }
+    }
+
+    /// Get the human-readable name.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Other => "other",
+            Self::BufferOverflow => "buffer-overflow",
+            Self::InvalidApduInThisState => "invalid-apdu-in-this-state",
+            Self::PreemptedByHigherPriorityTask => "preempted-by-higher-priority-task",
+            Self::SegmentationNotSupported => "segmentation-not-supported",
+            Self::SecurityError => "security-error",
+            Self::InsufficientSecurity => "insufficient-security",
+            Self::WindowSizeOutOfRange => "window-size-out-of-range",
+            Self::ApplicationExceededReplyTime => "application-exceeded-reply-time",
+            Self::OutOfResources => "out-of-resources",
+            Self::TsmTimeout => "tsm-timeout",
+            Self::ApduTooLong => "apdu-too-long",
+        }
+    }
+}
+
 /// APDU errors.
 #[derive(Debug, thiserror::Error)]
 pub enum ApduError {

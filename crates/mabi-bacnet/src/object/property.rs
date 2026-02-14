@@ -256,6 +256,21 @@ impl PropertyId {
             73 => Some(Self::NumberOfApduRetries),
             155 => Some(Self::DatabaseRevision),
             152 => Some(Self::ActiveCovSubscriptions),
+            // Alarm/event properties
+            0 => Some(Self::AckedTransitions),
+            1 => Some(Self::AckRequired),
+            6 => Some(Self::AlarmValue),
+            7 => Some(Self::AlarmValues),
+            37 => Some(Self::EventType),
+            83 => Some(Self::EventParameters),
+            113 => Some(Self::TimeDelay),
+            // File properties
+            41 => Some(Self::FileAccessMethod),
+            42 => Some(Self::FileSize),
+            43 => Some(Self::FileType),
+            71 => Some(Self::ModificationDate),
+            99 => Some(Self::ReadOnly),
+            141 => Some(Self::RecordCount),
             _ => None,
         }
     }
@@ -323,6 +338,19 @@ impl PropertyId {
             Self::NumberOfApduRetries => "Number_Of_APDU_Retries",
             Self::DatabaseRevision => "Database_Revision",
             Self::ActiveCovSubscriptions => "Active_COV_Subscriptions",
+            Self::AckedTransitions => "Acked_Transitions",
+            Self::AckRequired => "Ack_Required",
+            Self::AlarmValue => "Alarm_Value",
+            Self::AlarmValues => "Alarm_Values",
+            Self::EventType => "Event_Type",
+            Self::EventParameters => "Event_Parameters",
+            Self::TimeDelay => "Time_Delay",
+            Self::FileAccessMethod => "File_Access_Method",
+            Self::FileSize => "File_Size",
+            Self::FileType => "File_Type",
+            Self::ModificationDate => "Modification_Date",
+            Self::ReadOnly => "Read_Only",
+            Self::RecordCount => "Record_Count",
             _ => "Unknown",
         }
     }
@@ -503,7 +531,7 @@ impl Default for BACnetTime {
 }
 
 /// BACnet property values.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BACnetValue {
     /// Null value.
     Null,

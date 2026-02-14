@@ -73,7 +73,10 @@ pub mod service;
 // Prelude for common imports
 pub mod prelude {
     pub use crate::apdu::encoding::{ApduDecoder, ApduEncoder};
-    pub use crate::apdu::types::{ApduType, ConfirmedService, UnconfirmedService};
+    pub use crate::apdu::types::{
+        AbortReason, ApduType, ConfirmedService, ErrorClass, ErrorCode, RejectReason,
+        UnconfirmedService,
+    };
     pub use crate::config::BacnetServerConfig;
     pub use crate::device::BacnetDevice;
     pub use crate::error::{BacnetError, BacnetResult};
@@ -88,6 +91,10 @@ pub mod prelude {
         AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
         MultiStateInput, MultiStateOutput, MultiStateValue,
     };
+    pub use crate::object::device::{
+        BACnetDateTime, CommunicationControlState, DeviceObject, DeviceObjectConfig,
+        DeviceSystemStatus,
+    };
     pub use crate::object::traits::{ArcObject, BACnetObject, CovSupport, ObjectBuilder, WritableObject};
     pub use crate::object::types::{ObjectId, ObjectType};
     pub use crate::server::{BACnetServer, ServerConfig, ServerEvent, ServerMetrics};
@@ -98,10 +105,51 @@ pub mod prelude {
         UnconfirmedServiceHandler,
     };
     pub use crate::service::property::{PropertyService, ReadPropertyRequest, WritePropertyRequest};
+    pub use crate::service::tsm::{ServerTsm, TransactionKey, TsmConfig, TsmStatistics};
     pub use crate::service::property_multiple::{
         ReadPropertyMultipleRequest, WritePropertyMultipleRequest,
         ReadPropertyMultipleHandler, WritePropertyMultipleHandler,
         PropertyReference, PropertyAccessResult,
+    };
+    pub use crate::service::read_range::{ReadRangeHandler, ReadRangeRequest, RangeType};
+    // File access services
+    pub use crate::service::file_access::{
+        AtomicReadFileHandler, AtomicWriteFileHandler,
+        AtomicReadFileRequest, AtomicWriteFileRequest,
+    };
+    // File object
+    pub use crate::object::file::{FileAccessMethod, FileObject};
+    // EventEnrollment + NotificationClass objects
+    pub use crate::object::event_enrollment::{
+        EventEnrollment, EventNotification, EventTransitionBits, EventType,
+        NotificationClass, NotificationRecipient, NotifyType,
+    };
+    // Alarm services
+    pub use crate::service::alarm::{
+        AcknowledgeAlarmHandler, ConfirmedEventNotificationHandler,
+        GetAlarmSummaryHandler, GetEnrollmentSummaryHandler, GetEventInformationHandler,
+    };
+    // CreateObject/DeleteObject services
+    pub use crate::service::create_delete::{
+        CreateObjectHandler, DeleteObjectHandler, ObjectFactory,
+        CreateObjectRequest, DeleteObjectRequest, default_object_factory,
+    };
+    // COV subscription services
+    pub use crate::service::subscribe_cov::{SubscribeCovHandler, SubscribeCovPropertyHandler};
+    // Device control services
+    pub use crate::service::device_control::{
+        TimeSynchronizationHandler, UtcTimeSynchronizationHandler,
+        DeviceCommunicationControlHandler, ReinitializeDeviceHandler,
+        EnableDisable, ReinitializedState,
+    };
+    // Schedule + Calendar objects
+    pub use crate::object::schedule::{
+        Calendar, CalendarEntry, DateRange, ObjectPropertyReference, Schedule, SpecialEvent,
+        SpecialEventPeriod, TimeValue,
+    };
+    // TrendLog object
+    pub use crate::object::trend_log::{
+        DeviceObjectPropertyReference, LogDatum, LogRecord, LogStatus, LogTimestamp, TrendLog,
     };
     // Network layer extensions
     pub use crate::network::bbmd::{Bbmd, BbmdConfig, BroadcastDistributionTable, ForeignDeviceTable};

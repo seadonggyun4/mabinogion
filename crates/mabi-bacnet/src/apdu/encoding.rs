@@ -430,6 +430,119 @@ impl ApduEncoder {
         self.encode_enumerated(error_class); // Application Tag 9
         self.encode_enumerated(error_code); // Application Tag 9
     }
+
+    /// Encode a complete BACnet-Reject-PDU.
+    ///
+    /// Per ASHRAE 135, Clause 21.6, the Reject PDU is sent when the
+    /// server detects a protocol violation in the request PDU itself
+    /// (e.g., invalid tags, missing parameters, unrecognized service).
+    ///
+    /// ```text
+    /// | PDU Type (0x60) | Invoke ID | Reject Reason |
+    /// |       1B        |    1B     |      1B       |
+    /// ```
+    pub fn encode_reject_pdu(&mut self, invoke_id: u8, reject_reason: u8) {
+        self.put_u8(0x60); // Reject PDU type
+        self.put_u8(invoke_id);
+        self.put_u8(reject_reason);
+    }
+
+    /// Encode a complete BACnet-Abort-PDU.
+    ///
+    /// Per ASHRAE 135, Clause 21.7, the Abort PDU terminates a transaction
+    /// due to server-side issues (resource exhaustion, segmentation failure,
+    /// internal error). Unlike Reject (protocol violation in request),
+    /// Abort indicates the server cannot process the request.
+    ///
+    /// ```text
+    /// | PDU Type (0x70) + Server bit | Invoke ID | Abort Reason |
+    /// |             1B               |    1B     |      1B      |
+    /// ```
+    ///
+    /// The `sent_by_server` flag indicates whether this Abort is sent
+    /// by the server (true) or client (false). Bit 0 of the PDU type byte.
+    pub fn encode_abort_pdu(&mut self, invoke_id: u8, abort_reason: u8, sent_by_server: bool) {
+        let pdu_type = 0x70 | if sent_by_server { 0x01 } else { 0x00 };
+        self.put_u8(pdu_type); // Abort PDU type + server bit
+        self.put_u8(invoke_id);
+        self.put_u8(abort_reason);
+    }
+
+    /// Encode a complete BACnet-SegmentACK-PDU.
+    ///
+    /// Per ASHRAE 135, Clause 21.5, the SegmentACK PDU acknowledges
+    /// receipt of one or more segments during a segmented message transfer.
+    ///
+    /// ```text
+    /// | PDU Type (0x40) + Flags | Invoke ID | Sequence Number | Actual Window Size |
+    /// |          1B             |    1B     |       1B        |         1B         |
+    /// ```
+    ///
+    /// Flags (bits 1-0 of byte 0):
+    /// - Bit 1: negative-ack (NAK) — request retransmission from sequence_number
+    /// - Bit 0: sent-by-server — 1 if server originated this ACK
+    pub fn encode_segment_ack_pdu(
+        &mut self,
+        invoke_id: u8,
+        sequence_number: u8,
+        actual_window_size: u8,
+        sent_by_server: bool,
+        negative_ack: bool,
+    ) {
+        let mut pdu_type: u8 = 0x40; // SegmentACK PDU type (4 << 4)
+        if negative_ack {
+            pdu_type |= 0x02;
+        }
+        if sent_by_server {
+            pdu_type |= 0x01;
+        }
+        self.put_u8(pdu_type);
+        self.put_u8(invoke_id);
+        self.put_u8(sequence_number);
+        self.put_u8(actual_window_size);
+    }
+
+    /// Encode a segmented ComplexACK PDU header.
+    ///
+    /// Per ASHRAE 135, Clause 20.1.7, a segmented ComplexACK has:
+    ///
+    /// ```text
+    /// | PDU Type (0x30) + Flags | Invoke ID | Sequence Number | Window Size | Service Choice | Data |
+    /// |          1B             |    1B     |       1B        |     1B      |       1B       |  nB  |
+    /// ```
+    ///
+    /// Flags in byte 0:
+    /// - Bit 3 (0x08): segmented = 1
+    /// - Bit 2 (0x04): more-follows = 1 if more segments follow
+    pub fn encode_segmented_complex_ack_header(
+        &mut self,
+        invoke_id: u8,
+        sequence_number: u8,
+        proposed_window_size: u8,
+        more_follows: bool,
+        service_choice: u8,
+    ) {
+        let mut pdu_type: u8 = 0x30; // ComplexACK PDU type (3 << 4)
+        pdu_type |= 0x08; // segmented = 1
+        if more_follows {
+            pdu_type |= 0x04; // more-follows = 1
+        }
+        self.put_u8(pdu_type);
+        self.put_u8(invoke_id);
+        self.put_u8(sequence_number);
+        self.put_u8(proposed_window_size);
+        self.put_u8(service_choice);
+    }
+
+    /// Get the current buffer length.
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// Check if the buffer is empty.
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
 }
 
 impl Default for ApduEncoder {
