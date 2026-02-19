@@ -243,6 +243,6 @@ pub struct ScenarioPointConfig {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ScenarioEventConfig {
     pub name: String,
-    pub trigger: String,
-    pub actions: Vec<String>,
+    pub trigger: serde_yaml::Value,
+    pub actions: Vec<serde_yaml::Value>,
 }
