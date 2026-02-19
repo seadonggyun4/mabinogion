@@ -19,13 +19,13 @@ path = "src/main.rs"
 
 [dependencies]
 # Workspace crates
-mabi-core = { version = "1.3.2", path = "../mabi-core" }
-mabi-modbus = { version = "1.3.2", path = "../mabi-modbus" }
-mabi-opcua = { version = "1.3.2", path = "../mabi-opcua" }
-mabi-bacnet = { version = "1.3.2", path = "../mabi-bacnet" }
-mabi-knx = { version = "1.3.2", path = "../mabi-knx" }
-mabi-scenario = { version = "1.3.2", path = "../mabi-scenario" }
-mabi-chaos = { version = "1.3.2", path = "../mabi-chaos" }
+mabi-core = { workspace = true }
+mabi-modbus = { workspace = true }
+mabi-opcua = { workspace = true }
+mabi-bacnet = { workspace = true }
+mabi-knx = { workspace = true }
+mabi-scenario = { workspace = true }
+mabi-chaos = { workspace = true }
 
 # Async runtime
 tokio.workspace = true
