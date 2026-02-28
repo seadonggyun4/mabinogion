@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="500px" alt="Truthound Banner" src="https://github.com/user-attachments/assets/34faf6ca-1ae7-4989-9468-1ea00eb00345" />
+  <img width="500px" alt="Truthound Banner" src="https://github.com/user-attachments/assets/67771070-3485-4223-9212-e59df7e3411f" />
 </div>
 
 <h1 align="center">Mabinogion</h1>
