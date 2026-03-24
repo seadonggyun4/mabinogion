@@ -1,14 +1,10 @@
 //! Fault registry for managing fault instances.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use dashmap::DashMap;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ChaosError, ChaosResult};
-use crate::fault::{BoxedFault, Fault, FaultCategory, FaultMetadata, FaultSeverity};
+use crate::fault::{BoxedFault, Fault, FaultCategory, FaultSeverity};
 
 // =============================================================================
 // Fault Filter
@@ -140,14 +136,15 @@ impl FaultEntry {
 
     /// Check if active for a target.
     pub fn is_active_for(&self, target: &str) -> bool {
-        self.globally_active || self.active_targets.iter().any(|t| {
-            if t.contains('*') {
-                // Glob matching
-                glob_match(t, target)
-            } else {
-                t == target
-            }
-        })
+        self.globally_active
+            || self.active_targets.iter().any(|t| {
+                if t.contains('*') {
+                    // Glob matching
+                    glob_match(t, target)
+                } else {
+                    t == target
+                }
+            })
     }
 
     /// Activate for a target.
@@ -256,12 +253,15 @@ impl FaultRegistry {
     }
 
     /// Get a fault by ID.
-    pub fn get(&self, id: &str) -> Option<dashmap::mapref::one::Ref<String, FaultEntry>> {
+    pub fn get(&self, id: &str) -> Option<dashmap::mapref::one::Ref<'_, String, FaultEntry>> {
         self.faults.get(id)
     }
 
     /// Get a mutable reference to a fault.
-    pub fn get_mut(&self, id: &str) -> Option<dashmap::mapref::one::RefMut<String, FaultEntry>> {
+    pub fn get_mut(
+        &self,
+        id: &str,
+    ) -> Option<dashmap::mapref::one::RefMut<'_, String, FaultEntry>> {
         self.faults.get_mut(id)
     }
 
@@ -273,9 +273,10 @@ impl FaultRegistry {
     /// Activate a fault for a target.
     pub fn activate(&self, fault_id: &str, target: impl Into<String>) -> ChaosResult<()> {
         let target = target.into();
-        let mut entry = self.faults.get_mut(fault_id).ok_or_else(|| {
-            ChaosError::fault_not_found(fault_id)
-        })?;
+        let mut entry = self
+            .faults
+            .get_mut(fault_id)
+            .ok_or_else(|| ChaosError::fault_not_found(fault_id))?;
         entry.activate_for(target);
         entry.fault.enable();
         Ok(())
@@ -283,18 +284,20 @@ impl FaultRegistry {
 
     /// Deactivate a fault for a target.
     pub fn deactivate(&self, fault_id: &str, target: &str) -> ChaosResult<()> {
-        let mut entry = self.faults.get_mut(fault_id).ok_or_else(|| {
-            ChaosError::fault_not_found(fault_id)
-        })?;
+        let mut entry = self
+            .faults
+            .get_mut(fault_id)
+            .ok_or_else(|| ChaosError::fault_not_found(fault_id))?;
         entry.deactivate_for(target);
         Ok(())
     }
 
     /// Activate a fault globally.
     pub fn activate_globally(&self, fault_id: &str) -> ChaosResult<()> {
-        let mut entry = self.faults.get_mut(fault_id).ok_or_else(|| {
-            ChaosError::fault_not_found(fault_id)
-        })?;
+        let mut entry = self
+            .faults
+            .get_mut(fault_id)
+            .ok_or_else(|| ChaosError::fault_not_found(fault_id))?;
         entry.activate_globally();
         entry.fault.enable();
         Ok(())
@@ -302,9 +305,10 @@ impl FaultRegistry {
 
     /// Deactivate a fault globally.
     pub fn deactivate_globally(&self, fault_id: &str) -> ChaosResult<()> {
-        let mut entry = self.faults.get_mut(fault_id).ok_or_else(|| {
-            ChaosError::fault_not_found(fault_id)
-        })?;
+        let mut entry = self
+            .faults
+            .get_mut(fault_id)
+            .ok_or_else(|| ChaosError::fault_not_found(fault_id))?;
         entry.deactivate_globally();
         entry.fault.disable();
         Ok(())
@@ -388,7 +392,9 @@ mod tests {
     fn test_duplicate_registration() {
         let registry = FaultRegistry::new();
 
-        registry.register("test", create_test_fault("test")).unwrap();
+        registry
+            .register("test", create_test_fault("test"))
+            .unwrap();
         let result = registry.register("test", create_test_fault("test"));
 
         assert!(result.is_err());
@@ -397,14 +403,18 @@ mod tests {
     #[test]
     fn test_activation() {
         let registry = FaultRegistry::new();
-        registry.register("test", create_test_fault("test")).unwrap();
+        registry
+            .register("test", create_test_fault("test"))
+            .unwrap();
 
         // Not active initially
         assert!(registry.active_for("device-001").is_empty());
 
         // Activate for specific target
         registry.activate("test", "device-001").unwrap();
-        assert!(registry.active_for("device-001").contains(&"test".to_string()));
+        assert!(registry
+            .active_for("device-001")
+            .contains(&"test".to_string()));
 
         // Not active for other targets
         assert!(registry.active_for("device-002").is_empty());
@@ -413,12 +423,18 @@ mod tests {
     #[test]
     fn test_global_activation() {
         let registry = FaultRegistry::new();
-        registry.register("test", create_test_fault("test")).unwrap();
+        registry
+            .register("test", create_test_fault("test"))
+            .unwrap();
 
         registry.activate_globally("test").unwrap();
 
-        assert!(registry.active_for("any-device").contains(&"test".to_string()));
-        assert!(registry.active_for("another-device").contains(&"test".to_string()));
+        assert!(registry
+            .active_for("any-device")
+            .contains(&"test".to_string()));
+        assert!(registry
+            .active_for("another-device")
+            .contains(&"test".to_string()));
     }
 
     #[test]

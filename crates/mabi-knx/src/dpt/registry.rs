@@ -188,11 +188,13 @@ lazy_static::lazy_static! {
     pub static ref GLOBAL_DPT_REGISTRY: DptRegistry = DptRegistry::new();
 }
 
+#[cfg(test)]
 /// Get a codec from the global registry.
 pub fn get_codec(id: &DptId) -> Option<Arc<BoxedDptCodec>> {
     GLOBAL_DPT_REGISTRY.get(id)
 }
 
+#[cfg(test)]
 /// Get a codec from the global registry by string.
 pub fn get_codec_by_str(id: &str) -> Option<Arc<BoxedDptCodec>> {
     GLOBAL_DPT_REGISTRY.get_by_str(id)

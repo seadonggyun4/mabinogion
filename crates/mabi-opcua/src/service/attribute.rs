@@ -7,13 +7,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::types::{NodeId, StatusCode, AttributeId, DataValue, Variant};
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::types::{AttributeId, DataValue, NodeId};
 
 const READ_REQUEST_ID: u32 = 631;
 const READ_RESPONSE_ID: u32 = 634;
@@ -60,8 +60,8 @@ impl ServiceHandler for ReadHandler {
                 let _name = String::decode(&mut buf)?;
             };
 
-            let attribute_id = AttributeId::from_u32(attribute_id_val)
-                .unwrap_or(AttributeId::Value);
+            let attribute_id =
+                AttributeId::from_u32(attribute_id_val).unwrap_or(AttributeId::Value);
 
             let dv = context.address_space.read(&node_id, attribute_id);
             results.push(dv);
@@ -119,8 +119,8 @@ impl ServiceHandler for WriteHandler {
             let _index_range = String::decode(&mut buf)?;
             let value = DataValue::decode(&mut buf)?;
 
-            let attribute_id = AttributeId::from_u32(attribute_id_val)
-                .unwrap_or(AttributeId::Value);
+            let attribute_id =
+                AttributeId::from_u32(attribute_id_val).unwrap_or(AttributeId::Value);
 
             let status = context.address_space.write(&node_id, attribute_id, value);
             results.push(status);

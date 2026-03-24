@@ -3,14 +3,12 @@
 //! Provides encryption, decryption, signing, and hashing operations
 //! using pluggable algorithm implementations.
 
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
-use crate::config::SecurityPolicy;
 use super::policy::SecurityPolicyConfig;
+use crate::config::SecurityPolicy;
 
 /// Cryptographic error types.
 #[derive(Debug, Error)]
@@ -311,8 +309,7 @@ impl CryptoProvider {
         let decrypted = simulate_aes_cbc_decrypt(ciphertext, key, iv);
 
         // Remove PKCS7 padding
-        let plaintext = pkcs7_unpad(&decrypted)
-            .map_err(|e| CryptoError::DecryptionFailed(e))?;
+        let plaintext = pkcs7_unpad(&decrypted).map_err(|e| CryptoError::DecryptionFailed(e))?;
 
         trace!(
             ciphertext_len = ciphertext.len(),
@@ -405,7 +402,11 @@ impl CryptoProvider {
         // Simulate HMAC-SHA256
         let signature = simulate_hmac_sha256(data, key);
 
-        trace!(data_len = data.len(), sig_len = signature.len(), "HMAC sign completed");
+        trace!(
+            data_len = data.len(),
+            sig_len = signature.len(),
+            "HMAC sign completed"
+        );
 
         Ok(SignatureResult { signature })
     }
@@ -435,7 +436,11 @@ impl CryptoProvider {
         // Simulate RSA signature
         let signature = simulate_rsa_sign(data, private_key);
 
-        debug!(data_len = data.len(), sig_len = signature.len(), "RSA sign completed");
+        debug!(
+            data_len = data.len(),
+            sig_len = signature.len(),
+            "RSA sign completed"
+        );
 
         Ok(SignatureResult { signature })
     }
@@ -500,7 +505,8 @@ impl CryptoProvider {
         let derived = p_sha256(secret, seed, total_length);
 
         let signing_key = derived[..signing_key_length].to_vec();
-        let encrypting_key = derived[signing_key_length..signing_key_length + encrypting_key_length].to_vec();
+        let encrypting_key =
+            derived[signing_key_length..signing_key_length + encrypting_key_length].to_vec();
         let iv = derived[signing_key_length + encrypting_key_length..].to_vec();
 
         debug!(
@@ -767,7 +773,9 @@ mod tests {
         let plaintext = b"Hello, OPC UA!";
 
         let encrypted = provider.symmetric_encrypt(plaintext, &key, &iv).unwrap();
-        let decrypted = provider.symmetric_decrypt(&encrypted.ciphertext, &key, &iv).unwrap();
+        let decrypted = provider
+            .symmetric_decrypt(&encrypted.ciphertext, &key, &iv)
+            .unwrap();
 
         assert_eq!(decrypted.plaintext, plaintext);
     }
@@ -793,7 +801,9 @@ mod tests {
         let data = b"Message to sign";
 
         let signature = provider.hmac_sign(data, &key).unwrap();
-        let valid = provider.hmac_verify(data, &key, &signature.signature).unwrap();
+        let valid = provider
+            .hmac_verify(data, &key, &signature.signature)
+            .unwrap();
 
         assert!(valid);
     }

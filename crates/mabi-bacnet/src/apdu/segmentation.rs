@@ -212,12 +212,7 @@ pub struct Segment {
 
 impl Segment {
     /// Create a new segment.
-    pub fn new(
-        sequence_number: u8,
-        more_follows: bool,
-        invoke_id: u8,
-        data: Vec<u8>,
-    ) -> Self {
+    pub fn new(sequence_number: u8, more_follows: bool, invoke_id: u8, data: Vec<u8>) -> Self {
         Self {
             header: SegmentHeader::new(sequence_number, more_follows),
             data,
@@ -258,12 +253,14 @@ pub enum AssemblyState {
 /// Entry tracking a segmented message being assembled.
 #[derive(Debug)]
 struct AssemblyEntry {
+    #[allow(dead_code)]
     /// Expected total segments (if known).
     expected_segments: Option<usize>,
     /// Segments received so far, indexed by sequence number.
     segments: HashMap<u8, Vec<u8>>,
     /// Next expected sequence number.
     next_sequence: u8,
+    #[allow(dead_code)]
     /// Invoke ID of the transaction.
     invoke_id: u8,
     /// Service choice.
@@ -272,6 +269,7 @@ struct AssemblyEntry {
     state: AssemblyState,
     /// Time of last activity.
     last_activity: Instant,
+    #[allow(dead_code)]
     /// Actual window size being used.
     actual_window_size: u8,
 }
@@ -361,6 +359,7 @@ pub struct SegmentAssembler {
     entries: HashMap<(u64, u8), AssemblyEntry>,
     /// Timeout for stale entries.
     timeout: Duration,
+    #[allow(dead_code)]
     /// Maximum concurrent assemblies.
     max_entries: usize,
 }
@@ -384,13 +383,17 @@ impl SegmentAssembler {
         let key = (source_hash, segment.invoke_id);
 
         // Get or create entry
-        let entry = self.entries.entry(key).or_insert_with(|| {
-            AssemblyEntry::new(segment.invoke_id)
-        });
+        let entry = self
+            .entries
+            .entry(key)
+            .or_insert_with(|| AssemblyEntry::new(segment.invoke_id));
 
         // Check for stale entry
         if entry.last_activity.elapsed() > self.timeout {
-            debug!(invoke_id = segment.invoke_id, "Resetting stale assembly entry");
+            debug!(
+                invoke_id = segment.invoke_id,
+                "Resetting stale assembly entry"
+            );
             *entry = AssemblyEntry::new(segment.invoke_id);
         }
 

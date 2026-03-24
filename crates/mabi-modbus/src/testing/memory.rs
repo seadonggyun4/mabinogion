@@ -89,7 +89,7 @@ impl MemoryProfiler {
     }
 
     /// Start profiling with background sampling.
-    pub fn start(&self) -> MemoryProfilerGuard {
+    pub fn start(&self) -> MemoryProfilerGuard<'_> {
         self.active.store(true, Ordering::SeqCst);
 
         let snapshots = self.snapshots.clone();
@@ -106,9 +106,7 @@ impl MemoryProfiler {
             }
         });
 
-        MemoryProfilerGuard {
-            profiler: self,
-        }
+        MemoryProfilerGuard { profiler: self }
     }
 
     /// Take a memory snapshot.
@@ -181,7 +179,8 @@ impl MemoryProfiler {
         let duration = self.start_time.elapsed();
 
         // Calculate statistics
-        let peak_bytes = snapshots.iter()
+        let peak_bytes = snapshots
+            .iter()
             .map(|s| s.live_bytes)
             .max()
             .unwrap_or(current.live_bytes);
@@ -195,8 +194,13 @@ impl MemoryProfiler {
         // Detect potential leaks (monotonically increasing memory)
         let potential_leak = if snapshots.len() >= 10 {
             let recent: Vec<_> = snapshots.iter().rev().take(10).collect();
-            let increasing = recent.windows(2).all(|w| w[0].live_bytes >= w[1].live_bytes);
-            let growth = recent.first().map(|f| f.live_bytes).unwrap_or(0)
+            let increasing = recent
+                .windows(2)
+                .all(|w| w[0].live_bytes >= w[1].live_bytes);
+            let growth = recent
+                .first()
+                .map(|f| f.live_bytes)
+                .unwrap_or(0)
                 .saturating_sub(recent.last().map(|l| l.live_bytes).unwrap_or(0));
             increasing && growth > 1024 * 1024 // More than 1MB growth
         } else {
@@ -263,7 +267,8 @@ impl AllocationTracker {
 
     /// Record an allocation.
     pub fn record_alloc(&self, size: usize) {
-        self.allocated_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        self.allocated_bytes
+            .fetch_add(size as u64, Ordering::Relaxed);
         self.allocation_count.fetch_add(1, Ordering::Relaxed);
 
         let current = self.current_bytes.fetch_add(size as u64, Ordering::Relaxed) + size as u64;
@@ -297,7 +302,8 @@ impl AllocationTracker {
 
     /// Get current live allocation count.
     pub fn live_count(&self) -> u64 {
-        self.allocation_count.load(Ordering::Relaxed)
+        self.allocation_count
+            .load(Ordering::Relaxed)
             .saturating_sub(self.deallocation_count.load(Ordering::Relaxed))
     }
 
@@ -362,9 +368,18 @@ impl MemoryReport {
         output.push_str(&format!("Current Memory: {:.2} MB\n", self.current_mb()));
         output.push_str(&format!("Peak Memory: {:.2} MB\n", self.peak_mb()));
         output.push_str(&format!("Average Memory: {:.2} MB\n", self.avg_mb()));
-        output.push_str(&format!("Allocation Rate: {:.2}/sec\n", self.allocation_rate));
-        output.push_str(&format!("Total Allocations: {}\n", self.current_snapshot.allocation_count));
-        output.push_str(&format!("Live Allocations: {}\n", self.current_snapshot.live_count));
+        output.push_str(&format!(
+            "Allocation Rate: {:.2}/sec\n",
+            self.allocation_rate
+        ));
+        output.push_str(&format!(
+            "Total Allocations: {}\n",
+            self.current_snapshot.allocation_count
+        ));
+        output.push_str(&format!(
+            "Live Allocations: {}\n",
+            self.current_snapshot.live_count
+        ));
 
         if let Some(rss) = self.current_snapshot.rss_mb() {
             output.push_str(&format!("RSS: {:.2} MB\n", rss));
@@ -387,10 +402,10 @@ impl MemoryReport {
 /// Estimate memory usage for a given number of devices and points.
 pub fn estimate_memory_usage(devices: usize, points_per_device: usize) -> MemoryEstimate {
     // Estimated sizes based on actual struct layouts
-    const DEVICE_OVERHEAD: usize = 512;      // DeviceInfo, state, etc.
-    const POINT_SIZE: usize = 128;           // DataPoint definition
-    const VALUE_SIZE: usize = 32;            // Stored value
-    const REGISTER_ENTRY: usize = 24;        // HashMap/DashMap entry overhead
+    const DEVICE_OVERHEAD: usize = 512; // DeviceInfo, state, etc.
+    const POINT_SIZE: usize = 128; // DataPoint definition
+    const VALUE_SIZE: usize = 32; // Stored value
+    const REGISTER_ENTRY: usize = 24; // HashMap/DashMap entry overhead
 
     let device_memory = devices * DEVICE_OVERHEAD;
     let point_memory = devices * points_per_device * POINT_SIZE;

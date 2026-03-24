@@ -211,7 +211,10 @@ impl NetworkLatencyFault {
         let (base, jitter) = if self.config.spike_probability > 0.0
             && self.rng.gen::<f64>() < self.config.spike_probability
         {
-            (base * self.config.spike_multiplier, jitter * self.config.spike_multiplier)
+            (
+                base * self.config.spike_multiplier,
+                jitter * self.config.spike_multiplier,
+            )
         } else {
             (base, jitter)
         };
@@ -249,7 +252,6 @@ impl NetworkLatencyFault {
             LatencyDistribution::Exponential => {
                 // Exponential with mean = base
                 if base > 0.0 {
-                    let lambda = 1.0 / base;
                     -base * self.rng.gen::<f64>().ln()
                 } else {
                     0.0
@@ -341,7 +343,9 @@ impl Fault for NetworkLatencyFault {
             // Actually sleep
             tokio::time::sleep(delay).await;
 
-            return Ok(FaultBehavior::Delay { duration_ms: delay_ms });
+            return Ok(FaultBehavior::Delay {
+                duration_ms: delay_ms,
+            });
         }
 
         Ok(FaultBehavior::Continue)
@@ -501,9 +505,7 @@ mod tests {
 
     #[test]
     fn test_latency_clamping() {
-        let config = LatencyConfig::uniform(100, 200)
-            .with_min(50)
-            .with_max(120);
+        let config = LatencyConfig::uniform(100, 200).with_min(50).with_max(120);
         let mut fault = NetworkLatencyFault::new("test", config);
 
         for _ in 0..100 {
@@ -546,7 +548,7 @@ mod tests {
             Protocol::ModbusTcp,
         );
 
-        let result = fault.apply(&mut ctx).await.unwrap();
+        let _result = fault.apply(&mut ctx).await.unwrap();
         assert!(ctx.was_affected());
         assert!(ctx.accumulated_delay_ms >= 10);
     }

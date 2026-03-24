@@ -4,21 +4,20 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-use crate::config::{SecurityPolicy, MessageSecurityMode};
 use super::certificate::{
     Certificate, CertificateManager, CertificateManagerConfig, ValidationResult,
 };
-use super::crypto::{CryptoProvider, CryptoProviderConfig, CryptoResult, KeyMaterial};
+use super::crypto::{CryptoProvider, CryptoProviderConfig, KeyMaterial};
 use super::policy::{SecurityPolicyConfig, SecurityPolicyProvider};
 use super::user_auth::{
-    UserAuthConfig, UserAuthenticator, UserCredentials, AuthenticationResult,
-    UserAccount, UserTokenPolicy,
+    AuthenticationResult, UserAccount, UserAuthConfig, UserAuthenticator, UserCredentials,
+    UserTokenPolicy,
 };
+use crate::config::{MessageSecurityMode, SecurityPolicy};
 
 /// Security manager error types.
 #[derive(Debug, Error)]
@@ -75,10 +74,7 @@ impl Default for SecurityManagerConfig {
             certificate_config: CertificateManagerConfig::default(),
             user_auth_config: UserAuthConfig::default(),
             crypto_config: CryptoProviderConfig::default(),
-            enabled_policies: vec![
-                SecurityPolicy::None,
-                SecurityPolicy::Basic256Sha256,
-            ],
+            enabled_policies: vec![SecurityPolicy::None, SecurityPolicy::Basic256Sha256],
             default_policy: SecurityPolicy::None,
             reject_deprecated_policies: false,
             secure_channel_lifetime_ms: 3_600_000, // 1 hour
@@ -150,7 +146,9 @@ impl SecurityContext {
 
     /// Get remaining lifetime in milliseconds.
     pub fn remaining_lifetime_ms(&self) -> i64 {
-        (self.expires_at - chrono::Utc::now()).num_milliseconds().max(0)
+        (self.expires_at - chrono::Utc::now())
+            .num_milliseconds()
+            .max(0)
     }
 }
 
@@ -174,7 +172,8 @@ pub struct SecurityManager {
 impl SecurityManager {
     /// Create a new security manager.
     pub fn new(config: SecurityManagerConfig) -> Self {
-        let certificate_manager = Arc::new(CertificateManager::new(config.certificate_config.clone()));
+        let certificate_manager =
+            Arc::new(CertificateManager::new(config.certificate_config.clone()));
 
         let mut policy_provider = SecurityPolicyProvider::new();
         for policy in &config.enabled_policies {
@@ -206,7 +205,8 @@ impl SecurityManager {
 
         // Add default admin user if no users configured
         if self.config.user_auth_config.allow_user_password {
-            self.authenticator.add_user(UserAccount::admin("admin", "admin"));
+            self.authenticator
+                .add_user(UserAccount::admin("admin", "admin"));
             debug!("Added default admin user");
         }
 
@@ -341,7 +341,8 @@ impl SecurityManager {
         }
 
         // Get policy configuration
-        let policy_config = self.get_policy_config(policy)
+        let policy_config = self
+            .get_policy_config(policy)
             .ok_or_else(|| SecurityError::PolicyNotSupported(policy))?
             .clone();
 
@@ -361,8 +362,12 @@ impl SecurityManager {
         }
 
         // Generate IDs
-        let channel_id = self.next_channel_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let token_id = self.next_token_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let channel_id = self
+            .next_channel_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let token_id = self
+            .next_token_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         // Derive key material if needed
         let key_material = if mode != MessageSecurityMode::None {
@@ -384,7 +389,8 @@ impl SecurityManager {
 
         // Create context
         let now = chrono::Utc::now();
-        let lifetime = chrono::Duration::milliseconds(self.config.secure_channel_lifetime_ms as i64);
+        let lifetime =
+            chrono::Duration::milliseconds(self.config.secure_channel_lifetime_ms as i64);
 
         let context = SecurityContext {
             policy,
@@ -419,24 +425,27 @@ impl SecurityManager {
 
     /// Renew a secure channel (create new token).
     pub fn renew_secure_channel(&self, channel_id: u32) -> SecurityResult<SecurityContext> {
-        let mut context = self.secure_channels.get_mut(&channel_id)
-            .ok_or_else(|| SecurityError::SecureChannel(
-                format!("Secure channel {} not found", channel_id)
-            ))?;
+        let mut context = self.secure_channels.get_mut(&channel_id).ok_or_else(|| {
+            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
+        })?;
 
         // Generate new token
-        let new_token_id = self.next_token_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let new_token_id = self
+            .next_token_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         // Update expiration
         let now = chrono::Utc::now();
-        let lifetime = chrono::Duration::milliseconds(self.config.secure_channel_lifetime_ms as i64);
+        let lifetime =
+            chrono::Duration::milliseconds(self.config.secure_channel_lifetime_ms as i64);
 
         context.token_id = new_token_id;
         context.expires_at = now + lifetime;
 
         // Re-derive keys if security is enabled
         if context.requires_signing() || context.requires_encryption() {
-            let crypto = CryptoProvider::with_config(context.policy, self.config.crypto_config.clone());
+            let crypto =
+                CryptoProvider::with_config(context.policy, self.config.crypto_config.clone());
             let nonce = crypto.generate_nonce();
 
             context.key_material = Some(crypto.derive_keys(
@@ -465,7 +474,8 @@ impl SecurityManager {
 
     /// Cleanup expired secure channels.
     pub fn cleanup_expired_channels(&self) -> usize {
-        let expired: Vec<u32> = self.secure_channels
+        let expired: Vec<u32> = self
+            .secure_channels
             .iter()
             .filter(|e| e.value().is_expired())
             .map(|e| *e.key())
@@ -498,21 +508,18 @@ impl SecurityManager {
     }
 
     /// Sign a message using the secure channel's key material.
-    pub fn sign_message(
-        &self,
-        channel_id: u32,
-        message: &[u8],
-    ) -> SecurityResult<Vec<u8>> {
-        let context = self.get_secure_channel(channel_id)
-            .ok_or_else(|| SecurityError::SecureChannel(
-                format!("Secure channel {} not found", channel_id)
-            ))?;
+    pub fn sign_message(&self, channel_id: u32, message: &[u8]) -> SecurityResult<Vec<u8>> {
+        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
+            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
+        })?;
 
         if !context.requires_signing() {
             return Ok(Vec::new());
         }
 
-        let key_material = context.key_material.as_ref()
+        let key_material = context
+            .key_material
+            .as_ref()
             .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
 
         let crypto = self.crypto_provider(context.policy);
@@ -528,16 +535,17 @@ impl SecurityManager {
         message: &[u8],
         signature: &[u8],
     ) -> SecurityResult<bool> {
-        let context = self.get_secure_channel(channel_id)
-            .ok_or_else(|| SecurityError::SecureChannel(
-                format!("Secure channel {} not found", channel_id)
-            ))?;
+        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
+            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
+        })?;
 
         if !context.requires_signing() {
             return Ok(true);
         }
 
-        let key_material = context.key_material.as_ref()
+        let key_material = context
+            .key_material
+            .as_ref()
             .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
 
         let crypto = self.crypto_provider(context.policy);
@@ -547,57 +555,45 @@ impl SecurityManager {
     }
 
     /// Encrypt a message.
-    pub fn encrypt_message(
-        &self,
-        channel_id: u32,
-        plaintext: &[u8],
-    ) -> SecurityResult<Vec<u8>> {
-        let context = self.get_secure_channel(channel_id)
-            .ok_or_else(|| SecurityError::SecureChannel(
-                format!("Secure channel {} not found", channel_id)
-            ))?;
+    pub fn encrypt_message(&self, channel_id: u32, plaintext: &[u8]) -> SecurityResult<Vec<u8>> {
+        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
+            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
+        })?;
 
         if !context.requires_encryption() {
             return Ok(plaintext.to_vec());
         }
 
-        let key_material = context.key_material.as_ref()
+        let key_material = context
+            .key_material
+            .as_ref()
             .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
 
         let crypto = self.crypto_provider(context.policy);
-        let result = crypto.symmetric_encrypt(
-            plaintext,
-            &key_material.encrypting_key,
-            &key_material.iv,
-        )?;
+        let result =
+            crypto.symmetric_encrypt(plaintext, &key_material.encrypting_key, &key_material.iv)?;
 
         Ok(result.ciphertext)
     }
 
     /// Decrypt a message.
-    pub fn decrypt_message(
-        &self,
-        channel_id: u32,
-        ciphertext: &[u8],
-    ) -> SecurityResult<Vec<u8>> {
-        let context = self.get_secure_channel(channel_id)
-            .ok_or_else(|| SecurityError::SecureChannel(
-                format!("Secure channel {} not found", channel_id)
-            ))?;
+    pub fn decrypt_message(&self, channel_id: u32, ciphertext: &[u8]) -> SecurityResult<Vec<u8>> {
+        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
+            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
+        })?;
 
         if !context.requires_encryption() {
             return Ok(ciphertext.to_vec());
         }
 
-        let key_material = context.key_material.as_ref()
+        let key_material = context
+            .key_material
+            .as_ref()
             .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
 
         let crypto = self.crypto_provider(context.policy);
-        let result = crypto.symmetric_decrypt(
-            ciphertext,
-            &key_material.encrypting_key,
-            &key_material.iv,
-        )?;
+        let result =
+            crypto.symmetric_decrypt(ciphertext, &key_material.encrypting_key, &key_material.iv)?;
 
         Ok(result.plaintext)
     }
@@ -627,12 +623,9 @@ mod tests {
         let manager = SecurityManager::default();
         manager.initialize().unwrap();
 
-        let context = manager.create_secure_channel(
-            SecurityPolicy::None,
-            MessageSecurityMode::None,
-            None,
-            &[],
-        ).unwrap();
+        let context = manager
+            .create_secure_channel(SecurityPolicy::None, MessageSecurityMode::None, None, &[])
+            .unwrap();
 
         assert_eq!(context.policy, SecurityPolicy::None);
         assert_eq!(context.security_mode, MessageSecurityMode::None);
@@ -645,12 +638,14 @@ mod tests {
         let manager = SecurityManager::default();
         manager.initialize().unwrap();
 
-        let context = manager.create_secure_channel(
-            SecurityPolicy::Basic256Sha256,
-            MessageSecurityMode::SignAndEncrypt,
-            None,
-            &[0u8; 32],
-        ).unwrap();
+        let context = manager
+            .create_secure_channel(
+                SecurityPolicy::Basic256Sha256,
+                MessageSecurityMode::SignAndEncrypt,
+                None,
+                &[0u8; 32],
+            )
+            .unwrap();
 
         assert_eq!(context.policy, SecurityPolicy::Basic256Sha256);
         assert!(context.requires_signing());
@@ -664,12 +659,9 @@ mod tests {
         manager.initialize().unwrap();
 
         // Create channel
-        let context = manager.create_secure_channel(
-            SecurityPolicy::None,
-            MessageSecurityMode::None,
-            None,
-            &[],
-        ).unwrap();
+        let context = manager
+            .create_secure_channel(SecurityPolicy::None, MessageSecurityMode::None, None, &[])
+            .unwrap();
 
         let channel_id = context.secure_channel_id;
         assert!(manager.get_secure_channel(channel_id).is_some());
@@ -703,21 +695,23 @@ mod tests {
         let manager = SecurityManager::default();
         manager.initialize().unwrap();
 
-        let context = manager.create_secure_channel(
-            SecurityPolicy::Basic256Sha256,
-            MessageSecurityMode::Sign,
-            None,
-            &[0u8; 32],
-        ).unwrap();
+        let context = manager
+            .create_secure_channel(
+                SecurityPolicy::Basic256Sha256,
+                MessageSecurityMode::Sign,
+                None,
+                &[0u8; 32],
+            )
+            .unwrap();
 
         let message = b"Test message to sign";
-        let signature = manager.sign_message(context.secure_channel_id, message).unwrap();
+        let signature = manager
+            .sign_message(context.secure_channel_id, message)
+            .unwrap();
 
-        let valid = manager.verify_signature(
-            context.secure_channel_id,
-            message,
-            &signature,
-        ).unwrap();
+        let valid = manager
+            .verify_signature(context.secure_channel_id, message, &signature)
+            .unwrap();
 
         assert!(valid);
     }
@@ -727,16 +721,22 @@ mod tests {
         let manager = SecurityManager::default();
         manager.initialize().unwrap();
 
-        let context = manager.create_secure_channel(
-            SecurityPolicy::Basic256Sha256,
-            MessageSecurityMode::SignAndEncrypt,
-            None,
-            &[0u8; 32],
-        ).unwrap();
+        let context = manager
+            .create_secure_channel(
+                SecurityPolicy::Basic256Sha256,
+                MessageSecurityMode::SignAndEncrypt,
+                None,
+                &[0u8; 32],
+            )
+            .unwrap();
 
         let plaintext = b"Secret message to encrypt";
-        let ciphertext = manager.encrypt_message(context.secure_channel_id, plaintext).unwrap();
-        let decrypted = manager.decrypt_message(context.secure_channel_id, &ciphertext).unwrap();
+        let ciphertext = manager
+            .encrypt_message(context.secure_channel_id, plaintext)
+            .unwrap();
+        let decrypted = manager
+            .decrypt_message(context.secure_channel_id, &ciphertext)
+            .unwrap();
 
         assert_eq!(decrypted, plaintext);
     }
@@ -746,12 +746,25 @@ mod tests {
         let manager = SecurityManager::default();
 
         // Valid combinations
-        assert!(manager.validate_security_mode(SecurityPolicy::None, MessageSecurityMode::None).is_ok());
-        assert!(manager.validate_security_mode(SecurityPolicy::Basic256Sha256, MessageSecurityMode::Sign).is_ok());
-        assert!(manager.validate_security_mode(SecurityPolicy::Basic256Sha256, MessageSecurityMode::SignAndEncrypt).is_ok());
+        assert!(manager
+            .validate_security_mode(SecurityPolicy::None, MessageSecurityMode::None)
+            .is_ok());
+        assert!(manager
+            .validate_security_mode(SecurityPolicy::Basic256Sha256, MessageSecurityMode::Sign)
+            .is_ok());
+        assert!(manager
+            .validate_security_mode(
+                SecurityPolicy::Basic256Sha256,
+                MessageSecurityMode::SignAndEncrypt
+            )
+            .is_ok());
 
         // Invalid combinations
-        assert!(manager.validate_security_mode(SecurityPolicy::None, MessageSecurityMode::Sign).is_err());
-        assert!(manager.validate_security_mode(SecurityPolicy::Basic256Sha256, MessageSecurityMode::None).is_err());
+        assert!(manager
+            .validate_security_mode(SecurityPolicy::None, MessageSecurityMode::Sign)
+            .is_err());
+        assert!(manager
+            .validate_security_mode(SecurityPolicy::Basic256Sha256, MessageSecurityMode::None)
+            .is_err());
     }
 }

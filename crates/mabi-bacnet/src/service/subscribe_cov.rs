@@ -247,7 +247,9 @@ pub struct SubscribeCovPropertyRequest {
 }
 
 /// Decode a SubscribeCOVProperty request.
-fn decode_subscribe_cov_property(data: &[u8]) -> Result<SubscribeCovPropertyRequest, SubscribeCovError> {
+fn decode_subscribe_cov_property(
+    data: &[u8],
+) -> Result<SubscribeCovPropertyRequest, SubscribeCovError> {
     let mut decoder = ApduDecoder::new(data);
 
     // Context tag 0: Subscriber Process Identifier
@@ -314,7 +316,9 @@ fn decode_subscribe_cov_property(data: &[u8]) -> Result<SubscribeCovPropertyRequ
                 4 => {
                     // Monitored property reference — opening tag [4]
                     if decoder.is_opening_tag(4) {
-                        decoder.read_u8().map_err(|_| SubscribeCovError::InvalidRequest)?;
+                        decoder
+                            .read_u8()
+                            .map_err(|_| SubscribeCovError::InvalidRequest)?;
                         // Property identifier [0]
                         let (_, _, len) = decoder
                             .decode_tag_info()
@@ -322,7 +326,8 @@ fn decode_subscribe_cov_property(data: &[u8]) -> Result<SubscribeCovPropertyRequ
                         let prop_val = decoder
                             .decode_unsigned(len)
                             .map_err(|_| SubscribeCovError::InvalidRequest)?;
-                        monitored_property = crate::object::property::PropertyId::from_u32(prop_val);
+                        monitored_property =
+                            crate::object::property::PropertyId::from_u32(prop_val);
 
                         // Skip optional array index [1] if present
                         while !decoder.is_empty() && !decoder.is_closing_tag(4) {
@@ -334,7 +339,9 @@ fn decode_subscribe_cov_property(data: &[u8]) -> Result<SubscribeCovPropertyRequ
                             }
                         }
                         if decoder.is_closing_tag(4) {
-                            decoder.read_u8().map_err(|_| SubscribeCovError::InvalidRequest)?;
+                            decoder
+                                .read_u8()
+                                .map_err(|_| SubscribeCovError::InvalidRequest)?;
                         }
                     } else {
                         let (_, _, len) = decoder
@@ -343,7 +350,8 @@ fn decode_subscribe_cov_property(data: &[u8]) -> Result<SubscribeCovPropertyRequ
                         let prop_val = decoder
                             .decode_unsigned(len)
                             .map_err(|_| SubscribeCovError::InvalidRequest)?;
-                        monitored_property = crate::object::property::PropertyId::from_u32(prop_val);
+                        monitored_property =
+                            crate::object::property::PropertyId::from_u32(prop_val);
                     }
                 }
                 5 => {
@@ -352,8 +360,11 @@ fn decode_subscribe_cov_property(data: &[u8]) -> Result<SubscribeCovPropertyRequ
                         .decode_tag_info()
                         .map_err(|_| SubscribeCovError::InvalidRequest)?;
                     if len == 4 {
-                        let bytes = decoder.read_bytes(4).map_err(|_| SubscribeCovError::InvalidRequest)?;
-                        cov_increment = Some(f32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+                        let bytes = decoder
+                            .read_bytes(4)
+                            .map_err(|_| SubscribeCovError::InvalidRequest)?;
+                        cov_increment =
+                            Some(f32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
                     } else {
                         let _ = decoder.read_bytes(len);
                     }
@@ -514,7 +525,10 @@ mod tests {
 
         let request = decode_subscribe_cov(&data).unwrap();
         assert_eq!(request.subscriber_process_id, 1);
-        assert_eq!(request.monitored_object, ObjectId::new(ObjectType::AnalogInput, 0));
+        assert_eq!(
+            request.monitored_object,
+            ObjectId::new(ObjectType::AnalogInput, 0)
+        );
         assert_eq!(request.issue_confirmed_notifications, Some(true));
         assert_eq!(request.lifetime, Some(1));
     }
@@ -577,19 +591,12 @@ mod tests {
         let ctx = make_ctx_with_source(&registry, source);
 
         // First subscribe
-        let subscribe_data = [
-            0x09, 0x01,
-            0x1C, 0x00, 0x00, 0x00, 0x00,
-            0x29, 0x00,
-        ];
+        let subscribe_data = [0x09, 0x01, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x29, 0x00];
         handler.handle(&subscribe_data, &ctx);
         assert_eq!(cov_manager.subscription_count(), 1);
 
         // Then cancel (no tag 2 = cancellation)
-        let cancel_data = [
-            0x09, 0x01,
-            0x1C, 0x00, 0x00, 0x00, 0x00,
-        ];
+        let cancel_data = [0x09, 0x01, 0x1C, 0x00, 0x00, 0x00, 0x00];
         let result = handler.handle(&cancel_data, &ctx);
         assert!(matches!(result, ServiceResult::SimpleAck));
         assert_eq!(cov_manager.subscription_count(), 0);
@@ -608,16 +615,17 @@ mod tests {
         let ctx = make_ctx_with_source(&registry, source);
 
         let data = [
-            0x09, 0x01,
-            0x1C, 0x00, 0x00, 0x00, 0x00,
-            0x29, 0x00, // confirmed = false
+            0x09, 0x01, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x29, 0x00, // confirmed = false
         ];
 
         let result = handler.handle(&data, &ctx);
-        assert!(matches!(result, ServiceResult::Error {
-            error_class: ErrorClass::Object,
-            error_code: ErrorCode::UnknownObject,
-        }));
+        assert!(matches!(
+            result,
+            ServiceResult::Error {
+                error_class: ErrorClass::Object,
+                error_code: ErrorCode::UnknownObject,
+            }
+        ));
     }
 
     #[test]
@@ -640,7 +648,10 @@ mod tests {
             0x29, 0x01, // Context tag 2, confirmed = true (len=1)
         ];
 
-        assert_eq!(handler.service_choice(), ConfirmedService::SubscribeCovProperty);
+        assert_eq!(
+            handler.service_choice(),
+            ConfirmedService::SubscribeCovProperty
+        );
         assert_eq!(handler.name(), "SubscribeCOVProperty");
 
         let result = handler.handle(&data, &ctx);
@@ -667,19 +678,12 @@ mod tests {
         let ctx = make_ctx_with_source(&registry, source);
 
         // First subscribe
-        let subscribe_data = [
-            0x09, 0x01,
-            0x1C, 0x00, 0x00, 0x00, 0x00,
-            0x29, 0x01,
-        ];
+        let subscribe_data = [0x09, 0x01, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x29, 0x01];
         handler.handle(&subscribe_data, &ctx);
         assert_eq!(cov_manager.subscription_count(), 1);
 
         // Cancel (no tag 2)
-        let cancel_data = [
-            0x09, 0x01,
-            0x1C, 0x00, 0x00, 0x00, 0x00,
-        ];
+        let cancel_data = [0x09, 0x01, 0x1C, 0x00, 0x00, 0x00, 0x00];
         let result = handler.handle(&cancel_data, &ctx);
         assert!(matches!(result, ServiceResult::SimpleAck));
         assert_eq!(cov_manager.subscription_count(), 0);
@@ -690,7 +694,7 @@ mod tests {
         // SubscribeCOVProperty: process_id=5, AI:3, confirmed=false, lifetime=600,
         // property=PresentValue, cov_increment=2.0
         let cov_val = f32::to_be_bytes(2.0);
-        let mut data = vec![
+        let data = vec![
             0x09, 0x05, // Context tag 0, process_id = 5
             0x1C, 0x00, 0x00, 0x00, 0x03, // Context tag 1, AI:3
             0x29, 0x00, // Context tag 2, confirmed = false
@@ -701,7 +705,10 @@ mod tests {
 
         let request = decode_subscribe_cov_property(&data).unwrap();
         assert_eq!(request.subscriber_process_id, 5);
-        assert_eq!(request.monitored_object, ObjectId::new(ObjectType::AnalogInput, 3));
+        assert_eq!(
+            request.monitored_object,
+            ObjectId::new(ObjectType::AnalogInput, 3)
+        );
         assert_eq!(request.issue_confirmed_notifications, Some(false));
         assert_eq!(request.lifetime, Some(600));
         assert_eq!(request.cov_increment, Some(2.0));

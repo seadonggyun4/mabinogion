@@ -1,12 +1,9 @@
 //! Response reordering fault injection.
 
-use std::any::Any;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-
 use async_trait::async_trait;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 use crate::context::FaultContext;
 use crate::error::ChaosResult;

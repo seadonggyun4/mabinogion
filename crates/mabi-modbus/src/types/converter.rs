@@ -151,7 +151,9 @@ impl RegisterConverter {
     /// Convert two registers to i32.
     pub fn registers_to_i32(&self, registers: &[u16]) -> i32 {
         assert!(registers.len() >= 2, "Need at least 2 registers for i32");
-        let bytes = self.word_order.registers_to_bytes_32([registers[0], registers[1]]);
+        let bytes = self
+            .word_order
+            .registers_to_bytes_32([registers[0], registers[1]]);
         i32::from_be_bytes(bytes)
     }
 
@@ -163,7 +165,9 @@ impl RegisterConverter {
     /// Convert two registers to u32.
     pub fn registers_to_u32(&self, registers: &[u16]) -> u32 {
         assert!(registers.len() >= 2, "Need at least 2 registers for u32");
-        let bytes = self.word_order.registers_to_bytes_32([registers[0], registers[1]]);
+        let bytes = self
+            .word_order
+            .registers_to_bytes_32([registers[0], registers[1]]);
         u32::from_be_bytes(bytes)
     }
 
@@ -179,7 +183,9 @@ impl RegisterConverter {
     /// Convert two registers to f32.
     pub fn registers_to_f32(&self, registers: &[u16]) -> f32 {
         assert!(registers.len() >= 2, "Need at least 2 registers for f32");
-        let bytes = self.word_order.registers_to_bytes_32([registers[0], registers[1]]);
+        let bytes = self
+            .word_order
+            .registers_to_bytes_32([registers[0], registers[1]]);
         f32::from_be_bytes(bytes)
     }
 
@@ -195,8 +201,12 @@ impl RegisterConverter {
     /// Convert four registers to i64.
     pub fn registers_to_i64(&self, registers: &[u16]) -> i64 {
         assert!(registers.len() >= 4, "Need at least 4 registers for i64");
-        let bytes = self.word_order
-            .registers_to_bytes_64([registers[0], registers[1], registers[2], registers[3]]);
+        let bytes = self.word_order.registers_to_bytes_64([
+            registers[0],
+            registers[1],
+            registers[2],
+            registers[3],
+        ]);
         i64::from_be_bytes(bytes)
     }
 
@@ -208,8 +218,12 @@ impl RegisterConverter {
     /// Convert four registers to u64.
     pub fn registers_to_u64(&self, registers: &[u16]) -> u64 {
         assert!(registers.len() >= 4, "Need at least 4 registers for u64");
-        let bytes = self.word_order
-            .registers_to_bytes_64([registers[0], registers[1], registers[2], registers[3]]);
+        let bytes = self.word_order.registers_to_bytes_64([
+            registers[0],
+            registers[1],
+            registers[2],
+            registers[3],
+        ]);
         u64::from_be_bytes(bytes)
     }
 
@@ -225,8 +239,12 @@ impl RegisterConverter {
     /// Convert four registers to f64.
     pub fn registers_to_f64(&self, registers: &[u16]) -> f64 {
         assert!(registers.len() >= 4, "Need at least 4 registers for f64");
-        let bytes = self.word_order
-            .registers_to_bytes_64([registers[0], registers[1], registers[2], registers[3]]);
+        let bytes = self.word_order.registers_to_bytes_64([
+            registers[0],
+            registers[1],
+            registers[2],
+            registers[3],
+        ]);
         f64::from_be_bytes(bytes)
     }
 
@@ -284,7 +302,9 @@ impl RegisterConverter {
 
     /// Convert registers to a string, trimming trailing nulls and whitespace.
     pub fn registers_to_string_trimmed(&self, registers: &[u16]) -> String {
-        self.registers_to_string(registers).trim_end_matches(|c: char| c == '\0' || c.is_whitespace()).to_string()
+        self.registers_to_string(registers)
+            .trim_end_matches(|c: char| c == '\0' || c.is_whitespace())
+            .to_string()
     }
 
     // ==========================================================================
@@ -360,7 +380,11 @@ impl RegisterConverter {
     /// # Returns
     ///
     /// The typed value extracted from the registers.
-    pub fn registers_to_value(&self, data_type: RegisterDataType, registers: &[u16]) -> TypedValue {
+    pub fn registers_to_value(
+        &self,
+        data_type: RegisterDataType,
+        registers: &[u16],
+    ) -> TypedValue<'_> {
         match data_type {
             RegisterDataType::Bool => TypedValue::Bool(self.register_to_bool(registers[0])),
             RegisterDataType::Int16 => TypedValue::Int16(self.register_to_i16(registers[0])),
@@ -673,7 +697,10 @@ mod tests {
     #[test]
     fn test_typed_value_data_type() {
         assert_eq!(TypedValue::Bool(true).data_type(), RegisterDataType::Bool);
-        assert_eq!(TypedValue::Float32(1.0).data_type(), RegisterDataType::Float32);
+        assert_eq!(
+            TypedValue::Float32(1.0).data_type(),
+            RegisterDataType::Float32
+        );
         assert_eq!(
             TypedValue::String(Cow::Borrowed("test")).data_type(),
             RegisterDataType::String(2)

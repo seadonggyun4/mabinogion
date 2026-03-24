@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::context::{FaultContext, ResponseData};
+use crate::context::FaultContext;
 use crate::error::ChaosResult;
 use crate::fault::{
     BaseFault, Fault, FaultBehavior, FaultCategory, FaultMetadata, FaultSeverity, FaultStatistics,
@@ -221,71 +221,69 @@ impl CorruptedDataFault {
         use mabi_core::Value;
 
         match &self.config.strategy {
-            CorruptionStrategy::BitFlip => {
-                match value {
-                    Value::I32(v) => Value::I32(v ^ (1 << self.rng.gen_range(0..32))),
-                    Value::U32(v) => Value::U32(v ^ (1 << self.rng.gen_range(0..32))),
-                    Value::I64(v) => Value::I64(v ^ (1 << self.rng.gen_range(0..64))),
-                    Value::U64(v) => Value::U64(v ^ (1 << self.rng.gen_range(0..64))),
-                    Value::F32(v) => {
-                        let bits = v.to_bits() ^ (1 << self.rng.gen_range(0..32));
-                        Value::F32(f32::from_bits(bits))
-                    }
-                    Value::F64(v) => {
-                        let bits = v.to_bits() ^ (1 << self.rng.gen_range(0..64));
-                        Value::F64(f64::from_bits(bits))
-                    }
-                    Value::Bool(v) => Value::Bool(!v),
-                    _ => value.clone(),
+            CorruptionStrategy::BitFlip => match value {
+                Value::I32(v) => Value::I32(v ^ (1 << self.rng.gen_range(0..32))),
+                Value::U32(v) => Value::U32(v ^ (1 << self.rng.gen_range(0..32))),
+                Value::I64(v) => Value::I64(v ^ (1 << self.rng.gen_range(0..64))),
+                Value::U64(v) => Value::U64(v ^ (1 << self.rng.gen_range(0..64))),
+                Value::F32(v) => {
+                    let bits = v.to_bits() ^ (1 << self.rng.gen_range(0..32));
+                    Value::F32(f32::from_bits(bits))
                 }
-            }
+                Value::F64(v) => {
+                    let bits = v.to_bits() ^ (1 << self.rng.gen_range(0..64));
+                    Value::F64(f64::from_bits(bits))
+                }
+                Value::Bool(v) => Value::Bool(!v),
+                _ => value.clone(),
+            },
 
-            CorruptionStrategy::ZeroOut => {
-                match value {
-                    Value::I32(_) => Value::I32(0),
-                    Value::U32(_) => Value::U32(0),
-                    Value::I64(_) => Value::I64(0),
-                    Value::U64(_) => Value::U64(0),
-                    Value::F32(_) => Value::F32(0.0),
-                    Value::F64(_) => Value::F64(0.0),
-                    Value::Bool(_) => Value::Bool(false),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::ZeroOut => match value {
+                Value::I32(_) => Value::I32(0),
+                Value::U32(_) => Value::U32(0),
+                Value::I64(_) => Value::I64(0),
+                Value::U64(_) => Value::U64(0),
+                Value::F32(_) => Value::F32(0.0),
+                Value::F64(_) => Value::F64(0.0),
+                Value::Bool(_) => Value::Bool(false),
+                _ => value.clone(),
+            },
 
-            CorruptionStrategy::MaxOut => {
-                match value {
-                    Value::I32(_) => Value::I32(i32::MAX),
-                    Value::U32(_) => Value::U32(u32::MAX),
-                    Value::I64(_) => Value::I64(i64::MAX),
-                    Value::U64(_) => Value::U64(u64::MAX),
-                    Value::F32(_) => Value::F32(f32::MAX),
-                    Value::F64(_) => Value::F64(f64::MAX),
-                    Value::Bool(_) => Value::Bool(true),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::MaxOut => match value {
+                Value::I32(_) => Value::I32(i32::MAX),
+                Value::U32(_) => Value::U32(u32::MAX),
+                Value::I64(_) => Value::I64(i64::MAX),
+                Value::U64(_) => Value::U64(u64::MAX),
+                Value::F32(_) => Value::F32(f32::MAX),
+                Value::F64(_) => Value::F64(f64::MAX),
+                Value::Bool(_) => Value::Bool(true),
+                _ => value.clone(),
+            },
 
-            CorruptionStrategy::RandomInRange => {
-                match value {
-                    Value::I32(_) => Value::I32(self.rng.gen_range(-1000..1000)),
-                    Value::U32(_) => Value::U32(self.rng.gen_range(0..1000)),
-                    Value::F32(_) => Value::F32(self.rng.gen_range(-100.0..100.0)),
-                    Value::F64(_) => Value::F64(self.rng.gen_range(-100.0..100.0)),
-                    Value::Bool(_) => Value::Bool(self.rng.gen()),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::RandomInRange => match value {
+                Value::I32(_) => Value::I32(self.rng.gen_range(-1000..1000)),
+                Value::U32(_) => Value::U32(self.rng.gen_range(0..1000)),
+                Value::F32(_) => Value::F32(self.rng.gen_range(-100.0..100.0)),
+                Value::F64(_) => Value::F64(self.rng.gen_range(-100.0..100.0)),
+                Value::Bool(_) => Value::Bool(self.rng.gen()),
+                _ => value.clone(),
+            },
 
-            CorruptionStrategy::OutOfRange => {
-                match value {
-                    Value::I32(v) => Value::I32(if *v >= 0 { i32::MIN } else { i32::MAX }),
-                    Value::U32(v) => Value::U32(if *v < 1000 { u32::MAX } else { 0 }),
-                    Value::F32(_) => Value::F32(if self.rng.gen() { f32::INFINITY } else { f32::NEG_INFINITY }),
-                    Value::F64(_) => Value::F64(if self.rng.gen() { f64::INFINITY } else { f64::NEG_INFINITY }),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::OutOfRange => match value {
+                Value::I32(v) => Value::I32(if *v >= 0 { i32::MIN } else { i32::MAX }),
+                Value::U32(v) => Value::U32(if *v < 1000 { u32::MAX } else { 0 }),
+                Value::F32(_) => Value::F32(if self.rng.gen() {
+                    f32::INFINITY
+                } else {
+                    f32::NEG_INFINITY
+                }),
+                Value::F64(_) => Value::F64(if self.rng.gen() {
+                    f64::INFINITY
+                } else {
+                    f64::NEG_INFINITY
+                }),
+                _ => value.clone(),
+            },
 
             CorruptionStrategy::StaleData => {
                 if let Some(last) = self.last_values.get(point_id) {
@@ -295,24 +293,20 @@ impl CorruptedDataFault {
                 }
             }
 
-            CorruptionStrategy::NaN => {
-                match value {
-                    Value::F32(_) => Value::F32(f32::NAN),
-                    Value::F64(_) => Value::F64(f64::NAN),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::NaN => match value {
+                Value::F32(_) => Value::F32(f32::NAN),
+                Value::F64(_) => Value::F64(f64::NAN),
+                _ => value.clone(),
+            },
 
-            CorruptionStrategy::Truncate => {
-                match value {
-                    Value::I32(v) => Value::I32(v & 0xFF),
-                    Value::U32(v) => Value::U32(v & 0xFF),
-                    Value::I64(v) => Value::I64(v & 0xFFFF),
-                    Value::U64(v) => Value::U64(v & 0xFFFF),
-                    Value::String(s) => Value::String(s.chars().take(1).collect()),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::Truncate => match value {
+                Value::I32(v) => Value::I32(v & 0xFF),
+                Value::U32(v) => Value::U32(v & 0xFF),
+                Value::I64(v) => Value::I64(v & 0xFFFF),
+                Value::U64(v) => Value::U64(v & 0xFFFF),
+                Value::String(s) => Value::String(s.chars().take(1).collect()),
+                _ => value.clone(),
+            },
 
             CorruptionStrategy::Noise { std_dev } => {
                 let noise: f64 = rand_distr::Normal::new(0.0, *std_dev)
@@ -328,25 +322,21 @@ impl CorruptedDataFault {
                 }
             }
 
-            CorruptionStrategy::Offset { amount } => {
-                match value {
-                    Value::I32(v) => Value::I32((*v as f64 + amount) as i32),
-                    Value::U32(v) => Value::U32(((*v as f64 + amount).max(0.0)) as u32),
-                    Value::F32(v) => Value::F32(*v + *amount as f32),
-                    Value::F64(v) => Value::F64(*v + amount),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::Offset { amount } => match value {
+                Value::I32(v) => Value::I32((*v as f64 + amount) as i32),
+                Value::U32(v) => Value::U32(((*v as f64 + amount).max(0.0)) as u32),
+                Value::F32(v) => Value::F32(*v + *amount as f32),
+                Value::F64(v) => Value::F64(*v + amount),
+                _ => value.clone(),
+            },
 
-            CorruptionStrategy::Scale { factor } => {
-                match value {
-                    Value::I32(v) => Value::I32((*v as f64 * factor) as i32),
-                    Value::U32(v) => Value::U32(((*v as f64 * factor).max(0.0)) as u32),
-                    Value::F32(v) => Value::F32(*v * *factor as f32),
-                    Value::F64(v) => Value::F64(*v * factor),
-                    _ => value.clone(),
-                }
-            }
+            CorruptionStrategy::Scale { factor } => match value {
+                Value::I32(v) => Value::I32((*v as f64 * factor) as i32),
+                Value::U32(v) => Value::U32(((*v as f64 * factor).max(0.0)) as u32),
+                Value::F32(v) => Value::F32(*v * *factor as f32),
+                Value::F64(v) => Value::F64(*v * factor),
+                _ => value.clone(),
+            },
 
             CorruptionStrategy::Swap => {
                 // Swap is handled at the response level
@@ -392,7 +382,10 @@ impl Fault for CorruptedDataFault {
         }
 
         ctx.record_applied_fault(self.id(), "corrupt");
-        ctx.set_metadata("corruption_strategy", &format!("{:?}", self.config.strategy));
+        ctx.set_metadata(
+            "corruption_strategy",
+            &format!("{:?}", self.config.strategy),
+        );
 
         if self.config.mark_bad_quality {
             ctx.set_metadata("mark_bad_quality", "true");
@@ -421,7 +414,8 @@ impl Fault for CorruptedDataFault {
                 let point_id_str = point.id.to_string();
                 if this.should_corrupt_point(&point_id_str) {
                     // Store current value for stale data strategy
-                    this.last_values.insert(point_id_str.clone(), point.value.clone());
+                    this.last_values
+                        .insert(point_id_str.clone(), point.value.clone());
 
                     // Corrupt the value
                     point.value = this.corrupt_value(&point.value, &point_id_str);
@@ -434,7 +428,9 @@ impl Fault for CorruptedDataFault {
             }
 
             // Handle swap strategy
-            if matches!(this.config.strategy, CorruptionStrategy::Swap) && response.data_points.len() >= 2 {
+            if matches!(this.config.strategy, CorruptionStrategy::Swap)
+                && response.data_points.len() >= 2
+            {
                 let len = response.data_points.len();
                 let i = this.rng.gen_range(0..len);
                 let j = this.rng.gen_range(0..len);
@@ -607,7 +603,10 @@ mod tests {
         let mut fault = CorruptedDataFault::new("test", config);
 
         assert_eq!(fault.corrupt_value(&Value::I32(100), "test"), Value::I32(0));
-        assert_eq!(fault.corrupt_value(&Value::F64(123.456), "test"), Value::F64(0.0));
+        assert_eq!(
+            fault.corrupt_value(&Value::F64(123.456), "test"),
+            Value::F64(0.0)
+        );
     }
 
     #[test]

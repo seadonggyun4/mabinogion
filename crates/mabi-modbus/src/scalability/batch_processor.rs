@@ -40,11 +40,10 @@
 //! ```
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::{Mutex, RwLock};
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::oneshot;
 use tracing::{debug, trace};
 
 use super::config::BatchProcessorConfig;
@@ -177,8 +176,8 @@ impl<T> BatchRequest<T> {
 
         // Adjacent: self ends where other starts, or vice versa
         // Overlapping: ranges intersect
-        (self_end >= other.start_address && self.start_address <= other_end) ||
-        (other_end >= self.start_address && other.start_address <= self_end)
+        (self_end >= other.start_address && self.start_address <= other_end)
+            || (other_end >= self.start_address && other.start_address <= self_end)
     }
 }
 
@@ -273,13 +272,6 @@ impl<T> ProcessingBatch<T> {
     }
 }
 
-/// Coalescing key for grouping similar requests.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct CoalesceKey {
-    unit_id: u8,
-    function_code: u8,
-}
-
 /// Request handler trait for batch processing.
 pub trait BatchHandler<T>: Send + Sync {
     /// Process a single request.
@@ -319,9 +311,6 @@ where
     /// Peak queue depth.
     peak_queue_depth: AtomicUsize,
 
-    /// Concurrency limiter.
-    concurrency_semaphore: Arc<Semaphore>,
-
     /// Statistics.
     stats: RwLock<BatchStatisticsInternal>,
 
@@ -345,8 +334,6 @@ where
 {
     /// Create a new batch processor.
     pub fn new(config: BatchProcessorConfig) -> Self {
-        let max_concurrent = config.batch_size * 2; // Allow 2x batch size in flight
-
         Self {
             config,
             strategy: ProcessingStrategy::Adaptive,
@@ -354,7 +341,6 @@ where
             pending_batch: Mutex::new(ProcessingBatch::new()),
             pending_count: AtomicUsize::new(0),
             peak_queue_depth: AtomicUsize::new(0),
-            concurrency_semaphore: Arc::new(Semaphore::new(max_concurrent)),
             stats: RwLock::new(BatchStatisticsInternal::default()),
             shutdown: std::sync::atomic::AtomicBool::new(false),
         }
@@ -370,10 +356,7 @@ where
     ///
     /// The request must already have a response channel set (from `BatchRequest::new`).
     /// Returns an error if the queue is full or the processor is shutting down.
-    pub fn submit(
-        &self,
-        mut request: BatchRequest<T>,
-    ) -> Result<(), BatchError> {
+    pub fn submit(&self, mut request: BatchRequest<T>) -> Result<(), BatchError> {
         if self.shutdown.load(Ordering::SeqCst) {
             return Err(BatchError::Shutdown);
         }
@@ -443,9 +426,7 @@ where
 
         // Process based on strategy
         let processed = match self.strategy {
-            ProcessingStrategy::Sequential => {
-                self.process_sequential(batch, handler).await
-            }
+            ProcessingStrategy::Sequential => self.process_sequential(batch, handler).await,
             ProcessingStrategy::Parallel | ProcessingStrategy::PriorityParallel => {
                 self.process_parallel(batch, handler).await
             }
@@ -538,8 +519,11 @@ where
 
         // Sort by coalesce key and address
         requests.sort_by(|a, b| {
-            (a.unit_id, a.function_code, a.start_address)
-                .cmp(&(b.unit_id, b.function_code, b.start_address))
+            (a.unit_id, a.function_code, a.start_address).cmp(&(
+                b.unit_id,
+                b.function_code,
+                b.start_address,
+            ))
         });
 
         let mut coalesced = Vec::with_capacity(requests.len());
@@ -679,11 +663,10 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::config::CoalescingConfig;
+    use super::*;
 
     /// Simple test handler that echoes the payload.
     struct EchoHandler;
@@ -820,7 +803,10 @@ mod tests {
 
         // New submissions should fail
         let (request, _) = BatchRequest::new(vec![], 1, 0x03, 0, 10);
-        assert!(matches!(processor.submit(request), Err(BatchError::Shutdown)));
+        assert!(matches!(
+            processor.submit(request),
+            Err(BatchError::Shutdown)
+        ));
     }
 
     #[test]

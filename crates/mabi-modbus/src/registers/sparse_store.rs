@@ -239,9 +239,10 @@ impl SparseRegisterStore {
         self.config
             .validate_range(reg_type, address, quantity)
             .map_err(|e| match e {
-                super::config::AddressRangeError::ZeroQuantity => {
-                    ModbusError::InvalidQuantity { quantity: 0, max: 1 }
-                }
+                super::config::AddressRangeError::ZeroQuantity => ModbusError::InvalidQuantity {
+                    quantity: 0,
+                    max: 1,
+                },
                 super::config::AddressRangeError::Overflow => ModbusError::InvalidAddress {
                     address,
                     max: u16::MAX,
@@ -257,6 +258,7 @@ impl SparseRegisterStore {
             })
     }
 
+    #[allow(dead_code)]
     /// Get default value for a register type.
     #[inline]
     fn get_default(&self, reg_type: RegisterType) -> RegisterValue {
@@ -382,7 +384,11 @@ impl SparseRegisterStore {
 
         for i in 0..quantity {
             let addr = address + i;
-            let value = self.discrete_inputs.get(&addr).map(|v| *v).unwrap_or(default);
+            let value = self
+                .discrete_inputs
+                .get(&addr)
+                .map(|v| *v)
+                .unwrap_or(default);
             result.push(value);
             values_for_callback.push(RegisterValue::Bool(value));
         }
@@ -441,7 +447,11 @@ impl SparseRegisterStore {
 
         for i in 0..quantity {
             let addr = address + i;
-            let value = self.holding_registers.get(&addr).map(|v| *v).unwrap_or(default);
+            let value = self
+                .holding_registers
+                .get(&addr)
+                .map(|v| *v)
+                .unwrap_or(default);
             result.push(value);
             values_for_callback.push(RegisterValue::Word(value));
         }
@@ -519,7 +529,11 @@ impl SparseRegisterStore {
 
         for i in 0..quantity {
             let addr = address + i;
-            let value = self.input_registers.get(&addr).map(|v| *v).unwrap_or(default);
+            let value = self
+                .input_registers
+                .get(&addr)
+                .map(|v| *v)
+                .unwrap_or(default);
             result.push(value);
             values_for_callback.push(RegisterValue::Word(value));
         }

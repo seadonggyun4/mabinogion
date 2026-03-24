@@ -2,14 +2,13 @@
 //!
 //! Sessions represent authenticated connections from clients to the server.
 
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::types::NodeId;
 
@@ -103,14 +102,9 @@ pub enum UserIdentity {
         // Note: Password is not stored
     },
     /// X.509 certificate authentication.
-    Certificate {
-        thumbprint: String,
-        subject: String,
-    },
+    Certificate { thumbprint: String, subject: String },
     /// Issued token (e.g., JWT).
-    IssuedToken {
-        token_type: String,
-    },
+    IssuedToken { token_type: String },
 }
 
 impl Default for UserIdentity {
@@ -169,11 +163,7 @@ pub struct SessionInfo {
 
 impl SessionInfo {
     /// Create a new session info.
-    pub fn new(
-        session_id: NodeId,
-        session_name: impl Into<String>,
-        timeout_ms: u64,
-    ) -> Self {
+    pub fn new(session_id: NodeId, session_name: impl Into<String>, timeout_ms: u64) -> Self {
         let now = Utc::now();
         Self {
             session_id: session_id.clone(),
@@ -241,7 +231,10 @@ pub enum SessionEvent {
     /// Session created.
     Created { session_id: NodeId },
     /// Session activated.
-    Activated { session_id: NodeId, user: UserIdentity },
+    Activated {
+        session_id: NodeId,
+        user: UserIdentity,
+    },
     /// Session closed.
     Closed { session_id: NodeId },
     /// Session timed out.
@@ -306,7 +299,8 @@ impl SessionManager {
         session_id: &NodeId,
         user_identity: UserIdentity,
     ) -> Result<(), SessionError> {
-        let mut session = self.sessions
+        let mut session = self
+            .sessions
             .get_mut(session_id)
             .ok_or(SessionError::SessionNotFound)?;
 
@@ -366,8 +360,13 @@ impl SessionManager {
     }
 
     /// Add subscription to session.
-    pub fn add_subscription(&self, session_id: &NodeId, subscription_id: u32) -> Result<(), SessionError> {
-        let mut session = self.sessions
+    pub fn add_subscription(
+        &self,
+        session_id: &NodeId,
+        subscription_id: u32,
+    ) -> Result<(), SessionError> {
+        let mut session = self
+            .sessions
             .get_mut(session_id)
             .ok_or(SessionError::SessionNotFound)?;
 
@@ -388,7 +387,8 @@ impl SessionManager {
 
     /// Cleanup expired sessions.
     pub fn cleanup_expired(&self) {
-        let expired: Vec<NodeId> = self.sessions
+        let expired: Vec<NodeId> = self
+            .sessions
             .iter()
             .filter(|e| e.is_timed_out())
             .map(|e| e.session_id.clone())

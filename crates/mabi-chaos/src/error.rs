@@ -1,6 +1,5 @@
 //! Error types for the chaos engineering module.
 
-use std::fmt;
 use mabi_core::Error as CoreError;
 use thiserror::Error;
 
@@ -61,10 +60,7 @@ pub enum ChaosError {
 
     /// Invalid state transition.
     #[error("Invalid state transition: {from:?} -> {to:?}")]
-    InvalidStateTransition {
-        from: String,
-        to: String,
-    },
+    InvalidStateTransition { from: String, to: String },
 
     /// Resource limit exceeded.
     #[error("Resource limit exceeded: {resource} (limit: {limit}, requested: {requested})")]
@@ -179,9 +175,7 @@ impl ChaosError {
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,
-            Self::Timeout { .. }
-                | Self::FaultNotActive { .. }
-                | Self::FaultAlreadyActive { .. }
+            Self::Timeout { .. } | Self::FaultNotActive { .. } | Self::FaultAlreadyActive { .. }
         )
     }
 
@@ -215,13 +209,13 @@ impl<T> ChaosResultExt<T> for ChaosResult<T> {
 
     fn with_fault_context(self, fault_id: &str) -> ChaosResult<T> {
         self.map_err(|e| match e {
-            ChaosError::InjectionFailed { message, source, .. } => {
-                ChaosError::InjectionFailed {
-                    fault_id: fault_id.to_string(),
-                    message,
-                    source,
-                }
-            }
+            ChaosError::InjectionFailed {
+                message, source, ..
+            } => ChaosError::InjectionFailed {
+                fault_id: fault_id.to_string(),
+                message,
+                source,
+            },
             other => ChaosError::InjectionFailed {
                 fault_id: fault_id.to_string(),
                 message: other.to_string(),

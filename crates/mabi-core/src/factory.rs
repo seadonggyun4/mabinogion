@@ -12,7 +12,6 @@ use crate::config::DeviceConfig;
 use crate::device::BoxedDevice;
 use crate::error::{Error, Result};
 use crate::protocol::Protocol;
-use crate::tags::Tags;
 
 /// A factory trait for creating devices.
 ///
@@ -189,10 +188,7 @@ impl FactoryRegistry {
 
     /// Create multiple devices.
     pub fn create_devices(&self, configs: Vec<DeviceConfig>) -> Result<Vec<BoxedDevice>> {
-        configs
-            .into_iter()
-            .map(|c| self.create_device(c))
-            .collect()
+        configs.into_iter().map(|c| self.create_device(c)).collect()
     }
 }
 
@@ -318,6 +314,7 @@ pub struct PluginInfo {
 mod tests {
     use super::*;
     use crate::device::{Device, DeviceInfo, DeviceStatistics};
+    use crate::tags::Tags;
     use crate::types::{DataPoint, DataPointDef, DataPointId};
     use crate::value::Value;
     use async_trait::async_trait;

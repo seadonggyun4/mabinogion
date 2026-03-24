@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use mabi_core::{
-    config::{DeviceConfig, DataPointConfig},
+    config::{DataPointConfig, DeviceConfig},
     device::BoxedDevice,
     error::{Error, Result},
     factory::{DeviceFactory, FactoryMetadata, FactoryRegistry, Plugin},
@@ -70,6 +70,7 @@ impl Default for OpcUaDeviceMetadata {
 
 /// Factory for creating OPC UA devices.
 pub struct OpcUaDeviceFactory {
+    #[allow(dead_code)]
     /// Default server configuration.
     default_config: OpcUaServerConfig,
 }
@@ -149,8 +150,7 @@ impl OpcUaDeviceFactory {
             _ => AccessMode::ReadWrite,
         };
 
-        let mut def = DataPointDef::new(&config.id, &config.name, data_type)
-            .with_access(access);
+        let mut def = DataPointDef::new(&config.id, &config.name, data_type).with_access(access);
 
         if let Some(unit) = &config.units {
             def = def.with_units(unit);
@@ -159,7 +159,9 @@ impl OpcUaDeviceFactory {
             def = def.with_range(min, max);
         }
         if let Some(addr) = &config.address {
-            def = def.with_address(Address::OpcUa { node_id: addr.clone() });
+            def = def.with_address(Address::OpcUa {
+                node_id: addr.clone(),
+            });
         }
 
         def
@@ -642,18 +644,8 @@ mod tests {
     fn test_device_builder() {
         let device = OpcUaDeviceBuilder::new("server-1", "Test Server")
             .description("A test OPC UA server")
-            .add_analog_variable(
-                "temp",
-                "Temperature",
-                NodeId::numeric(2, 1001),
-                25.0,
-            )
-            .add_boolean_variable(
-                "status",
-                "Status",
-                NodeId::numeric(2, 1002),
-                true,
-            )
+            .add_analog_variable("temp", "Temperature", NodeId::numeric(2, 1001), 25.0)
+            .add_boolean_variable("status", "Status", NodeId::numeric(2, 1002), true)
             .build();
 
         assert_eq!(device.info().id, "server-1");

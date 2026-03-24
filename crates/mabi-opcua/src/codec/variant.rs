@@ -7,10 +7,10 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 
-use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
 use crate::error::{OpcUaError, OpcUaResult};
-use crate::types::{NodeId, StatusCode, Variant, variant::DataTypeId};
+use crate::types::{variant::DataTypeId, NodeId, Variant};
 
 /// Array flag bit in the encoding byte.
 const ARRAY_BIT: u8 = 0x80;
@@ -153,7 +153,10 @@ fn decode_scalar_variant(type_id: u8, buf: &mut Bytes) -> OpcUaResult<Variant> {
         Some(DataTypeId::ByteString) => Ok(Variant::ByteString(Vec::<u8>::decode(buf)?)),
         Some(DataTypeId::NodeId) => Ok(Variant::NodeId(NodeId::decode(buf)?)),
         Some(DataTypeId::StatusCode) => Ok(Variant::StatusCode(u32::decode(buf)?)),
-        _ => Err(OpcUaError::Codec(format!("Unsupported variant type: {}", type_id))),
+        _ => Err(OpcUaError::Codec(format!(
+            "Unsupported variant type: {}",
+            type_id
+        ))),
     }
 }
 
@@ -174,12 +177,23 @@ fn decode_array_variant(type_id: u8, buf: &mut Bytes) -> OpcUaResult<Variant> {
         Some(DataTypeId::Float) => Variant::Array(VariantArrayValue::Float(decode_array(buf)?)),
         Some(DataTypeId::Double) => Variant::Array(VariantArrayValue::Double(decode_array(buf)?)),
         Some(DataTypeId::String) => Variant::Array(VariantArrayValue::String(decode_array(buf)?)),
-        Some(DataTypeId::DateTime) => Variant::Array(VariantArrayValue::DateTime(decode_array(buf)?)),
+        Some(DataTypeId::DateTime) => {
+            Variant::Array(VariantArrayValue::DateTime(decode_array(buf)?))
+        }
         Some(DataTypeId::Guid) => Variant::Array(VariantArrayValue::Guid(decode_array(buf)?)),
-        Some(DataTypeId::ByteString) => Variant::Array(VariantArrayValue::ByteString(decode_array(buf)?)),
+        Some(DataTypeId::ByteString) => {
+            Variant::Array(VariantArrayValue::ByteString(decode_array(buf)?))
+        }
         Some(DataTypeId::NodeId) => Variant::Array(VariantArrayValue::NodeId(decode_array(buf)?)),
-        Some(DataTypeId::StatusCode) => Variant::Array(VariantArrayValue::StatusCode(decode_array(buf)?)),
-        _ => return Err(OpcUaError::Codec(format!("Unsupported array type: {}", type_id))),
+        Some(DataTypeId::StatusCode) => {
+            Variant::Array(VariantArrayValue::StatusCode(decode_array(buf)?))
+        }
+        _ => {
+            return Err(OpcUaError::Codec(format!(
+                "Unsupported array type: {}",
+                type_id
+            )))
+        }
     };
     Ok(result)
 }
@@ -188,29 +202,83 @@ fn decode_array_variant(type_id: u8, buf: &mut Bytes) -> OpcUaResult<Variant> {
 // Scalar/Array value encoding helpers (for Variant::Scalar and Variant::Array)
 // =========================================================================
 
-use crate::types::variant::{VariantScalarValue, VariantArrayValue};
+use crate::types::variant::{VariantArrayValue, VariantScalarValue};
 
 fn encode_scalar_value(sv: &VariantScalarValue, buf: &mut BytesMut) -> OpcUaResult<()> {
     match sv {
         VariantScalarValue::Null => buf.put_u8(0),
-        VariantScalarValue::Boolean(v) => { buf.put_u8(DataTypeId::Boolean as u8); v.encode(buf)?; }
-        VariantScalarValue::SByte(v) => { buf.put_u8(DataTypeId::SByte as u8); v.encode(buf)?; }
-        VariantScalarValue::Byte(v) => { buf.put_u8(DataTypeId::Byte as u8); v.encode(buf)?; }
-        VariantScalarValue::Int16(v) => { buf.put_u8(DataTypeId::Int16 as u8); v.encode(buf)?; }
-        VariantScalarValue::UInt16(v) => { buf.put_u8(DataTypeId::UInt16 as u8); v.encode(buf)?; }
-        VariantScalarValue::Int32(v) => { buf.put_u8(DataTypeId::Int32 as u8); v.encode(buf)?; }
-        VariantScalarValue::UInt32(v) => { buf.put_u8(DataTypeId::UInt32 as u8); v.encode(buf)?; }
-        VariantScalarValue::Int64(v) => { buf.put_u8(DataTypeId::Int64 as u8); v.encode(buf)?; }
-        VariantScalarValue::UInt64(v) => { buf.put_u8(DataTypeId::UInt64 as u8); v.encode(buf)?; }
-        VariantScalarValue::Float(v) => { buf.put_u8(DataTypeId::Float as u8); v.encode(buf)?; }
-        VariantScalarValue::Double(v) => { buf.put_u8(DataTypeId::Double as u8); v.encode(buf)?; }
-        VariantScalarValue::String(v) => { buf.put_u8(DataTypeId::String as u8); v.encode(buf)?; }
-        VariantScalarValue::DateTime(v) => { buf.put_u8(DataTypeId::DateTime as u8); v.encode(buf)?; }
-        VariantScalarValue::Guid(v) => { buf.put_u8(DataTypeId::Guid as u8); v.encode(buf)?; }
-        VariantScalarValue::ByteString(v) => { buf.put_u8(DataTypeId::ByteString as u8); v.encode(buf)?; }
-        VariantScalarValue::XmlElement(v) => { buf.put_u8(DataTypeId::XmlElement as u8); v.encode(buf)?; }
-        VariantScalarValue::NodeId(v) => { buf.put_u8(DataTypeId::NodeId as u8); v.encode(buf)?; }
-        VariantScalarValue::StatusCode(v) => { buf.put_u8(DataTypeId::StatusCode as u8); buf.put_u32_le(*v); }
+        VariantScalarValue::Boolean(v) => {
+            buf.put_u8(DataTypeId::Boolean as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::SByte(v) => {
+            buf.put_u8(DataTypeId::SByte as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Byte(v) => {
+            buf.put_u8(DataTypeId::Byte as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Int16(v) => {
+            buf.put_u8(DataTypeId::Int16 as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::UInt16(v) => {
+            buf.put_u8(DataTypeId::UInt16 as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Int32(v) => {
+            buf.put_u8(DataTypeId::Int32 as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::UInt32(v) => {
+            buf.put_u8(DataTypeId::UInt32 as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Int64(v) => {
+            buf.put_u8(DataTypeId::Int64 as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::UInt64(v) => {
+            buf.put_u8(DataTypeId::UInt64 as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Float(v) => {
+            buf.put_u8(DataTypeId::Float as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Double(v) => {
+            buf.put_u8(DataTypeId::Double as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::String(v) => {
+            buf.put_u8(DataTypeId::String as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::DateTime(v) => {
+            buf.put_u8(DataTypeId::DateTime as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::Guid(v) => {
+            buf.put_u8(DataTypeId::Guid as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::ByteString(v) => {
+            buf.put_u8(DataTypeId::ByteString as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::XmlElement(v) => {
+            buf.put_u8(DataTypeId::XmlElement as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::NodeId(v) => {
+            buf.put_u8(DataTypeId::NodeId as u8);
+            v.encode(buf)?;
+        }
+        VariantScalarValue::StatusCode(v) => {
+            buf.put_u8(DataTypeId::StatusCode as u8);
+            buf.put_u32_le(*v);
+        }
     }
     Ok(())
 }
@@ -221,8 +289,12 @@ fn scalar_value_size(sv: &VariantScalarValue) -> usize {
         VariantScalarValue::Boolean(_) => 1,
         VariantScalarValue::SByte(_) | VariantScalarValue::Byte(_) => 1,
         VariantScalarValue::Int16(_) | VariantScalarValue::UInt16(_) => 2,
-        VariantScalarValue::Int32(_) | VariantScalarValue::UInt32(_) | VariantScalarValue::Float(_) => 4,
-        VariantScalarValue::Int64(_) | VariantScalarValue::UInt64(_) | VariantScalarValue::Double(_) => 8,
+        VariantScalarValue::Int32(_)
+        | VariantScalarValue::UInt32(_)
+        | VariantScalarValue::Float(_) => 4,
+        VariantScalarValue::Int64(_)
+        | VariantScalarValue::UInt64(_)
+        | VariantScalarValue::Double(_) => 8,
         VariantScalarValue::String(s) => 4 + s.len(),
         VariantScalarValue::DateTime(_) => 8,
         VariantScalarValue::Guid(_) => 16,
@@ -236,23 +308,74 @@ fn scalar_value_size(sv: &VariantScalarValue) -> usize {
 fn encode_array_value(av: &VariantArrayValue, buf: &mut BytesMut) -> OpcUaResult<()> {
     use crate::codec::encoder::encode_array;
     match av {
-        VariantArrayValue::Boolean(v) => { buf.put_u8(DataTypeId::Boolean as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::SByte(v) => { buf.put_u8(DataTypeId::SByte as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Byte(v) => { buf.put_u8(DataTypeId::Byte as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Int16(v) => { buf.put_u8(DataTypeId::Int16 as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::UInt16(v) => { buf.put_u8(DataTypeId::UInt16 as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Int32(v) => { buf.put_u8(DataTypeId::Int32 as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::UInt32(v) => { buf.put_u8(DataTypeId::UInt32 as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Int64(v) => { buf.put_u8(DataTypeId::Int64 as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::UInt64(v) => { buf.put_u8(DataTypeId::UInt64 as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Float(v) => { buf.put_u8(DataTypeId::Float as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Double(v) => { buf.put_u8(DataTypeId::Double as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::String(v) => { buf.put_u8(DataTypeId::String as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::DateTime(v) => { buf.put_u8(DataTypeId::DateTime as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::Guid(v) => { buf.put_u8(DataTypeId::Guid as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::ByteString(v) => { buf.put_u8(DataTypeId::ByteString as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::NodeId(v) => { buf.put_u8(DataTypeId::NodeId as u8 | ARRAY_BIT); encode_array(v, buf)?; }
-        VariantArrayValue::StatusCode(v) => { buf.put_u8(DataTypeId::StatusCode as u8 | ARRAY_BIT); encode_array(v, buf)?; }
+        VariantArrayValue::Boolean(v) => {
+            buf.put_u8(DataTypeId::Boolean as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::SByte(v) => {
+            buf.put_u8(DataTypeId::SByte as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Byte(v) => {
+            buf.put_u8(DataTypeId::Byte as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Int16(v) => {
+            buf.put_u8(DataTypeId::Int16 as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::UInt16(v) => {
+            buf.put_u8(DataTypeId::UInt16 as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Int32(v) => {
+            buf.put_u8(DataTypeId::Int32 as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::UInt32(v) => {
+            buf.put_u8(DataTypeId::UInt32 as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Int64(v) => {
+            buf.put_u8(DataTypeId::Int64 as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::UInt64(v) => {
+            buf.put_u8(DataTypeId::UInt64 as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Float(v) => {
+            buf.put_u8(DataTypeId::Float as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Double(v) => {
+            buf.put_u8(DataTypeId::Double as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::String(v) => {
+            buf.put_u8(DataTypeId::String as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::DateTime(v) => {
+            buf.put_u8(DataTypeId::DateTime as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::Guid(v) => {
+            buf.put_u8(DataTypeId::Guid as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::ByteString(v) => {
+            buf.put_u8(DataTypeId::ByteString as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::NodeId(v) => {
+            buf.put_u8(DataTypeId::NodeId as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
+        VariantArrayValue::StatusCode(v) => {
+            buf.put_u8(DataTypeId::StatusCode as u8 | ARRAY_BIT);
+            encode_array(v, buf)?;
+        }
     }
     Ok(())
 }

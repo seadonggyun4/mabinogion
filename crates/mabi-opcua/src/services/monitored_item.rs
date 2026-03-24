@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{NodeId, AttributeId, DataValue, StatusCode, Variant};
+use crate::types::{AttributeId, DataValue, NodeId};
 
 /// Data change trigger type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -228,6 +228,7 @@ pub struct MonitoredItem {
     notification_queue: Vec<MonitoredItemNotification>,
     /// Last sample time.
     last_sample_time: DateTime<Utc>,
+    #[allow(dead_code)]
     /// Created time.
     created_at: DateTime<Utc>,
 }
@@ -425,6 +426,7 @@ impl MonitoredItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Variant;
 
     #[test]
     fn test_monitored_item_creation() {
@@ -478,8 +480,7 @@ mod tests {
 
     #[test]
     fn test_queue_overflow_discard_oldest() {
-        let config = MonitoredItemConfig::for_value(NodeId::numeric(2, 1001))
-            .with_queue_size(3);
+        let config = MonitoredItemConfig::for_value(NodeId::numeric(2, 1001)).with_queue_size(3);
 
         let mut item = MonitoredItem::new(1, config);
 

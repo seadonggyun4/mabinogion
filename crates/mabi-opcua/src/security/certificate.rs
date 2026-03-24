@@ -2,7 +2,6 @@
 //!
 //! Provides certificate storage, validation, and generation capabilities.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -11,7 +10,7 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Certificate error types.
 #[derive(Debug, Error)]
@@ -270,7 +269,10 @@ impl CertificateStore {
 
     /// Get all certificates.
     pub fn all(&self) -> Vec<Certificate> {
-        self.certificates.iter().map(|e| e.value().clone()).collect()
+        self.certificates
+            .iter()
+            .map(|e| e.value().clone())
+            .collect()
     }
 
     /// Get certificate count.
@@ -466,7 +468,10 @@ impl CertificateValidator {
             match self.validate_chain(certificate) {
                 Ok(chain) => return ValidationResult::valid(chain),
                 Err(status) => {
-                    return ValidationResult::invalid(status, "Certificate chain validation failed");
+                    return ValidationResult::invalid(
+                        status,
+                        "Certificate chain validation failed",
+                    );
                 }
             }
         }
@@ -475,7 +480,10 @@ impl CertificateValidator {
     }
 
     /// Validate certificate chain.
-    fn validate_chain(&self, certificate: &Certificate) -> Result<Vec<Certificate>, ValidationStatus> {
+    fn validate_chain(
+        &self,
+        certificate: &Certificate,
+    ) -> Result<Vec<Certificate>, ValidationStatus> {
         let mut chain = vec![certificate.clone()];
 
         // Find issuer certificate
@@ -543,6 +551,7 @@ pub struct CertificateManager {
     private_key: RwLock<Option<Vec<u8>>>,
     trusted_store: Arc<CertificateStore>,
     rejected_store: Arc<CertificateStore>,
+    #[allow(dead_code)]
     issuer_store: Arc<CertificateStore>,
     validator: CertificateValidator,
 }
@@ -752,10 +761,8 @@ mod tests {
 
     #[test]
     fn test_certificate_store() {
-        let store = CertificateStore::new(
-            CertificateStoreType::Trusted,
-            PathBuf::from("/tmp/test"),
-        );
+        let store =
+            CertificateStore::new(CertificateStoreType::Trusted, PathBuf::from("/tmp/test"));
 
         let cert = Certificate::from_der(vec![0x30, 0x01]).unwrap();
         let thumbprint = cert.thumbprint.clone();

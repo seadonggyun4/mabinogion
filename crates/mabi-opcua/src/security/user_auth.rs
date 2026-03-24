@@ -2,17 +2,15 @@
 //!
 //! Supports Anonymous, Username/Password, and Certificate-based authentication.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
-use super::certificate::{Certificate, CertificateManager, ValidationStatus};
+use super::certificate::{Certificate, CertificateManager};
 use super::crypto::CryptoProvider;
 use crate::config::SecurityPolicy;
 
@@ -57,15 +55,10 @@ pub enum UserCredentials {
     Anonymous,
 
     /// Username and password.
-    UserPassword {
-        username: String,
-        password: String,
-    },
+    UserPassword { username: String, password: String },
 
     /// X.509 certificate.
-    Certificate {
-        certificate: Certificate,
-    },
+    Certificate { certificate: Certificate },
 
     /// Issued token (e.g., JWT).
     IssuedToken {
@@ -272,7 +265,8 @@ impl UserAccount {
         self.failed_login_count += 1;
 
         if self.failed_login_count >= lockout_threshold {
-            self.locked_until = Some(Utc::now() + chrono::Duration::minutes(lockout_duration_minutes));
+            self.locked_until =
+                Some(Utc::now() + chrono::Duration::minutes(lockout_duration_minutes));
         }
     }
 }
@@ -327,6 +321,7 @@ pub struct UserAuthenticator {
     config: UserAuthConfig,
     users: DashMap<String, UserAccount>,
     certificate_manager: Option<Arc<CertificateManager>>,
+    #[allow(dead_code)]
     crypto_provider: CryptoProvider,
 }
 
@@ -380,9 +375,10 @@ impl UserAuthenticator {
             UserCredentials::Certificate { certificate } => {
                 self.authenticate_certificate(certificate)
             }
-            UserCredentials::IssuedToken { token_type, token_data } => {
-                self.authenticate_issued_token(token_type, token_data)
-            }
+            UserCredentials::IssuedToken {
+                token_type,
+                token_data,
+            } => self.authenticate_issued_token(token_type, token_data),
         }
     }
 
@@ -513,12 +509,20 @@ impl UserAuthenticator {
     }
 
     /// Authenticate issued token.
-    fn authenticate_issued_token(&self, token_type: &str, token_data: &[u8]) -> AuthenticationResult {
+    fn authenticate_issued_token(
+        &self,
+        token_type: &str,
+        _token_data: &[u8],
+    ) -> AuthenticationResult {
         if !self.config.allow_issued_token {
             return AuthenticationResult::failure("Issued token authentication not allowed");
         }
 
-        if !self.config.accepted_token_types.contains(&token_type.to_string()) {
+        if !self
+            .config
+            .accepted_token_types
+            .contains(&token_type.to_string())
+        {
             return AuthenticationResult::failure(format!(
                 "Token type not supported: {}",
                 token_type
@@ -589,7 +593,9 @@ impl UserAuthenticator {
                 token_type: UserTokenType::UserName,
                 issued_token_type: None,
                 issuer_endpoint_url: None,
-                security_policy_uri: Some("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256".to_string()),
+                security_policy_uri: Some(
+                    "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256".to_string(),
+                ),
             });
         }
 
@@ -699,18 +705,14 @@ mod tests {
         authenticator.add_user(UserAccount::new("testuser", "Password123"));
 
         // Successful auth
-        let result = authenticator.authenticate(&UserCredentials::user_password(
-            "testuser",
-            "Password123",
-        ));
+        let result =
+            authenticator.authenticate(&UserCredentials::user_password("testuser", "Password123"));
         assert!(result.success);
         assert_eq!(result.user_identity, "testuser");
 
         // Failed auth
-        let result = authenticator.authenticate(&UserCredentials::user_password(
-            "testuser",
-            "WrongPassword",
-        ));
+        let result = authenticator
+            .authenticate(&UserCredentials::user_password("testuser", "WrongPassword"));
         assert!(!result.success);
     }
 
@@ -726,18 +728,14 @@ mod tests {
 
         // Fail 3 times
         for _ in 0..3 {
-            let result = authenticator.authenticate(&UserCredentials::user_password(
-                "testuser",
-                "WrongPassword",
-            ));
+            let result = authenticator
+                .authenticate(&UserCredentials::user_password("testuser", "WrongPassword"));
             assert!(!result.success);
         }
 
         // Account should be locked
-        let result = authenticator.authenticate(&UserCredentials::user_password(
-            "testuser",
-            "Password123",
-        ));
+        let result =
+            authenticator.authenticate(&UserCredentials::user_password("testuser", "Password123"));
         assert!(!result.success);
         assert!(result.error_message.unwrap().contains("locked"));
     }
@@ -765,9 +763,15 @@ mod tests {
         let policies = authenticator.token_policies();
 
         // Should have anonymous, username, certificate
-        assert!(policies.iter().any(|p| p.token_type == UserTokenType::Anonymous));
-        assert!(policies.iter().any(|p| p.token_type == UserTokenType::UserName));
-        assert!(policies.iter().any(|p| p.token_type == UserTokenType::Certificate));
+        assert!(policies
+            .iter()
+            .any(|p| p.token_type == UserTokenType::Anonymous));
+        assert!(policies
+            .iter()
+            .any(|p| p.token_type == UserTokenType::UserName));
+        assert!(policies
+            .iter()
+            .any(|p| p.token_type == UserTokenType::Certificate));
     }
 
     #[test]

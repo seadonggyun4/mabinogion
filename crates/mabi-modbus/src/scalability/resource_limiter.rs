@@ -162,12 +162,16 @@ impl TokenBucket {
                 return false;
             }
 
-            if self.tokens.compare_exchange_weak(
-                current,
-                current - count,
-                Ordering::AcqRel,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .tokens
+                .compare_exchange_weak(
+                    current,
+                    current - count,
+                    Ordering::AcqRel,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
                 return true;
             }
         }
@@ -186,12 +190,11 @@ impl TokenBucket {
                 let current = self.tokens.load(Ordering::Acquire);
                 let new_tokens = (current + tokens_to_add).min(self.max_tokens);
 
-                if self.tokens.compare_exchange_weak(
-                    current,
-                    new_tokens,
-                    Ordering::AcqRel,
-                    Ordering::Relaxed,
-                ).is_ok() {
+                if self
+                    .tokens
+                    .compare_exchange_weak(current, new_tokens, Ordering::AcqRel, Ordering::Relaxed)
+                    .is_ok()
+                {
                     break;
                 }
             }
@@ -253,8 +256,7 @@ impl ResourceSnapshot {
 
     /// Get overall utilization (max of all resources).
     pub fn overall_utilization(&self) -> f64 {
-        self.memory_utilization()
-            .max(self.connection_utilization())
+        self.memory_utilization().max(self.connection_utilization())
     }
 }
 
@@ -461,7 +463,6 @@ impl ResourceLimiter {
                 // Linear delay increase above threshold
                 let excess = (utilization - threshold) / (1.0 - threshold);
                 if excess > 0.0 {
-                    let delay_ms = (excess * 100.0) as u64; // Max 100ms delay
                     LimitResult::AllowedWithWarning {
                         resource,
                         utilization,
@@ -547,7 +548,11 @@ impl ResourceLimiter {
 
         // Check for warnings
         for result in [&memory, &connections, &rate] {
-            if let LimitResult::AllowedWithWarning { resource, utilization } = result {
+            if let LimitResult::AllowedWithWarning {
+                resource,
+                utilization,
+            } = result
+            {
                 return LimitResult::AllowedWithWarning {
                     resource: *resource,
                     utilization: *utilization,
@@ -684,7 +689,13 @@ mod tests {
 
         let result = limiter.check();
         assert!(result.is_rejected());
-        assert!(matches!(result, LimitResult::Rejected { resource: ResourceType::Memory, .. }));
+        assert!(matches!(
+            result,
+            LimitResult::Rejected {
+                resource: ResourceType::Memory,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -696,7 +707,13 @@ mod tests {
 
         let result = limiter.check();
         assert!(result.is_rejected());
-        assert!(matches!(result, LimitResult::Rejected { resource: ResourceType::Connections, .. }));
+        assert!(matches!(
+            result,
+            LimitResult::Rejected {
+                resource: ResourceType::Connections,
+                ..
+            }
+        ));
     }
 
     #[test]

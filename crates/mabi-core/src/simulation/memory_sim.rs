@@ -92,8 +92,8 @@ impl Default for SawtoothPattern {
 
 impl CustomMemoryPattern for SawtoothPattern {
     fn apply(&self, profiler: &Profiler, elapsed: Duration) {
-        let cycle_pos = (elapsed.as_millis() % self.period.as_millis()) as f64
-            / self.period.as_millis() as f64;
+        let cycle_pos =
+            (elapsed.as_millis() % self.period.as_millis()) as f64 / self.period.as_millis() as f64;
 
         if cycle_pos < 0.9 {
             // Growing phase (90% of cycle)
@@ -352,7 +352,7 @@ mod tests {
 
         // Should have some allocations
         let snapshot = profiler.snapshot();
-        assert!(snapshot.allocation_count > 0 || snapshot.current_bytes >= 0);
+        assert!(snapshot.allocation_count > 0 || snapshot.current_bytes > 0);
     }
 
     #[test]
@@ -418,11 +418,8 @@ mod tests {
         let _growth = MemoryPatternFactory::growth_only();
         let _sawtooth = MemoryPatternFactory::sawtooth(Duration::from_secs(10), 1024);
         let _stepped = MemoryPatternFactory::stepped(Duration::from_secs(5), 512, 5);
-        let _burst = MemoryPatternFactory::burst(
-            Duration::from_secs(20),
-            4096,
-            Duration::from_secs(3),
-        );
+        let _burst =
+            MemoryPatternFactory::burst(Duration::from_secs(20), 4096, Duration::from_secs(3));
         let _leak = MemoryPatternFactory::leak(1024);
     }
 

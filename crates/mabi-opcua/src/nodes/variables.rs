@@ -3,9 +3,9 @@
 //! This module provides factory methods for creating commonly used
 //! variable types with proper configuration.
 
-use crate::types::{NodeId, AccessLevel, Variant, variant::DataTypeId};
-use super::base::{QualifiedName, LocalizedText};
+use super::base::{LocalizedText, QualifiedName};
 use super::classes::VariableNode;
+use crate::types::{variant::DataTypeId, NodeId, Variant};
 
 /// Factory for creating variable nodes.
 ///
@@ -33,11 +33,7 @@ pub struct VariableFactory;
 
 impl VariableFactory {
     /// Create a Boolean variable.
-    pub fn boolean(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: bool,
-    ) -> VariableNode {
+    pub fn boolean(node_id: NodeId, name: impl Into<String>, value: bool) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -49,20 +45,12 @@ impl VariableFactory {
     }
 
     /// Create a writable Boolean variable.
-    pub fn boolean_writable(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: bool,
-    ) -> VariableNode {
+    pub fn boolean_writable(node_id: NodeId, name: impl Into<String>, value: bool) -> VariableNode {
         Self::boolean(node_id, name, value).writable()
     }
 
     /// Create an SByte variable.
-    pub fn sbyte(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: i8,
-    ) -> VariableNode {
+    pub fn sbyte(node_id: NodeId, name: impl Into<String>, value: i8) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -74,11 +62,7 @@ impl VariableFactory {
     }
 
     /// Create a Byte variable.
-    pub fn byte(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: u8,
-    ) -> VariableNode {
+    pub fn byte(node_id: NodeId, name: impl Into<String>, value: u8) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -90,11 +74,7 @@ impl VariableFactory {
     }
 
     /// Create an Int16 variable.
-    pub fn int16(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: i16,
-    ) -> VariableNode {
+    pub fn int16(node_id: NodeId, name: impl Into<String>, value: i16) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -106,11 +86,7 @@ impl VariableFactory {
     }
 
     /// Create a UInt16 variable.
-    pub fn uint16(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: u16,
-    ) -> VariableNode {
+    pub fn uint16(node_id: NodeId, name: impl Into<String>, value: u16) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -122,11 +98,7 @@ impl VariableFactory {
     }
 
     /// Create an Int32 variable.
-    pub fn int32(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: i32,
-    ) -> VariableNode {
+    pub fn int32(node_id: NodeId, name: impl Into<String>, value: i32) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -138,20 +110,12 @@ impl VariableFactory {
     }
 
     /// Create a writable Int32 variable.
-    pub fn int32_writable(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: i32,
-    ) -> VariableNode {
+    pub fn int32_writable(node_id: NodeId, name: impl Into<String>, value: i32) -> VariableNode {
         Self::int32(node_id, name, value).writable()
     }
 
     /// Create a UInt32 variable.
-    pub fn uint32(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: u32,
-    ) -> VariableNode {
+    pub fn uint32(node_id: NodeId, name: impl Into<String>, value: u32) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -163,11 +127,7 @@ impl VariableFactory {
     }
 
     /// Create an Int64 variable.
-    pub fn int64(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: i64,
-    ) -> VariableNode {
+    pub fn int64(node_id: NodeId, name: impl Into<String>, value: i64) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -179,11 +139,7 @@ impl VariableFactory {
     }
 
     /// Create a UInt64 variable.
-    pub fn uint64(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: u64,
-    ) -> VariableNode {
+    pub fn uint64(node_id: NodeId, name: impl Into<String>, value: u64) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -195,11 +151,7 @@ impl VariableFactory {
     }
 
     /// Create a Float variable.
-    pub fn float(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: f32,
-    ) -> VariableNode {
+    pub fn float(node_id: NodeId, name: impl Into<String>, value: f32) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -211,20 +163,12 @@ impl VariableFactory {
     }
 
     /// Create a writable Float variable.
-    pub fn float_writable(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: f32,
-    ) -> VariableNode {
+    pub fn float_writable(node_id: NodeId, name: impl Into<String>, value: f32) -> VariableNode {
         Self::float(node_id, name, value).writable()
     }
 
     /// Create a Double variable.
-    pub fn double(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: f64,
-    ) -> VariableNode {
+    pub fn double(node_id: NodeId, name: impl Into<String>, value: f64) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -236,11 +180,7 @@ impl VariableFactory {
     }
 
     /// Create a writable Double variable.
-    pub fn double_writable(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: f64,
-    ) -> VariableNode {
+    pub fn double_writable(node_id: NodeId, name: impl Into<String>, value: f64) -> VariableNode {
         Self::double(node_id, name, value).writable()
     }
 
@@ -270,10 +210,7 @@ impl VariableFactory {
     }
 
     /// Create a DateTime variable with current time.
-    pub fn datetime_now(
-        node_id: NodeId,
-        name: impl Into<String>,
-    ) -> VariableNode {
+    pub fn datetime_now(node_id: NodeId, name: impl Into<String>) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -302,11 +239,7 @@ impl VariableFactory {
     }
 
     /// Create an array of Int32 values.
-    pub fn int32_array(
-        node_id: NodeId,
-        name: impl Into<String>,
-        values: Vec<i32>,
-    ) -> VariableNode {
+    pub fn int32_array(node_id: NodeId, name: impl Into<String>, values: Vec<i32>) -> VariableNode {
         let name = name.into();
         VariableNode::with_type_id(
             node_id.clone(),
@@ -355,11 +288,7 @@ pub struct AnalogVariable {
 
 impl AnalogVariable {
     /// Create a new analog variable.
-    pub fn new(
-        node_id: NodeId,
-        name: impl Into<String>,
-        value: f64,
-    ) -> Self {
+    pub fn new(node_id: NodeId, name: impl Into<String>, value: f64) -> Self {
         let name = name.into();
         Self {
             variable: VariableFactory::double(node_id, &name, value),
@@ -475,7 +404,11 @@ pub struct EnumValue {
 
 impl EnumValue {
     /// Create a new enum value.
-    pub fn new(value: i64, display_name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        value: i64,
+        display_name: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             value,
             display_name: display_name.into(),
@@ -562,11 +495,7 @@ mod tests {
 
     #[test]
     fn test_variable_factory_double() {
-        let var = VariableFactory::double(
-            NodeId::numeric(2, 1001),
-            "Temperature",
-            25.5,
-        );
+        let var = VariableFactory::double(NodeId::numeric(2, 1001), "Temperature", 25.5);
 
         assert_eq!(var.base.browse_name.name, "Temperature");
         assert!(!var.is_writable());
@@ -574,22 +503,14 @@ mod tests {
 
     #[test]
     fn test_variable_factory_writable() {
-        let var = VariableFactory::double_writable(
-            NodeId::numeric(2, 1001),
-            "Setpoint",
-            22.0,
-        );
+        let var = VariableFactory::double_writable(NodeId::numeric(2, 1001), "Setpoint", 22.0);
 
         assert!(var.is_writable());
     }
 
     #[test]
     fn test_analog_variable() {
-        let analog = AnalogVariable::temperature(
-            NodeId::numeric(2, 1001),
-            "RoomTemp",
-            25.5,
-        );
+        let analog = AnalogVariable::temperature(NodeId::numeric(2, 1001), "RoomTemp", 25.5);
 
         assert_eq!(analog.unit_name, "°C");
         assert_eq!(analog.range_low, -40.0);
@@ -598,11 +519,7 @@ mod tests {
 
     #[test]
     fn test_discrete_variable() {
-        let discrete = DiscreteVariable::on_off(
-            NodeId::numeric(2, 1001),
-            "Pump",
-            true,
-        );
+        let discrete = DiscreteVariable::on_off(NodeId::numeric(2, 1001), "Pump", true);
 
         assert_eq!(discrete.enum_values.len(), 2);
     }

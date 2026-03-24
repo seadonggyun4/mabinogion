@@ -7,14 +7,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::types::{NodeId, StatusCode};
-use crate::nodes::{BrowseDirection, ReferenceTypeId, LocalizedText, QualifiedName, NodeClass};
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::nodes::{BrowseDirection, ReferenceTypeId};
+use crate::types::{NodeId, StatusCode};
 
 const BROWSE_REQUEST_ID: u32 = 527;
 const BROWSE_RESPONSE_ID: u32 = 530;
@@ -71,7 +71,11 @@ impl ServiceHandler for BrowseHandler {
 
             let ref_type_filter = ReferenceTypeId::from_node_id(&reference_type_id);
 
-            let node_class_mask_opt = if node_class_mask == 0 { None } else { Some(node_class_mask) };
+            let node_class_mask_opt = if node_class_mask == 0 {
+                None
+            } else {
+                Some(node_class_mask)
+            };
 
             let result = context.address_space.browse(
                 &node_id,
@@ -102,7 +106,7 @@ impl ServiceHandler for BrowseHandler {
                 // Add server_index and namespace_uri for ExpandedNodeId
                 out.put_u32_le(0); // server_index
                 out.put_i32_le(-1); // namespace_uri (null)
-                // BrowseName (QualifiedName)
+                                    // BrowseName (QualifiedName)
                 reference.browse_name.encode(&mut out)?;
                 // DisplayName (LocalizedText)
                 reference.display_name.encode(&mut out)?;
@@ -185,7 +189,7 @@ impl ServiceHandler for BrowseNextHandler {
             if continuation_point.is_empty() {
                 StatusCode::BAD_CONTINUATION_POINT_INVALID.encode(&mut out)?;
                 out.put_i32_le(-1); // null continuation point
-                out.put_i32_le(0);  // empty references
+                out.put_i32_le(0); // empty references
                 continue;
             }
 

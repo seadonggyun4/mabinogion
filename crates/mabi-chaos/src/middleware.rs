@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::context::{FaultContext, FaultContextBuilder, OperationType, TargetInfo, ResponseData};
+use crate::context::{FaultContext, OperationType, ResponseData};
 use crate::engine::ChaosEngine;
 use crate::error::ChaosResult;
 use crate::fault::FaultBehavior;
@@ -313,10 +313,7 @@ impl ChaosMiddleware {
         self.engine.process_after(&mut ctx).await?;
 
         // Extract potentially modified points
-        let result_points = ctx
-            .response_data
-            .map(|r| r.data_points)
-            .unwrap_or(points);
+        let result_points = ctx.response_data.map(|r| r.data_points).unwrap_or(points);
 
         if ctx.accumulated_delay_ms > 0 {
             Ok(MiddlewareResult::Delayed {
@@ -335,9 +332,7 @@ impl ChaosMiddleware {
         ctx: FaultContext,
     ) -> ChaosResult<MiddlewareResult<FaultContext>> {
         match behavior {
-            FaultBehavior::Continue | FaultBehavior::Modify => {
-                Ok(MiddlewareResult::Proceed(ctx))
-            }
+            FaultBehavior::Continue | FaultBehavior::Modify => Ok(MiddlewareResult::Proceed(ctx)),
 
             FaultBehavior::Skip => Ok(MiddlewareResult::Skip),
 
@@ -346,12 +341,13 @@ impl ChaosMiddleware {
                 message: error,
             }),
 
-            FaultBehavior::ReturnError { error_code, message } => {
-                Ok(MiddlewareResult::Error {
-                    code: error_code,
-                    message,
-                })
-            }
+            FaultBehavior::ReturnError {
+                error_code,
+                message,
+            } => Ok(MiddlewareResult::Error {
+                code: error_code,
+                message,
+            }),
 
             FaultBehavior::Delay { duration_ms } => Ok(MiddlewareResult::Delayed {
                 delay_ms: duration_ms,
@@ -392,9 +388,7 @@ mod tests {
             .base_ms(10)
             .build();
 
-        let engine = ChaosEngine::builder()
-            .add_fault("test", fault)
-            .build();
+        let engine = ChaosEngine::builder().add_fault("test", fault).build();
 
         engine.start().await.unwrap();
         engine.enable_globally("test").await.unwrap();

@@ -13,6 +13,7 @@
 //!
 //! ```rust,no_run
 //! use mabi_core::config::{EngineConfig, ConfigLoader, ConfigFormat};
+//! use mabi_core::Validatable;
 //!
 //! // Load configuration from file (auto-detect format)
 //! let config: EngineConfig = ConfigLoader::load("config.yaml").unwrap();
@@ -97,37 +98,33 @@ use crate::tags::Tags;
 
 // Re-export watcher types
 pub use watcher::{
-    CallbackHandler, ConfigEvent, ConfigEventHandler, ConfigSource, ConfigWatcher,
-    SharedConfigWatcher, WatcherState, create_config_watcher,
+    create_config_watcher, CallbackHandler, ConfigEvent, ConfigEventHandler, ConfigSource,
+    ConfigWatcher, SharedConfigWatcher, WatcherState,
 };
 
 // Re-export loader types
-pub use loader::{ConfigFormat, ConfigLoader, ConfigDiscovery, LayeredConfigBuilder};
+pub use loader::{ConfigDiscovery, ConfigFormat, ConfigLoader, LayeredConfigBuilder};
 
 // Re-export environment variable types
 pub use env::{
-    EnvOverrides, EnvRule, EnvRuleBuilder, EnvApplyResult, EnvConfigurable,
-    EnvSnapshot, EnvVarDoc, DEFAULT_PREFIX,
-    get_env, get_env_or, get_env_bool, get_env_bool_or,
+    get_env, get_env_bool, get_env_bool_or, get_env_or, EnvApplyResult, EnvConfigurable,
+    EnvOverrides, EnvRule, EnvRuleBuilder, EnvSnapshot, EnvVarDoc, DEFAULT_PREFIX,
 };
 
 // Re-export validation types
 pub use validation::{
-    Validatable, Validator, ValidationContext, ValidationRule,
-    RangeRule, StringLengthRule, PathExistsRule, SocketAddrRule,
-    CrossFieldValidator,
+    CrossFieldValidator, PathExistsRule, RangeRule, SocketAddrRule, StringLengthRule, Validatable,
+    ValidationContext, ValidationRule, Validator,
 };
 
 // Re-export file watcher types
 pub use file_watcher::{
-    FileWatcherService, FileWatcherServiceBuilder, FileWatcherConfig,
-    DEFAULT_DEBOUNCE_MS,
+    FileWatcherConfig, FileWatcherService, FileWatcherServiceBuilder, DEFAULT_DEBOUNCE_MS,
 };
 
 // Re-export hot reload types
 pub use hot_reload::{
-    HotReloadManager, HotReloadManagerBuilder, ReloadEvent, ReloadStrategy,
-    ConfigChange,
+    ConfigChange, HotReloadManager, HotReloadManagerBuilder, ReloadEvent, ReloadStrategy,
 };
 
 /// Main engine configuration.
@@ -406,7 +403,10 @@ impl Validatable for EngineConfig {
 
         // Validate metrics_interval_secs
         if self.enable_metrics && self.metrics_interval_secs == 0 {
-            errors.add("metrics_interval_secs", "Metrics interval must be greater than 0 when metrics are enabled");
+            errors.add(
+                "metrics_interval_secs",
+                "Metrics interval must be greater than 0 when metrics are enabled",
+            );
         }
 
         // Validate log_level
@@ -891,7 +891,9 @@ mod tests {
         let docs = overrides.documentation();
 
         assert!(docs.len() > 0);
-        assert!(docs.iter().any(|d| d.var_name == "TRAP_SIM_ENGINE_MAX_DEVICES"));
+        assert!(docs
+            .iter()
+            .any(|d| d.var_name == "TRAP_SIM_ENGINE_MAX_DEVICES"));
         assert!(docs.iter().any(|d| d.var_name == "TRAP_SIM_LOG_LEVEL"));
     }
 
@@ -911,30 +913,44 @@ mod tests {
 
     #[test]
     fn test_protocol_config_bacnet() {
-        let config = ProtocolConfig::BacnetIp(BacnetIpConfig::default());
+        let _config = ProtocolConfig::BacnetIp(BacnetIpConfig::default());
         assert_eq!(BacnetIpConfig::default().device_instance, 1234);
     }
 
     #[test]
     fn test_protocol_config_knx() {
-        let config = ProtocolConfig::KnxIp(KnxIpConfig::default());
+        let _config = ProtocolConfig::KnxIp(KnxIpConfig::default());
         assert_eq!(KnxIpConfig::default().individual_address, "1.1.1");
     }
 
     #[test]
     fn test_engine_config_with_protocol() {
-        let config = EngineConfig::default()
-            .with_protocol("modbus", ProtocolConfig::ModbusTcp(ModbusTcpConfig::default()));
+        let config = EngineConfig::default().with_protocol(
+            "modbus",
+            ProtocolConfig::ModbusTcp(ModbusTcpConfig::default()),
+        );
 
         assert!(config.protocols.contains_key("modbus"));
     }
 
     #[test]
     fn test_config_format_detection() {
-        assert_eq!(ConfigFormat::from_path("config.yaml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_path("config.yml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_path("config.json"), Some(ConfigFormat::Json));
-        assert_eq!(ConfigFormat::from_path("config.toml"), Some(ConfigFormat::Toml));
+        assert_eq!(
+            ConfigFormat::from_path("config.yaml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_path("config.yml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_path("config.json"),
+            Some(ConfigFormat::Json)
+        );
+        assert_eq!(
+            ConfigFormat::from_path("config.toml"),
+            Some(ConfigFormat::Toml)
+        );
         assert_eq!(ConfigFormat::from_path("config.txt"), None);
     }
 }

@@ -21,9 +21,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::ModbusError;
 
-use super::frame::{
-    verify_crc, RtuFrame, RtuFrameError, RTU_MAX_FRAME_SIZE, RTU_MIN_FRAME_SIZE,
-};
+use super::frame::{verify_crc, RtuFrame, RtuFrameError, RTU_MAX_FRAME_SIZE, RTU_MIN_FRAME_SIZE};
 
 /// RTU timing configuration.
 ///
@@ -76,10 +74,7 @@ impl RtuTiming {
         let (inter_char, inter_frame) = if baud_rate > 19200 {
             (Duration::from_micros(750), Duration::from_micros(1750))
         } else {
-            (
-                char_time.mul_f32(1.5),
-                char_time.mul_f32(3.5),
-            )
+            (char_time.mul_f32(1.5), char_time.mul_f32(3.5))
         };
 
         Self {
@@ -111,10 +106,12 @@ enum DecodeState {
     Receiving {
         /// When the last byte was received.
         last_byte_time: Instant,
+        #[allow(dead_code)]
         /// Expected frame length (if known from function code).
         expected_length: Option<usize>,
     },
 
+    #[allow(dead_code)]
     /// Frame complete, ready to emit.
     Complete,
 }
@@ -507,8 +504,7 @@ impl StreamingRtuCodec {
     pub fn check_timeout(&mut self) -> Result<Option<RtuFrame>, ModbusError> {
         if let Some(last_time) = self.last_byte_time {
             if Instant::now().duration_since(last_time) >= self.inner.timing.inter_frame_timeout {
-                if self.partial_frame.len() >= RTU_MIN_FRAME_SIZE
-                    && verify_crc(&self.partial_frame)
+                if self.partial_frame.len() >= RTU_MIN_FRAME_SIZE && verify_crc(&self.partial_frame)
                 {
                     let frame_data = std::mem::replace(
                         &mut self.partial_frame,

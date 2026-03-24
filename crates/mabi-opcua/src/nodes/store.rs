@@ -3,8 +3,8 @@
 //! The address space is the primary container for all nodes and references.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
@@ -12,14 +12,14 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument, warn};
 
-use crate::types::{NodeId, AttributeId, DataValue, StatusCode, Variant};
-use crate::error::{OpcUaError, OpcUaResult};
-use super::base::{Node, NodeClass, QualifiedName, LocalizedText, SharedNode, shared_node};
-use super::classes::{ObjectNode, VariableNode, DataTypeNode, ObjectTypeNode};
+use super::base::{shared_node, LocalizedText, Node, NodeClass, QualifiedName, SharedNode};
+use super::classes::{DataTypeNode, ObjectNode, ObjectTypeNode, VariableNode};
 use super::reference::{
-    Reference, ReferenceDescription, ReferenceTypeId, ReferenceDirection,
-    BrowseDirection, BrowseResult,
+    BrowseDirection, BrowseResult, Reference, ReferenceDescription, ReferenceDirection,
+    ReferenceTypeId,
 };
+use crate::error::{OpcUaError, OpcUaResult};
+use crate::types::{AttributeId, DataValue, NodeId, StatusCode, Variant};
 
 /// Address space configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +141,7 @@ pub struct AddressSpace {
     inverse_references: DashMap<NodeId, Vec<Reference>>,
     /// Namespace array (index -> URI).
     namespaces: RwLock<Vec<String>>,
+    #[allow(dead_code)]
     /// Statistics.
     stats: NodeStoreStats,
     /// Atomic counters for stats.
@@ -156,7 +157,7 @@ pub struct AddressSpace {
 impl AddressSpace {
     /// Create a new address space.
     pub fn new(config: AddressSpaceConfig) -> Self {
-        let mut namespaces = vec![
+        let namespaces = vec![
             "http://opcfoundation.org/UA/".to_string(), // Namespace 0 (standard)
             config.default_namespace_uri.clone(),       // Namespace 1 (server)
         ];
@@ -186,11 +187,7 @@ impl AddressSpace {
     /// Initialize standard OPC UA nodes.
     fn init_standard_nodes(&self) {
         // Root folder
-        let root = ObjectNode::new(
-            NodeId::root_folder(),
-            QualifiedName::null("Root"),
-            "Root",
-        );
+        let root = ObjectNode::new(NodeId::root_folder(), QualifiedName::null("Root"), "Root");
         self.insert_node(root);
 
         // Objects folder
@@ -230,11 +227,8 @@ impl AddressSpace {
         ));
 
         // Server node (with event_notifier=1 to support event subscriptions)
-        let server = ObjectNode::new(
-            NodeId::server(),
-            QualifiedName::null("Server"),
-            "Server",
-        ).with_event_notifier(1);
+        let server = ObjectNode::new(NodeId::server(), QualifiedName::null("Server"), "Server")
+            .with_event_notifier(1);
         self.insert_node(server);
         self.add_reference(Reference::organizes(
             NodeId::objects_folder(),
@@ -356,15 +350,16 @@ impl AddressSpace {
         ));
 
         // Helper closure to add a data type node with HasSubtype from parent
-        let add_type = |store: &AddressSpace, id: u32, name: &str, parent_id: u32, is_abstract: bool| {
-            let mut node = DataTypeNode::new(NodeId::numeric(0, id), name, name);
-            node.is_abstract = is_abstract;
-            store.insert_node(node);
-            store.add_reference(Reference::has_subtype(
-                NodeId::numeric(0, parent_id),
-                NodeId::numeric(0, id),
-            ));
-        };
+        let add_type =
+            |store: &AddressSpace, id: u32, name: &str, parent_id: u32, is_abstract: bool| {
+                let mut node = DataTypeNode::new(NodeId::numeric(0, id), name, name);
+                node.is_abstract = is_abstract;
+                store.insert_node(node);
+                store.add_reference(Reference::has_subtype(
+                    NodeId::numeric(0, parent_id),
+                    NodeId::numeric(0, id),
+                ));
+            };
 
         // Direct children of BaseDataType (i=24)
         add_type(self, 1, "Boolean", 24, false);
@@ -378,13 +373,13 @@ impl AddressSpace {
         add_type(self, 19, "StatusCode", 24, false);
         add_type(self, 20, "QualifiedName", 24, false);
         add_type(self, 21, "LocalizedText", 24, false);
-        add_type(self, 22, "Structure", 24, true);   // abstract
-        add_type(self, 29, "Enumeration", 24, true);  // abstract
-        add_type(self, 26, "Number", 24, true);       // abstract
+        add_type(self, 22, "Structure", 24, true); // abstract
+        add_type(self, 29, "Enumeration", 24, true); // abstract
+        add_type(self, 26, "Number", 24, true); // abstract
 
         // Number subtypes
-        add_type(self, 27, "Integer", 26, true);   // abstract
-        add_type(self, 28, "UInteger", 26, true);  // abstract
+        add_type(self, 27, "Integer", 26, true); // abstract
+        add_type(self, 28, "UInteger", 26, true); // abstract
         add_type(self, 10, "Float", 26, false);
         add_type(self, 11, "Double", 26, false);
 
@@ -407,11 +402,9 @@ impl AddressSpace {
     /// so TRAP's EventFilter can discover and subscribe to events.
     fn init_event_type_hierarchy(&self) {
         // BaseEventType (i=2041) — abstract root of all event types
-        let base_event = ObjectTypeNode::new(
-            NodeId::numeric(0, 2041),
-            "BaseEventType",
-            "BaseEventType",
-        ).with_is_abstract(true);
+        let base_event =
+            ObjectTypeNode::new(NodeId::numeric(0, 2041), "BaseEventType", "BaseEventType")
+                .with_is_abstract(true);
         self.insert_node(base_event);
         self.add_reference(Reference::organizes(
             NodeId::types_folder(), // i=86
@@ -420,14 +413,14 @@ impl AddressSpace {
 
         // Standard event properties (HasProperty from BaseEventType)
         let event_properties: &[(u32, &str, u32)] = &[
-            (2042, "EventId", 15),      // ByteString
-            (2043, "EventType", 17),     // NodeId
-            (2044, "SourceNode", 17),    // NodeId
-            (2045, "SourceName", 12),    // String
-            (2046, "Time", 13),          // DateTime
-            (2047, "ReceiveTime", 13),   // DateTime
-            (2050, "Message", 21),       // LocalizedText
-            (2051, "Severity", 5),       // UInt16
+            (2042, "EventId", 15),     // ByteString
+            (2043, "EventType", 17),   // NodeId
+            (2044, "SourceNode", 17),  // NodeId
+            (2045, "SourceName", 12),  // String
+            (2046, "Time", 13),        // DateTime
+            (2047, "ReceiveTime", 13), // DateTime
+            (2050, "Message", 21),     // LocalizedText
+            (2051, "Severity", 5),     // UInt16
         ];
 
         for &(id, name, data_type_id) in event_properties {
@@ -454,11 +447,7 @@ impl AddressSpace {
         ];
 
         for &(id, name) in event_subtypes {
-            let event_type = ObjectTypeNode::new(
-                NodeId::numeric(0, id),
-                name,
-                name,
-            );
+            let event_type = ObjectTypeNode::new(NodeId::numeric(0, id), name, name);
             self.insert_node(event_type);
             self.add_reference(Reference::has_subtype(
                 NodeId::numeric(0, 2041), // BaseEventType
@@ -534,7 +523,8 @@ impl AddressSpace {
             return false;
         }
 
-        self.nodes.insert(node_id, Arc::new(parking_lot::RwLock::new(node)));
+        self.nodes
+            .insert(node_id, Arc::new(parking_lot::RwLock::new(node)));
         true
     }
 
@@ -611,13 +601,8 @@ impl AddressSpace {
         parent_id: &NodeId,
     ) -> OpcUaResult<NodeId> {
         let browse_name = browse_name.into();
-        let variable = VariableNode::new(
-            node_id.clone(),
-            browse_name,
-            display_name,
-            data_type,
-            value,
-        );
+        let variable =
+            VariableNode::new(node_id.clone(), browse_name, display_name, data_type, value);
 
         if !self.insert_node(variable) {
             return Err(OpcUaError::Server(format!(
@@ -643,14 +628,9 @@ impl AddressSpace {
         parent_id: &NodeId,
     ) -> OpcUaResult<NodeId> {
         let browse_name = browse_name.into();
-        let variable = VariableNode::new(
-            node_id.clone(),
-            browse_name,
-            display_name,
-            data_type,
-            value,
-        )
-        .writable();
+        let variable =
+            VariableNode::new(node_id.clone(), browse_name, display_name, data_type, value)
+                .writable();
 
         if !self.insert_node(variable) {
             return Err(OpcUaError::Server(format!(
@@ -705,7 +685,12 @@ impl AddressSpace {
     }
 
     /// Remove a reference.
-    pub fn remove_reference(&self, source: &NodeId, reference_type: ReferenceTypeId, target: &NodeId) -> bool {
+    pub fn remove_reference(
+        &self,
+        source: &NodeId,
+        reference_type: ReferenceTypeId,
+        target: &NodeId,
+    ) -> bool {
         let mut removed = false;
 
         // Remove forward reference
@@ -812,14 +797,18 @@ impl AddressSpace {
             let returned: Vec<_> = all_descriptions.drain(..max_results).collect();
             let remaining = all_descriptions; // remaining after drain
 
-            let cp_id = self.next_browse_continuation_id.fetch_add(1, Ordering::Relaxed);
+            let cp_id = self
+                .next_browse_continuation_id
+                .fetch_add(1, Ordering::Relaxed);
             let continuation = BrowseContinuation {
                 id: cp_id,
                 remaining_references: remaining,
                 created_at: Utc::now(),
             };
 
-            self.browse_continuations.write().insert(cp_id, continuation);
+            self.browse_continuations
+                .write()
+                .insert(cp_id, continuation);
 
             // Encode continuation point ID as 8-byte LE ByteString
             let cp_bytes = cp_id.to_le_bytes().to_vec();
@@ -844,10 +833,14 @@ impl AddressSpace {
             return BrowseResult::default();
         }
         let cp_id = u64::from_le_bytes([
-            continuation_point[0], continuation_point[1],
-            continuation_point[2], continuation_point[3],
-            continuation_point[4], continuation_point[5],
-            continuation_point[6], continuation_point[7],
+            continuation_point[0],
+            continuation_point[1],
+            continuation_point[2],
+            continuation_point[3],
+            continuation_point[4],
+            continuation_point[5],
+            continuation_point[6],
+            continuation_point[7],
         ]);
 
         // If releasing, just remove and return empty
@@ -863,7 +856,11 @@ impl AddressSpace {
         };
 
         // Check expiry (5 minutes)
-        if Utc::now().signed_duration_since(continuation.created_at).num_seconds() > 300 {
+        if Utc::now()
+            .signed_duration_since(continuation.created_at)
+            .num_seconds()
+            > 300
+        {
             return BrowseResult::default();
         }
 
@@ -873,13 +870,17 @@ impl AddressSpace {
             let returned: Vec<_> = continuation.remaining_references.drain(..max).collect();
             let remaining = continuation.remaining_references;
 
-            let new_cp_id = self.next_browse_continuation_id.fetch_add(1, Ordering::Relaxed);
+            let new_cp_id = self
+                .next_browse_continuation_id
+                .fetch_add(1, Ordering::Relaxed);
             let new_continuation = BrowseContinuation {
                 id: new_cp_id,
                 remaining_references: remaining,
                 created_at: Utc::now(),
             };
-            self.browse_continuations.write().insert(new_cp_id, new_continuation);
+            self.browse_continuations
+                .write()
+                .insert(new_cp_id, new_continuation);
             let cp_bytes = new_cp_id.to_le_bytes().to_vec();
             BrowseResult::with_continuation(returned, cp_bytes)
         } else {
@@ -891,10 +892,14 @@ impl AddressSpace {
     pub fn release_continuation_point(&self, continuation_point: &[u8]) {
         if continuation_point.len() == 8 {
             let cp_id = u64::from_le_bytes([
-                continuation_point[0], continuation_point[1],
-                continuation_point[2], continuation_point[3],
-                continuation_point[4], continuation_point[5],
-                continuation_point[6], continuation_point[7],
+                continuation_point[0],
+                continuation_point[1],
+                continuation_point[2],
+                continuation_point[3],
+                continuation_point[4],
+                continuation_point[5],
+                continuation_point[6],
+                continuation_point[7],
             ]);
             self.browse_continuations.write().remove(&cp_id);
         }
@@ -914,10 +919,10 @@ impl AddressSpace {
             return matches!(
                 candidate,
                 ReferenceTypeId::HasComponent
-                | ReferenceTypeId::HasProperty
-                | ReferenceTypeId::HasSubtype
-                | ReferenceTypeId::HasOrderedComponent
-                | ReferenceTypeId::Aggregates
+                    | ReferenceTypeId::HasProperty
+                    | ReferenceTypeId::HasSubtype
+                    | ReferenceTypeId::HasOrderedComponent
+                    | ReferenceTypeId::Aggregates
             );
         }
         // NonHierarchicalReferences subtypes
@@ -925,11 +930,11 @@ impl AddressSpace {
             return matches!(
                 candidate,
                 ReferenceTypeId::HasTypeDefinition
-                | ReferenceTypeId::HasEncoding
-                | ReferenceTypeId::HasDescription
-                | ReferenceTypeId::HasModellingRule
-                | ReferenceTypeId::GeneratesEvent
-                | ReferenceTypeId::AlwaysGeneratesEvent
+                    | ReferenceTypeId::HasEncoding
+                    | ReferenceTypeId::HasDescription
+                    | ReferenceTypeId::HasModellingRule
+                    | ReferenceTypeId::GeneratesEvent
+                    | ReferenceTypeId::AlwaysGeneratesEvent
             );
         }
         false
@@ -963,7 +968,7 @@ impl AddressSpace {
 
         let mut current_nodes = vec![starting_node.clone()];
 
-        for (idx, element) in elements.iter().enumerate() {
+        for (_idx, element) in elements.iter().enumerate() {
             let mut next_nodes = Vec::new();
 
             for current_node in &current_nodes {
@@ -978,11 +983,14 @@ impl AddressSpace {
                 for reference in &refs {
                     // Filter by reference type (if specified, i.e., not null node i=0)
                     if reference.reference_type_id.node_id() != NodeId::numeric(0, 0) {
-                        let ref_type_filter = ReferenceTypeId::from_node_id(&element.reference_type_id);
+                        let ref_type_filter =
+                            ReferenceTypeId::from_node_id(&element.reference_type_id);
                         if let Some(filter) = ref_type_filter {
                             if reference.reference_type_id != filter {
                                 if element.include_subtypes {
-                                    if !self.is_reference_subtype(&reference.reference_type_id, &filter) {
+                                    if !self
+                                        .is_reference_subtype(&reference.reference_type_id, &filter)
+                                    {
                                         continue;
                                     }
                                 } else {
@@ -1000,7 +1008,8 @@ impl AddressSpace {
                         // Match by name (and namespace if specified)
                         if browse_name.name == element.target_name.name {
                             let ns_match = element.target_name.namespace_index == 0
-                                || element.target_name.namespace_index == browse_name.namespace_index;
+                                || element.target_name.namespace_index
+                                    == browse_name.namespace_index;
                             if ns_match {
                                 next_nodes.push(reference.target_node_id.clone());
                             }
@@ -1021,10 +1030,13 @@ impl AddressSpace {
 
         BrowsePathResult {
             status: StatusCode::GOOD,
-            targets: current_nodes.into_iter().map(|id| BrowsePathTarget {
-                target_id: id,
-                remaining_path_index: 0,
-            }).collect(),
+            targets: current_nodes
+                .into_iter()
+                .map(|id| BrowsePathTarget {
+                    target_id: id,
+                    remaining_path_index: 0,
+                })
+                .collect(),
         }
     }
 
@@ -1051,7 +1063,12 @@ impl AddressSpace {
     }
 
     /// Write an attribute to a node.
-    pub fn write(&self, node_id: &NodeId, attribute_id: AttributeId, value: DataValue) -> StatusCode {
+    pub fn write(
+        &self,
+        node_id: &NodeId,
+        attribute_id: AttributeId,
+        value: DataValue,
+    ) -> StatusCode {
         self.write_counter.fetch_add(1, Ordering::Relaxed);
 
         match self.get_node(node_id) {
@@ -1074,10 +1091,7 @@ impl AddressSpace {
 
     /// Read multiple values.
     pub fn read_values(&self, node_ids: &[NodeId]) -> Vec<DataValue> {
-        node_ids
-            .iter()
-            .map(|id| self.read_value(id))
-            .collect()
+        node_ids.iter().map(|id| self.read_value(id)).collect()
     }
 
     /// Write multiple values.
@@ -1160,7 +1174,8 @@ mod tests {
         assert!(address_space.contains_node(&folder_id));
 
         // Check reference
-        let refs = address_space.get_references(&NodeId::objects_folder(), BrowseDirection::Forward);
+        let refs =
+            address_space.get_references(&NodeId::objects_folder(), BrowseDirection::Forward);
         assert!(refs.iter().any(|r| r.target_node_id == folder_id));
     }
 
@@ -1248,14 +1263,8 @@ mod tests {
         }
 
         // Browse the folder
-        let result = address_space.browse(
-            &folder_id,
-            BrowseDirection::Forward,
-            None,
-            false,
-            None,
-            100,
-        );
+        let result =
+            address_space.browse(&folder_id, BrowseDirection::Forward, None, false, None, 100);
 
         assert_eq!(result.len(), 5);
     }

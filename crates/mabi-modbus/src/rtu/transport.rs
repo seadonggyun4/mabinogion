@@ -199,11 +199,7 @@ impl ChannelTransport {
     }
 
     /// Create from existing channels.
-    pub fn new(
-        tx: mpsc::Sender<Bytes>,
-        rx: mpsc::Receiver<Bytes>,
-        config: ChannelConfig,
-    ) -> Self {
+    pub fn new(tx: mpsc::Sender<Bytes>, rx: mpsc::Receiver<Bytes>, config: ChannelConfig) -> Self {
         Self {
             rx,
             tx,
@@ -312,7 +308,7 @@ impl<T: RtuTransport> TransportIo<T> {
 
 impl<T: RtuTransport + Unpin> AsyncRead for TransportIo<T> {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {

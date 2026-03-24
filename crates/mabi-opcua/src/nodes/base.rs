@@ -5,10 +5,9 @@
 use std::fmt;
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{NodeId, AttributeId, WriteMask, Variant, DataValue, StatusCode};
+use crate::types::{AttributeId, DataValue, NodeId, StatusCode, Variant, WriteMask};
 
 /// Node class enumeration matching OPC UA specification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -247,11 +246,19 @@ pub trait Node: Send + Sync {
         match attribute_id {
             AttributeId::NodeId => DataValue::new(Variant::node_id(self.node_id().clone())),
             AttributeId::NodeClass => DataValue::new(Variant::uint32(self.node_class() as u32)),
-            AttributeId::BrowseName => DataValue::new(Variant::string(self.browse_name().to_string())),
-            AttributeId::DisplayName => DataValue::new(Variant::string(self.display_name().to_string())),
-            AttributeId::Description => DataValue::new(Variant::string(self.description().to_string())),
+            AttributeId::BrowseName => {
+                DataValue::new(Variant::string(self.browse_name().to_string()))
+            }
+            AttributeId::DisplayName => {
+                DataValue::new(Variant::string(self.display_name().to_string()))
+            }
+            AttributeId::Description => {
+                DataValue::new(Variant::string(self.description().to_string()))
+            }
             AttributeId::WriteMask => DataValue::new(Variant::uint32(self.write_mask().raw())),
-            AttributeId::UserWriteMask => DataValue::new(Variant::uint32(self.user_write_mask().raw())),
+            AttributeId::UserWriteMask => {
+                DataValue::new(Variant::uint32(self.user_write_mask().raw()))
+            }
             _ => DataValue::bad(StatusCode::BAD_ATTRIBUTE_ID_INVALID),
         }
     }

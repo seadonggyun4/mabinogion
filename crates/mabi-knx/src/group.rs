@@ -10,7 +10,7 @@ use parking_lot::RwLock;
 use tokio::sync::broadcast;
 
 use crate::address::GroupAddress;
-use crate::dpt::{BoxedDptCodec, DptCodec, DptId, DptRegistry, DptValue};
+use crate::dpt::{BoxedDptCodec, DptId, DptRegistry, DptValue};
 use crate::error::{KnxError, KnxResult};
 
 // ============================================================================
@@ -329,7 +329,9 @@ impl GroupObjectTable {
     pub fn remove(&self, address: &GroupAddress) -> Option<Arc<GroupObject>> {
         let removed = self.objects.remove(address).map(|(_, v)| v);
         if removed.is_some() {
-            let _ = self.event_tx.send(GroupEvent::ObjectRemoved { address: *address });
+            let _ = self
+                .event_tx
+                .send(GroupEvent::ObjectRemoved { address: *address });
         }
         removed
     }
@@ -386,7 +388,12 @@ impl GroupObjectTable {
     }
 
     /// Write value to group object.
-    pub fn write(&self, address: &GroupAddress, data: &[u8], source: Option<String>) -> KnxResult<()> {
+    pub fn write(
+        &self,
+        address: &GroupAddress,
+        data: &[u8],
+        source: Option<String>,
+    ) -> KnxResult<()> {
         let obj = self
             .get(address)
             .ok_or_else(|| KnxError::GroupObjectNotFound(address.to_string()))?;

@@ -4,20 +4,20 @@
 //! and events without polling.
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use tokio::sync::{broadcast, mpsc};
-use tokio::time::interval;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info};
 
-use crate::types::{NodeId, DataValue};
 use super::event::{EventFieldList, EventFilter};
-use super::monitored_item::{MonitoredItem, MonitoredItemConfig, MonitoredItemKind, MonitoredItemNotification};
+use super::monitored_item::{
+    MonitoredItem, MonitoredItemConfig, MonitoredItemKind, MonitoredItemNotification,
+};
+use crate::types::{DataValue, NodeId};
 
 /// Subscription configuration.
 #[derive(Debug, Clone)]
@@ -104,6 +104,7 @@ pub struct Subscription {
     pending_event_notifications: Vec<EventFieldList>,
     /// Last publish time.
     last_publish_time: DateTime<Utc>,
+    #[allow(dead_code)]
     /// Creation time.
     created_at: DateTime<Utc>,
 }
@@ -147,7 +148,12 @@ impl Subscription {
     }
 
     /// Modify configuration.
-    pub fn modify(&mut self, publishing_interval_ms: f64, lifetime_count: u32, max_keep_alive_count: u32) {
+    pub fn modify(
+        &mut self,
+        publishing_interval_ms: f64,
+        lifetime_count: u32,
+        max_keep_alive_count: u32,
+    ) {
         self.config.publishing_interval_ms = publishing_interval_ms;
         self.config.lifetime_count = lifetime_count;
         self.config.max_keep_alive_count = max_keep_alive_count;
@@ -252,13 +258,15 @@ impl Subscription {
         let event_notifications: Vec<_> = if event_budget == 0 {
             Vec::new()
         } else if self.pending_event_notifications.len() > event_budget {
-            self.pending_event_notifications.drain(..event_budget).collect()
+            self.pending_event_notifications
+                .drain(..event_budget)
+                .collect()
         } else {
             std::mem::take(&mut self.pending_event_notifications)
         };
 
-        let more = !self.pending_notifications.is_empty()
-            || !self.pending_event_notifications.is_empty();
+        let more =
+            !self.pending_notifications.is_empty() || !self.pending_event_notifications.is_empty();
 
         let message = NotificationMessage {
             subscription_id: self.config.subscription_id,
@@ -293,9 +301,10 @@ impl Subscription {
             .values()
             .filter_map(|item| {
                 if item.config().kind == MonitoredItemKind::Event {
-                    item.config().event_filter.as_ref().map(|filter| {
-                        (item.client_handle(), filter.clone())
-                    })
+                    item.config()
+                        .event_filter
+                        .as_ref()
+                        .map(|filter| (item.client_handle(), filter.clone()))
                 } else {
                     None
                 }
@@ -404,7 +413,10 @@ impl SubscriptionManager {
     }
 
     /// Create with legacy parameters.
-    pub fn with_params(max_subscriptions: usize, max_monitored_items_per_subscription: usize) -> Self {
+    pub fn with_params(
+        max_subscriptions: usize,
+        max_monitored_items_per_subscription: usize,
+    ) -> Self {
         Self::with_config(SubscriptionManagerConfig {
             max_subscriptions,
             max_monitored_items_per_subscription,
@@ -434,11 +446,16 @@ impl SubscriptionManager {
 
     /// Get a subscription by ID.
     pub fn get(&self, subscription_id: u32) -> Option<SubscriptionConfig> {
-        self.subscriptions.get(&subscription_id).map(|sub| sub.read().config().clone())
+        self.subscriptions
+            .get(&subscription_id)
+            .map(|sub| sub.read().config().clone())
     }
 
     /// Create a subscription.
-    pub fn create_subscription(&self, mut config: SubscriptionConfig) -> Result<u32, SubscriptionError> {
+    pub fn create_subscription(
+        &self,
+        mut config: SubscriptionConfig,
+    ) -> Result<u32, SubscriptionError> {
         if self.subscriptions.len() >= self.config.max_subscriptions {
             return Err(SubscriptionError::MaxSubscriptionsReached);
         }
@@ -450,7 +467,9 @@ impl SubscriptionManager {
         self.subscriptions.insert(id, RwLock::new(subscription));
 
         info!(subscription_id = id, "Subscription created");
-        let _ = self.event_tx.send(SubscriptionEvent::Created { subscription_id: id });
+        let _ = self.event_tx.send(SubscriptionEvent::Created {
+            subscription_id: id,
+        });
 
         Ok(id)
     }
@@ -459,7 +478,9 @@ impl SubscriptionManager {
     pub fn delete_subscription(&self, subscription_id: u32) -> bool {
         if let Some(_) = self.subscriptions.remove(&subscription_id) {
             info!(subscription_id, "Subscription deleted");
-            let _ = self.event_tx.send(SubscriptionEvent::Deleted { subscription_id });
+            let _ = self
+                .event_tx
+                .send(SubscriptionEvent::Deleted { subscription_id });
             true
         } else {
             false
@@ -474,14 +495,17 @@ impl SubscriptionManager {
         lifetime_count: u32,
         max_keep_alive_count: u32,
     ) -> Result<(), SubscriptionError> {
-        let subscription = self.subscriptions
+        let subscription = self
+            .subscriptions
             .get(&subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
         let mut sub = subscription.write();
         sub.modify(publishing_interval_ms, lifetime_count, max_keep_alive_count);
 
-        let _ = self.event_tx.send(SubscriptionEvent::Modified { subscription_id });
+        let _ = self
+            .event_tx
+            .send(SubscriptionEvent::Modified { subscription_id });
         Ok(())
     }
 
@@ -491,7 +515,8 @@ impl SubscriptionManager {
         subscription_id: u32,
         config: MonitoredItemConfig,
     ) -> Result<u32, SubscriptionError> {
-        let subscription = self.subscriptions
+        let subscription = self
+            .subscriptions
             .get(&subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
@@ -516,12 +541,14 @@ impl SubscriptionManager {
         queue_size: u32,
         discard_oldest: bool,
     ) -> Result<(), SubscriptionError> {
-        let subscription = self.subscriptions
+        let subscription = self
+            .subscriptions
             .get(&subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
         let mut sub = subscription.write();
-        let item = sub.get_monitored_item_mut(item_id)
+        let item = sub
+            .get_monitored_item_mut(item_id)
             .ok_or(SubscriptionError::MonitoredItemNotFound)?;
 
         item.modify(sampling_interval_ms, queue_size, discard_oldest, None);
@@ -535,7 +562,8 @@ impl SubscriptionManager {
         subscription_id: u32,
         item_id: u32,
     ) -> Result<bool, SubscriptionError> {
-        let subscription = self.subscriptions
+        let subscription = self
+            .subscriptions
             .get(&subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
@@ -570,7 +598,9 @@ impl SubscriptionManager {
     /// Process all subscriptions (called periodically).
     pub async fn process_all(&self) {
         // Collect messages to send (avoid holding lock across await)
-        let messages_to_send: Vec<NotificationMessage> = self.subscriptions.iter()
+        let messages_to_send: Vec<NotificationMessage> = self
+            .subscriptions
+            .iter()
             .filter_map(|entry| {
                 let mut sub = entry.value().write();
 
@@ -578,8 +608,9 @@ impl SubscriptionManager {
                 sub.tick();
 
                 // Process notifications (data change + events)
-                sub.process_publish()
-                    .filter(|msg| !msg.notifications.is_empty() || !msg.event_notifications.is_empty())
+                sub.process_publish().filter(|msg| {
+                    !msg.notifications.is_empty() || !msg.event_notifications.is_empty()
+                })
             })
             .collect();
 
@@ -590,7 +621,8 @@ impl SubscriptionManager {
         }
 
         // Cleanup closed subscriptions
-        let to_delete: Vec<u32> = self.subscriptions
+        let to_delete: Vec<u32> = self
+            .subscriptions
             .iter()
             .filter(|e| e.value().read().should_delete())
             .map(|e| *e.key())
@@ -667,7 +699,9 @@ mod tests {
     fn test_create_subscription() {
         let manager = SubscriptionManager::default();
 
-        let id = manager.create_subscription(SubscriptionConfig::default()).unwrap();
+        let id = manager
+            .create_subscription(SubscriptionConfig::default())
+            .unwrap();
         assert!(id > 0);
         assert_eq!(manager.subscription_count(), 1);
     }
@@ -676,7 +710,9 @@ mod tests {
     fn test_delete_subscription() {
         let manager = SubscriptionManager::default();
 
-        let id = manager.create_subscription(SubscriptionConfig::default()).unwrap();
+        let id = manager
+            .create_subscription(SubscriptionConfig::default())
+            .unwrap();
         assert!(manager.delete_subscription(id));
         assert_eq!(manager.subscription_count(), 0);
     }
@@ -685,7 +721,9 @@ mod tests {
     fn test_create_monitored_item() {
         let manager = SubscriptionManager::default();
 
-        let sub_id = manager.create_subscription(SubscriptionConfig::default()).unwrap();
+        let sub_id = manager
+            .create_subscription(SubscriptionConfig::default())
+            .unwrap();
 
         let item_config = MonitoredItemConfig {
             node_id: NodeId::numeric(2, 1001),
@@ -705,11 +743,18 @@ mod tests {
     fn test_max_subscriptions() {
         let manager = SubscriptionManager::with_params(2, 100);
 
-        manager.create_subscription(SubscriptionConfig::default()).unwrap();
-        manager.create_subscription(SubscriptionConfig::default()).unwrap();
+        manager
+            .create_subscription(SubscriptionConfig::default())
+            .unwrap();
+        manager
+            .create_subscription(SubscriptionConfig::default())
+            .unwrap();
 
         let result = manager.create_subscription(SubscriptionConfig::default());
-        assert!(matches!(result, Err(SubscriptionError::MaxSubscriptionsReached)));
+        assert!(matches!(
+            result,
+            Err(SubscriptionError::MaxSubscriptionsReached)
+        ));
     }
 
     #[test]

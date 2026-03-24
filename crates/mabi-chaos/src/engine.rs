@@ -10,8 +10,8 @@ use tokio::sync::broadcast;
 use crate::context::FaultContext;
 use crate::error::{ChaosError, ChaosResult};
 use crate::fault::{BoxedFault, Fault, FaultBehavior, FaultStatistics};
-use crate::registry::{FaultFilter, FaultRegistry};
-use crate::scheduler::{ChaosEvent, ChaosSchedule, ChaosScheduler, ChaosType};
+use crate::registry::FaultRegistry;
+use crate::scheduler::{ChaosEvent, ChaosSchedule, ChaosScheduler};
 
 // =============================================================================
 // Engine State
@@ -246,9 +246,9 @@ impl ChaosEngine {
     pub fn register(&self, id: impl Into<String>, fault: BoxedFault) -> ChaosResult<()> {
         let id = id.into();
         self.registry.register(&id, fault)?;
-        let _ = self.event_tx.send(EngineEvent::FaultRegistered {
-            fault_id: id,
-        });
+        let _ = self
+            .event_tx
+            .send(EngineEvent::FaultRegistered { fault_id: id });
         Ok(())
     }
 
@@ -312,7 +312,9 @@ impl ChaosEngine {
         if let Some(ref mut scheduler) = *self.scheduler.write() {
             let events = scheduler.tick();
             for event in &events {
-                let _ = self.event_tx.send(EngineEvent::ScheduleEvent(event.clone()));
+                let _ = self
+                    .event_tx
+                    .send(EngineEvent::ScheduleEvent(event.clone()));
             }
             events
         } else {
@@ -422,7 +424,9 @@ impl ChaosEngine {
             .ids()
             .into_iter()
             .filter_map(|id| {
-                self.registry.get(&id).map(|entry| (id, entry.fault.statistics()))
+                self.registry
+                    .get(&id)
+                    .map(|entry| (id, entry.fault.statistics()))
             })
             .collect()
     }
@@ -452,11 +456,9 @@ fn merge_behaviors(a: FaultBehavior, b: FaultBehavior) -> FaultBehavior {
         (_, ReturnError { .. }) => b,
 
         // Delay - take longer delay
-        (Delay { duration_ms: d1 }, Delay { duration_ms: d2 }) => {
-            Delay {
-                duration_ms: (*d1).max(*d2),
-            }
-        }
+        (Delay { duration_ms: d1 }, Delay { duration_ms: d2 }) => Delay {
+            duration_ms: (*d1).max(*d2),
+        },
         (Delay { .. }, _) => a,
         (_, Delay { .. }) => b,
 
@@ -600,7 +602,7 @@ mod tests {
             Protocol::ModbusTcp,
         );
 
-        let behavior = engine.process(&mut ctx).await.unwrap();
+        let _behavior = engine.process(&mut ctx).await.unwrap();
         assert!(ctx.was_affected());
     }
 

@@ -11,7 +11,6 @@
 use std::any::Any;
 
 use async_trait::async_trait;
-use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::context::FaultContext;
@@ -257,7 +256,6 @@ impl PropertyFaultConfig {
 pub struct PropertyFault {
     base: BaseFault,
     config: PropertyFaultConfig,
-    rng: StdRng,
     /// Cached stale value for StaleValue fault.
     stale_cache: Option<Vec<u8>>,
     /// Number of reads since last cache refresh.
@@ -267,17 +265,15 @@ pub struct PropertyFault {
 impl PropertyFault {
     pub fn new(id: impl Into<String>, config: PropertyFaultConfig) -> Self {
         let id = id.into();
-        let metadata =
-            FaultMetadata::new(&id, "BACnet Property Fault", FaultCategory::Protocol)
-                .with_description("Corrupts BACnet property access responses")
-                .with_severity(FaultSeverity::Medium)
-                .with_tag("bacnet")
-                .with_tag("property");
+        let metadata = FaultMetadata::new(&id, "BACnet Property Fault", FaultCategory::Protocol)
+            .with_description("Corrupts BACnet property access responses")
+            .with_severity(FaultSeverity::Medium)
+            .with_tag("bacnet")
+            .with_tag("property");
 
         Self {
             base: BaseFault::new(metadata),
             config,
-            rng: StdRng::from_entropy(),
             stale_cache: None,
             stale_read_count: 0,
         }
@@ -471,7 +467,10 @@ impl Fault for PropertyFault {
             return Ok(FaultBehavior::Continue);
         }
 
-        ctx.set_metadata("bacnet_property_fault", &format!("{:?}", self.config.fault_type));
+        ctx.set_metadata(
+            "bacnet_property_fault",
+            &format!("{:?}", self.config.fault_type),
+        );
         ctx.record_applied_fault(self.id(), "property_fault");
 
         tracing::debug!(
@@ -682,7 +681,7 @@ mod tests {
         let config = PropertyFaultConfig::wrong_data_type(4).for_properties(vec![85, 111]);
         let fault = PropertyFault::new("test", config);
 
-        assert!(fault.matches_property(85));  // PresentValue
+        assert!(fault.matches_property(85)); // PresentValue
         assert!(fault.matches_property(111)); // StatusFlags
         assert!(!fault.matches_property(77)); // ObjectName
     }
@@ -692,8 +691,8 @@ mod tests {
         let config = PropertyFaultConfig::wrong_data_type(4).for_object_types(vec![0, 1]);
         let fault = PropertyFault::new("test", config);
 
-        assert!(fault.matches_object_type(0));  // AnalogInput
-        assert!(fault.matches_object_type(1));  // AnalogOutput
+        assert!(fault.matches_object_type(0)); // AnalogInput
+        assert!(fault.matches_object_type(1)); // AnalogOutput
         assert!(!fault.matches_object_type(3)); // BinaryInput
     }
 
@@ -704,7 +703,9 @@ mod tests {
 
         // Simulate a response with an application-tagged Real value at offset 4
         // Application tag 4 (Real), length 4 = 0x44
-        let mut data = vec![0x0E, 0x09, 0x55, 0x1E, 0x44, 0x42, 0x34, 0x00, 0x00, 0x1F, 0x0F];
+        let mut data = vec![
+            0x0E, 0x09, 0x55, 0x1E, 0x44, 0x42, 0x34, 0x00, 0x00, 0x1F, 0x0F,
+        ];
         fault.corrupt_property_data(&mut data);
         // The tag at offset 4 should now be 2 (Unsigned) instead of 4 (Real)
         assert_eq!((data[4] >> 4) & 0x0F, 2);

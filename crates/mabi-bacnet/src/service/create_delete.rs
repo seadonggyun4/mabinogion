@@ -57,8 +57,15 @@ impl ObjectFactory {
     }
 
     /// Create an object of the given type.
-    pub fn create(&self, object_type: ObjectType, instance: u32, name: String) -> Option<ArcObject> {
-        self.constructors.get(&object_type).map(|ctor| ctor(instance, name))
+    pub fn create(
+        &self,
+        object_type: ObjectType,
+        instance: u32,
+        name: String,
+    ) -> Option<ArcObject> {
+        self.constructors
+            .get(&object_type)
+            .map(|ctor| ctor(instance, name))
     }
 
     /// List all supported object types.
@@ -79,11 +86,11 @@ impl Default for ObjectFactory {
 pub fn default_object_factory() -> ObjectFactory {
     use crate::object::event_enrollment::{EventEnrollment, NotificationClass};
     use crate::object::file::FileObject;
+    use crate::object::schedule::{Calendar, Schedule};
     use crate::object::standard::{
         AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
         MultiStateInput, MultiStateOutput, MultiStateValue,
     };
-    use crate::object::schedule::{Calendar, Schedule};
     use crate::object::trend_log::TrendLog;
 
     let mut factory = ObjectFactory::new();
@@ -177,7 +184,9 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
     if !decoder.is_opening_tag(0) {
         return Err("Expected opening tag [0] for object specifier");
     }
-    decoder.read_u8().map_err(|_| "Failed to skip opening tag")?;
+    decoder
+        .read_u8()
+        .map_err(|_| "Failed to skip opening tag")?;
 
     // Peek to determine which choice: context tag [0] = objectType, context tag [1] = objectIdentifier
     let peek = decoder.peek().ok_or("Unexpected end of data")?;
@@ -185,15 +194,22 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
 
     let (object_type, object_instance) = if context_tag == 0 {
         // [0] objectType — just the type enumerated value
-        let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode type tag")?;
-        let type_val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode type value")?;
-        let obj_type = ObjectType::from_u16(type_val as u16)
-            .ok_or("Unsupported object type")?;
+        let (_, _, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode type tag")?;
+        let type_val = decoder
+            .decode_unsigned(len)
+            .map_err(|_| "Failed to decode type value")?;
+        let obj_type = ObjectType::from_u16(type_val as u16).ok_or("Unsupported object type")?;
         (obj_type, None)
     } else if context_tag == 1 {
         // [1] objectIdentifier — full ObjectId
-        let (_, _, _len) = decoder.decode_tag_info().map_err(|_| "Failed to decode id tag")?;
-        let obj_id = decoder.decode_object_identifier().map_err(|_| "Failed to decode object identifier")?;
+        let (_, _, _len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode id tag")?;
+        let obj_id = decoder
+            .decode_object_identifier()
+            .map_err(|_| "Failed to decode object identifier")?;
         (obj_id.object_type, Some(obj_id.instance))
     } else {
         return Err("Invalid object specifier tag");
@@ -203,19 +219,27 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
     if !decoder.is_closing_tag(0) {
         return Err("Expected closing tag [0]");
     }
-    decoder.read_u8().map_err(|_| "Failed to skip closing tag")?;
+    decoder
+        .read_u8()
+        .map_err(|_| "Failed to skip closing tag")?;
 
     // [1] ListOfInitialValues (optional)
     let mut object_name = None;
     let mut initial_values = Vec::new();
 
     if !decoder.is_empty() && decoder.is_opening_tag(1) {
-        decoder.read_u8().map_err(|_| "Failed to skip opening tag [1]")?;
+        decoder
+            .read_u8()
+            .map_err(|_| "Failed to skip opening tag [1]")?;
 
         while !decoder.is_empty() && !decoder.is_closing_tag(1) {
             // propertyIdentifier [0]
-            let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode property tag")?;
-            let prop_val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode property id")?;
+            let (_, _, len) = decoder
+                .decode_tag_info()
+                .map_err(|_| "Failed to decode property tag")?;
+            let prop_val = decoder
+                .decode_unsigned(len)
+                .map_err(|_| "Failed to decode property id")?;
             let property_id = match PropertyId::from_u32(prop_val) {
                 Some(id) => id,
                 None => {
@@ -244,7 +268,9 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
                 let next_tag = (peek >> 4) & 0x0F;
                 if next_tag == 1 && (peek & 0x08) != 0 {
                     // Context tag [1] — array index, skip
-                    let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode array index tag")?;
+                    let (_, _, len) = decoder
+                        .decode_tag_info()
+                        .map_err(|_| "Failed to decode array index tag")?;
                     let _ = decoder.decode_unsigned(len);
                 }
             }
@@ -253,7 +279,9 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
             if !decoder.is_opening_tag(2) {
                 return Err("Expected opening tag [2] for property value");
             }
-            decoder.read_u8().map_err(|_| "Failed to skip opening tag [2]")?;
+            decoder
+                .read_u8()
+                .map_err(|_| "Failed to skip opening tag [2]")?;
 
             // Decode the value based on application tag
             let value = decode_application_value(&mut decoder)?;
@@ -261,7 +289,9 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
             if !decoder.is_closing_tag(2) {
                 return Err("Expected closing tag [2] for property value");
             }
-            decoder.read_u8().map_err(|_| "Failed to skip closing tag [2]")?;
+            decoder
+                .read_u8()
+                .map_err(|_| "Failed to skip closing tag [2]")?;
 
             // Extract object name if provided
             if property_id == PropertyId::ObjectName {
@@ -276,7 +306,9 @@ pub fn decode_create_object_request(data: &[u8]) -> Result<CreateObjectRequest, 
         if !decoder.is_closing_tag(1) {
             return Err("Expected closing tag [1]");
         }
-        decoder.read_u8().map_err(|_| "Failed to skip closing tag [1]")?;
+        decoder
+            .read_u8()
+            .map_err(|_| "Failed to skip closing tag [1]")?;
     }
 
     Ok(CreateObjectRequest {
@@ -318,11 +350,15 @@ fn skip_to_closing_tag(decoder: &mut ApduDecoder<'_>, tag: u8) -> Result<(), &'s
 
 /// Decode a single application-tagged value.
 fn decode_application_value(decoder: &mut ApduDecoder<'_>) -> Result<BACnetValue, &'static str> {
-    let (tag_number, is_context, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode value tag")?;
+    let (tag_number, is_context, len) = decoder
+        .decode_tag_info()
+        .map_err(|_| "Failed to decode value tag")?;
 
     if is_context {
         // For context-tagged values in initial value lists, treat as raw unsigned
-        let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode context value")?;
+        let val = decoder
+            .decode_unsigned(len)
+            .map_err(|_| "Failed to decode context value")?;
         return Ok(BACnetValue::Unsigned(val));
     }
 
@@ -337,12 +373,16 @@ fn decode_application_value(decoder: &mut ApduDecoder<'_>) -> Result<BACnetValue
         }
         2 => {
             // Unsigned integer
-            let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode unsigned")?;
+            let val = decoder
+                .decode_unsigned(len)
+                .map_err(|_| "Failed to decode unsigned")?;
             Ok(BACnetValue::Unsigned(val))
         }
         3 => {
             // Signed integer
-            let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode signed")?;
+            let val = decoder
+                .decode_unsigned(len)
+                .map_err(|_| "Failed to decode signed")?;
             Ok(BACnetValue::Signed(val as i32))
         }
         4 => {
@@ -350,7 +390,9 @@ fn decode_application_value(decoder: &mut ApduDecoder<'_>) -> Result<BACnetValue
             if len != 4 {
                 return Err("Invalid real length");
             }
-            let bytes = decoder.read_bytes(4).map_err(|_| "Failed to read float bytes")?;
+            let bytes = decoder
+                .read_bytes(4)
+                .map_err(|_| "Failed to read float bytes")?;
             let val = f32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
             Ok(BACnetValue::Real(val))
         }
@@ -359,21 +401,26 @@ fn decode_application_value(decoder: &mut ApduDecoder<'_>) -> Result<BACnetValue
             if len != 8 {
                 return Err("Invalid double length");
             }
-            let bytes = decoder.read_bytes(8).map_err(|_| "Failed to read double bytes")?;
+            let bytes = decoder
+                .read_bytes(8)
+                .map_err(|_| "Failed to read double bytes")?;
             let val = f64::from_be_bytes([
-                bytes[0], bytes[1], bytes[2], bytes[3],
-                bytes[4], bytes[5], bytes[6], bytes[7],
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
             ]);
             Ok(BACnetValue::Double(val))
         }
         7 => {
             // Character string
-            let s = decoder.decode_character_string(len).map_err(|_| "Failed to decode string")?;
+            let s = decoder
+                .decode_character_string(len)
+                .map_err(|_| "Failed to decode string")?;
             Ok(BACnetValue::CharacterString(s))
         }
         8 => {
             // Bit string — first byte is unused-bits count, rest are data bytes
-            let bytes = decoder.read_bytes(len).map_err(|_| "Failed to read bitstring")?;
+            let bytes = decoder
+                .read_bytes(len)
+                .map_err(|_| "Failed to read bitstring")?;
             if bytes.is_empty() {
                 return Ok(BACnetValue::BitString(vec![]));
             }
@@ -390,12 +437,16 @@ fn decode_application_value(decoder: &mut ApduDecoder<'_>) -> Result<BACnetValue
         }
         9 => {
             // Enumerated
-            let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode enumerated")?;
+            let val = decoder
+                .decode_unsigned(len)
+                .map_err(|_| "Failed to decode enumerated")?;
             Ok(BACnetValue::Enumerated(val))
         }
         12 => {
             // Object identifier
-            let obj_id = decoder.decode_object_identifier().map_err(|_| "Failed to decode object id")?;
+            let obj_id = decoder
+                .decode_object_identifier()
+                .map_err(|_| "Failed to decode object id")?;
             Ok(BACnetValue::ObjectIdentifier(obj_id))
         }
         _ => {
@@ -420,8 +471,12 @@ pub struct DeleteObjectRequest {
 /// DeleteObject-Request is simply an ObjectIdentifier (application tag 12).
 pub fn decode_delete_object_request(data: &[u8]) -> Result<DeleteObjectRequest, &'static str> {
     let mut decoder = ApduDecoder::new(data);
-    let (_, _, _len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
-    let object_id = decoder.decode_object_identifier().map_err(|_| "Failed to decode object identifier")?;
+    let (_, _, _len) = decoder
+        .decode_tag_info()
+        .map_err(|_| "Failed to decode tag")?;
+    let object_id = decoder
+        .decode_object_identifier()
+        .map_err(|_| "Failed to decode object identifier")?;
     Ok(DeleteObjectRequest { object_id })
 }
 
@@ -492,12 +547,12 @@ impl CreateObjectHandler {
             inst
         } else {
             // Auto-assign
-            registry.next_available_instance(request.object_type).ok_or_else(|| {
-                ServiceResult::Error {
+            registry
+                .next_available_instance(request.object_type)
+                .ok_or_else(|| ServiceResult::Error {
                     error_class: ErrorClass::Resources,
                     error_code: ErrorCode::NoSpaceForObject,
-                }
-            })?
+                })?
         };
 
         // 3. Determine name
@@ -517,12 +572,13 @@ impl CreateObjectHandler {
         };
 
         // 4. Create the object
-        let object = self.factory.create(request.object_type, instance, name).ok_or_else(|| {
-            ServiceResult::Error {
+        let object = self
+            .factory
+            .create(request.object_type, instance, name)
+            .ok_or_else(|| ServiceResult::Error {
                 error_class: ErrorClass::Object,
                 error_code: ErrorCode::UnsupportedObjectType,
-            }
-        })?;
+            })?;
 
         let object_id = object.object_identifier();
 
@@ -554,9 +610,7 @@ impl ConfirmedServiceHandler for CreateObjectHandler {
         };
 
         match self.create_object(&request, &ctx.objects) {
-            Ok(object_id) => {
-                ServiceResult::ComplexAck(encode_create_object_ack(object_id))
-            }
+            Ok(object_id) => ServiceResult::ComplexAck(encode_create_object_ack(object_id)),
             Err(result) => result,
         }
     }
@@ -573,9 +627,7 @@ impl ConfirmedServiceHandler for CreateObjectHandler {
 // ── DeleteObject Handler ────────────────────────────────────────────────────
 
 /// Set of object types that cannot be dynamically deleted.
-const NON_DELETABLE_TYPES: &[ObjectType] = &[
-    ObjectType::Device,
-];
+const NON_DELETABLE_TYPES: &[ObjectType] = &[ObjectType::Device];
 
 /// Handler for BACnet DeleteObject (Confirmed Service 11).
 ///
@@ -712,15 +764,22 @@ mod tests {
     #[test]
     fn test_factory_create_object() {
         let factory = default_object_factory();
-        let obj = factory.create(ObjectType::AnalogInput, 42, "TestAI".to_string()).unwrap();
-        assert_eq!(obj.object_identifier(), ObjectId::new(ObjectType::AnalogInput, 42));
+        let obj = factory
+            .create(ObjectType::AnalogInput, 42, "TestAI".to_string())
+            .unwrap();
+        assert_eq!(
+            obj.object_identifier(),
+            ObjectId::new(ObjectType::AnalogInput, 42)
+        );
         assert_eq!(obj.object_name(), "TestAI");
     }
 
     #[test]
     fn test_factory_unsupported_type() {
         let factory = default_object_factory();
-        assert!(factory.create(ObjectType::Device, 0, "Dev".to_string()).is_none());
+        assert!(factory
+            .create(ObjectType::Device, 0, "Dev".to_string())
+            .is_none());
     }
 
     #[test]
@@ -965,19 +1024,28 @@ mod tests {
     #[test]
     fn test_next_available_instance() {
         let registry = ObjectRegistry::new();
-        assert_eq!(registry.next_available_instance(ObjectType::AnalogInput), Some(0));
+        assert_eq!(
+            registry.next_available_instance(ObjectType::AnalogInput),
+            Some(0)
+        );
 
         registry.register(Arc::new(AnalogInput::new(0, "AI_0")));
-        assert_eq!(registry.next_available_instance(ObjectType::AnalogInput), Some(1));
+        assert_eq!(
+            registry.next_available_instance(ObjectType::AnalogInput),
+            Some(1)
+        );
 
         registry.register(Arc::new(AnalogInput::new(5, "AI_5")));
-        assert_eq!(registry.next_available_instance(ObjectType::AnalogInput), Some(6));
+        assert_eq!(
+            registry.next_available_instance(ObjectType::AnalogInput),
+            Some(6)
+        );
     }
 
     #[test]
     fn test_create_then_delete_roundtrip() {
         let create_handler = CreateObjectHandler::new();
-        let delete_handler = DeleteObjectHandler::new();
+        let _delete_handler = DeleteObjectHandler::new();
         let registry = Arc::new(ObjectRegistry::new());
 
         // Create

@@ -11,7 +11,10 @@
 //! | 123 register write        | < 10µs        | `bench_register_write`        |
 //! | 16-thread concurrent      | < 100µs/1000  | `bench_concurrent_access`     |
 //!
-//! Run with: `cargo test -p trap-sim-modbus --test performance_validation --release -- --nocapture`
+//! Run with:
+//! `cargo test -p mabi-modbus --features performance-tests --test performance_validation --release -- --nocapture`
+
+#![cfg(feature = "performance-tests")]
 
 use std::sync::Arc;
 use std::thread;
@@ -61,9 +64,19 @@ fn test_single_register_read_performance() {
     let avg_ns = elapsed.as_nanos() as f64 / TIMING_ITERATIONS as f64;
 
     println!("\n=== Single Register Read Performance ===");
-    println!("Target: < {}ns (with {}x margin)", target_ns, PERFORMANCE_MARGIN);
+    println!(
+        "Target: < {}ns (with {}x margin)",
+        target_ns, PERFORMANCE_MARGIN
+    );
     println!("Actual: {:.2}ns per operation", avg_ns);
-    println!("Status: {}", if avg_ns < target_ns { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_ns < target_ns {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
     assert!(
         avg_ns < target_ns,
@@ -100,9 +113,19 @@ fn test_125_register_read_performance() {
     let avg_us = elapsed.as_nanos() as f64 / TIMING_ITERATIONS as f64 / 1000.0;
 
     println!("\n=== 125 Register Read Performance ===");
-    println!("Target: < {}µs (with {}x margin)", target_us, PERFORMANCE_MARGIN);
+    println!(
+        "Target: < {}µs (with {}x margin)",
+        target_us, PERFORMANCE_MARGIN
+    );
     println!("Actual: {:.2}µs per operation", avg_us);
-    println!("Status: {}", if avg_us < target_us { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_us < target_us {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
     assert!(
         avg_us < target_us,
@@ -134,9 +157,19 @@ fn test_single_register_write_performance() {
     let avg_ns = elapsed.as_nanos() as f64 / TIMING_ITERATIONS as f64;
 
     println!("\n=== Single Register Write Performance ===");
-    println!("Target: < {}ns (with {}x margin)", target_ns, PERFORMANCE_MARGIN);
+    println!(
+        "Target: < {}ns (with {}x margin)",
+        target_ns, PERFORMANCE_MARGIN
+    );
     println!("Actual: {:.2}ns per operation", avg_ns);
-    println!("Status: {}", if avg_ns < target_ns { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_ns < target_ns {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
     assert!(
         avg_ns < target_ns,
@@ -169,9 +202,19 @@ fn test_123_register_write_performance() {
     let avg_us = elapsed.as_nanos() as f64 / TIMING_ITERATIONS as f64 / 1000.0;
 
     println!("\n=== 123 Register Write Performance ===");
-    println!("Target: < {}µs (with {}x margin)", target_us, PERFORMANCE_MARGIN);
+    println!(
+        "Target: < {}µs (with {}x margin)",
+        target_us, PERFORMANCE_MARGIN
+    );
     println!("Actual: {:.2}µs per operation", avg_us);
-    println!("Status: {}", if avg_us < target_us { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_us < target_us {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
     assert!(
         avg_us < target_us,
@@ -239,10 +282,20 @@ fn test_16_thread_concurrent_access_performance() {
     let us_per_1000 = elapsed.as_micros() as f64 / (total_ops as f64 / 1000.0);
 
     println!("\n=== 16-Thread Concurrent Access Performance ===");
-    println!("Target: < {}µs per 1000 ops (with {}x margin)", target_us, PERFORMANCE_MARGIN);
+    println!(
+        "Target: < {}µs per 1000 ops (with {}x margin)",
+        target_us, PERFORMANCE_MARGIN
+    );
     println!("Actual: {:.2}µs per 1000 ops", us_per_1000);
     println!("Total time: {:?} for {} ops", elapsed, total_ops);
-    println!("Status: {}", if us_per_1000 < target_us { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if us_per_1000 < target_us {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
     assert!(
         us_per_1000 < target_us,
@@ -278,9 +331,20 @@ fn test_single_coil_read_performance() {
 
     println!("\n=== Single Coil Read Performance ===");
     println!("Actual: {:.2}ns per operation", avg_ns);
-    println!("Status: {}", if avg_ns < target_ns { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_ns < target_ns {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
-    assert!(avg_ns < target_ns, "Single coil read too slow: {:.2}ns", avg_ns);
+    assert!(
+        avg_ns < target_ns,
+        "Single coil read too slow: {:.2}ns",
+        avg_ns
+    );
 }
 
 #[test]
@@ -310,9 +374,20 @@ fn test_2000_coil_read_performance() {
 
     println!("\n=== 2000 Coil Read Performance ===");
     println!("Actual: {:.2}µs per operation", avg_us);
-    println!("Status: {}", if avg_us < target_us { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_us < target_us {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
-    assert!(avg_us < target_us, "2000 coil read too slow: {:.2}µs", avg_us);
+    assert!(
+        avg_us < target_us,
+        "2000 coil read too slow: {:.2}µs",
+        avg_us
+    );
 }
 
 #[test]
@@ -336,9 +411,20 @@ fn test_single_coil_write_performance() {
 
     println!("\n=== Single Coil Write Performance ===");
     println!("Actual: {:.2}ns per operation", avg_ns);
-    println!("Status: {}", if avg_ns < target_ns { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if avg_ns < target_ns {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
-    assert!(avg_ns < target_ns, "Single coil write too slow: {:.2}ns", avg_ns);
+    assert!(
+        avg_ns < target_ns,
+        "Single coil write too slow: {:.2}ns",
+        avg_ns
+    );
 }
 
 // =============================================================================
@@ -586,7 +672,10 @@ fn test_batch_read_performance() {
     let batch_sizes = [1, 10, 50, 100, 125];
 
     println!("\n=== Batch Read Performance ===");
-    println!("{:>10} {:>15} {:>15}", "Batch Size", "Avg Time (µs)", "Throughput");
+    println!(
+        "{:>10} {:>15} {:>15}",
+        "Batch Size", "Avg Time (µs)", "Throughput"
+    );
 
     for &batch_size in &batch_sizes {
         let iterations = 10_000;
@@ -612,7 +701,10 @@ fn test_batch_write_performance() {
     let batch_sizes = [1, 10, 50, 100, 123];
 
     println!("\n=== Batch Write Performance ===");
-    println!("{:>10} {:>15} {:>15}", "Batch Size", "Avg Time (µs)", "Throughput");
+    println!(
+        "{:>10} {:>15} {:>15}",
+        "Batch Size", "Avg Time (µs)", "Throughput"
+    );
 
     for &batch_size in &batch_sizes {
         let iterations = 10_000;
@@ -643,11 +735,26 @@ fn test_performance_summary() {
     println!("╠════════════════════════════════════════════════════════════════╣");
     println!("║ Target                  │ Spec      │ Margin    │ Method       ║");
     println!("╠─────────────────────────┼───────────┼───────────┼──────────────╣");
-    println!("║ Single register read    │ < 100ns   │ {}x       │ Direct test  ║", PERFORMANCE_MARGIN);
-    println!("║ 125 register read       │ < 5µs     │ {}x       │ Direct test  ║", PERFORMANCE_MARGIN);
-    println!("║ Single register write   │ < 200ns   │ {}x       │ Direct test  ║", PERFORMANCE_MARGIN);
-    println!("║ 123 register write      │ < 10µs    │ {}x       │ Direct test  ║", PERFORMANCE_MARGIN);
-    println!("║ 16-thread concurrent    │ < 100µs   │ {}x       │ Thread pool  ║", PERFORMANCE_MARGIN);
+    println!(
+        "║ Single register read    │ < 100ns   │ {}x       │ Direct test  ║",
+        PERFORMANCE_MARGIN
+    );
+    println!(
+        "║ 125 register read       │ < 5µs     │ {}x       │ Direct test  ║",
+        PERFORMANCE_MARGIN
+    );
+    println!(
+        "║ Single register write   │ < 200ns   │ {}x       │ Direct test  ║",
+        PERFORMANCE_MARGIN
+    );
+    println!(
+        "║ 123 register write      │ < 10µs    │ {}x       │ Direct test  ║",
+        PERFORMANCE_MARGIN
+    );
+    println!(
+        "║ 16-thread concurrent    │ < 100µs   │ {}x       │ Thread pool  ║",
+        PERFORMANCE_MARGIN
+    );
     println!("╠─────────────────────────┴───────────┴───────────┴──────────────╣");
     println!("║ Run: cargo test --test performance_validation --release       ║");
     println!("╚════════════════════════════════════════════════════════════════╝");

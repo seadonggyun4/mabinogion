@@ -72,16 +72,12 @@ async fn start_server(server: Arc<ModbusTcpServerV2>) -> tokio::task::JoinHandle
     handle
 }
 
-/// Create a client connected to the test server.
-async fn create_client(port: u16) -> tokio_modbus::client::Context {
-    let socket_addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-    tcp::connect(socket_addr).await.unwrap()
-}
-
 /// Create a client with specific unit ID.
 async fn create_client_with_unit(port: u16, unit_id: u8) -> tokio_modbus::client::Context {
     let socket_addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-    tcp::connect_slave(socket_addr, Slave(unit_id)).await.unwrap()
+    tcp::connect_slave(socket_addr, Slave(unit_id))
+        .await
+        .unwrap()
 }
 
 // =============================================================================
@@ -139,7 +135,11 @@ async fn test_fc02_read_discrete_inputs() {
     let mut client = create_client_with_unit(port, 1).await;
 
     let result = client.read_discrete_inputs(0, 4).await;
-    assert!(result.is_ok(), "Failed to read discrete inputs: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to read discrete inputs: {:?}",
+        result
+    );
 
     let inputs = result.unwrap();
     assert_eq!(inputs.len(), 4);
@@ -169,7 +169,11 @@ async fn test_fc03_read_holding_registers() {
     let mut client = create_client_with_unit(port, 1).await;
 
     let result = client.read_holding_registers(0, 3).await;
-    assert!(result.is_ok(), "Failed to read holding registers: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to read holding registers: {:?}",
+        result
+    );
 
     let registers = result.unwrap();
     assert_eq!(registers.len(), 3);
@@ -198,7 +202,11 @@ async fn test_fc04_read_input_registers() {
     let mut client = create_client_with_unit(port, 1).await;
 
     let result = client.read_input_registers(0, 3).await;
-    assert!(result.is_ok(), "Failed to read input registers: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to read input registers: {:?}",
+        result
+    );
 
     let registers = result.unwrap();
     assert_eq!(registers.len(), 3);
@@ -246,7 +254,11 @@ async fn test_fc06_write_single_register() {
 
     // Write register
     let result = client.write_single_register(100, 12345).await;
-    assert!(result.is_ok(), "Failed to write single register: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to write single register: {:?}",
+        result
+    );
 
     // Verify by reading
     let read_result = client.read_holding_registers(100, 1).await.unwrap();
@@ -267,7 +279,11 @@ async fn test_fc15_write_multiple_coils() {
     // Write multiple coils
     let coils = vec![true, false, true, true, false, true, false, false];
     let result = client.write_multiple_coils(20, &coils).await;
-    assert!(result.is_ok(), "Failed to write multiple coils: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to write multiple coils: {:?}",
+        result
+    );
 
     // Verify by reading
     let read_result = client.read_coils(20, 8).await.unwrap();
@@ -288,7 +304,11 @@ async fn test_fc16_write_multiple_registers() {
     // Write multiple registers
     let registers = vec![1111, 2222, 3333, 4444, 5555];
     let result = client.write_multiple_registers(50, &registers).await;
-    assert!(result.is_ok(), "Failed to write multiple registers: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to write multiple registers: {:?}",
+        result
+    );
 
     // Verify by reading
     let read_result = client.read_holding_registers(50, 5).await.unwrap();
@@ -321,8 +341,8 @@ async fn test_exception_illegal_function() {
         0x00, 0x01, // Transaction ID
         0x00, 0x00, // Protocol ID
         0x00, 0x06, // Length
-        0x01,       // Unit ID
-        0x08,       // Function Code (diagnostics)
+        0x01, // Unit ID
+        0x08, // Function Code (diagnostics)
         0x00, 0x00, // Sub-function
         0x00, 0x00, // Data
     ];
@@ -334,8 +354,14 @@ async fn test_exception_illegal_function() {
 
     // Verify exception response
     assert!(n >= 9, "Response too short: {} bytes", n);
-    assert_eq!(response[7], 0x88, "Expected exception FC 0x88 (0x08 | 0x80)");
-    assert_eq!(response[8], 0x01, "Expected exception code 1 (Illegal Function)");
+    assert_eq!(
+        response[7], 0x88,
+        "Expected exception FC 0x88 (0x08 | 0x80)"
+    );
+    assert_eq!(
+        response[8], 0x01,
+        "Expected exception code 1 (Illegal Function)"
+    );
 
     server.shutdown();
 }
@@ -464,7 +490,13 @@ async fn test_multi_client_concurrent_write() {
         let registers = client.read_holding_registers(base_addr, 50).await.unwrap();
         for (i, &value) in registers.iter().enumerate() {
             let expected = (client_id * 1000 + i as u16) as u16;
-            assert_eq!(value, expected, "Client {} addr {} mismatch", client_id, base_addr + i as u16);
+            assert_eq!(
+                value,
+                expected,
+                "Client {} addr {} mismatch",
+                client_id,
+                base_addr + i as u16
+            );
         }
     }
 
@@ -482,14 +514,20 @@ async fn test_multi_device_access() {
 
     // Add additional devices
     for unit_id in 2..=5u8 {
-        let device = ModbusDevice::new(ModbusDeviceConfig::new(unit_id, &format!("Device {}", unit_id)));
+        let device = ModbusDevice::new(ModbusDeviceConfig::new(
+            unit_id,
+            &format!("Device {}", unit_id),
+        ));
         server.add_device(device);
     }
 
     // Write different values to each device
     for unit_id in 1..=5u8 {
         if let Some(device) = server.device(unit_id) {
-            device.registers().write_holding_register(0, unit_id as u16 * 100).unwrap();
+            device
+                .registers()
+                .write_holding_register(0, unit_id as u16 * 100)
+                .unwrap();
         }
     }
 
@@ -499,7 +537,12 @@ async fn test_multi_device_access() {
     for unit_id in 1..=5u8 {
         let mut client = create_client_with_unit(port, unit_id).await;
         let result = client.read_holding_registers(0, 1).await.unwrap();
-        assert_eq!(result[0], unit_id as u16 * 100, "Device {} value mismatch", unit_id);
+        assert_eq!(
+            result[0],
+            unit_id as u16 * 100,
+            "Device {} value mismatch",
+            unit_id
+        );
     }
 
     server.shutdown();
@@ -546,7 +589,10 @@ async fn test_connection_tracking() {
 
     // Note: Connection count may vary due to connection pooling behavior
     // The important thing is that the server can handle multiple connections
-    println!("Active connections: {}", server.connections().active_count());
+    println!(
+        "Active connections: {}",
+        server.connections().active_count()
+    );
 
     // Drop clients
     drop(clients);
@@ -616,7 +662,10 @@ async fn test_max_quantity_read() {
     // Pre-populate 125 registers
     if let Some(device) = server.device(1) {
         for addr in 0..125u16 {
-            device.registers().write_holding_register(addr, addr).unwrap();
+            device
+                .registers()
+                .write_holding_register(addr, addr)
+                .unwrap();
         }
     }
 
@@ -646,7 +695,11 @@ async fn test_max_quantity_write() {
     // Write maximum allowed quantity (123 for FC16)
     let values: Vec<u16> = (0..123).collect();
     let result = client.write_multiple_registers(0, &values).await;
-    assert!(result.is_ok(), "Failed to write 123 registers: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to write 123 registers: {:?}",
+        result
+    );
 
     // Verify
     let read_result = client.read_holding_registers(0, 123).await.unwrap();
@@ -667,7 +720,10 @@ async fn test_rapid_requests() {
     // Pre-populate
     if let Some(device) = server.device(1) {
         for addr in 0..100u16 {
-            device.registers().write_holding_register(addr, addr).unwrap();
+            device
+                .registers()
+                .write_holding_register(addr, addr)
+                .unwrap();
         }
     }
 

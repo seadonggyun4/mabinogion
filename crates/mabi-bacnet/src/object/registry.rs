@@ -54,12 +54,17 @@ impl ObjectRegistry {
         // Remove old name mapping if replacing
         if let Some((_, old)) = self.objects.remove(&id) {
             self.names.remove(old.object_name());
-            self.type_counts.entry(object_type).and_modify(|c| *c = c.saturating_sub(1));
+            self.type_counts
+                .entry(object_type)
+                .and_modify(|c| *c = c.saturating_sub(1));
         }
 
         // Add new mappings
         self.names.insert(name, id);
-        self.type_counts.entry(object_type).and_modify(|c| *c += 1).or_insert(1);
+        self.type_counts
+            .entry(object_type)
+            .and_modify(|c| *c += 1)
+            .or_insert(1);
 
         self.objects.insert(id, object)
     }
@@ -73,7 +78,9 @@ impl ObjectRegistry {
     pub fn unregister(&self, id: &ObjectId) -> Option<ArcObject> {
         if let Some((_, object)) = self.objects.remove(id) {
             self.names.remove(object.object_name());
-            self.type_counts.entry(id.object_type).and_modify(|c| *c = c.saturating_sub(1));
+            self.type_counts
+                .entry(id.object_type)
+                .and_modify(|c| *c = c.saturating_sub(1));
             Some(object)
         } else {
             None
@@ -336,7 +343,7 @@ pub enum RegistryError {
 
 #[cfg(test)]
 mod tests {
-    use super::super::standard::{AnalogInput, AnalogOutput, BinaryInput, BinaryOutput};
+    use super::super::standard::{AnalogInput, AnalogOutput, BinaryOutput};
     use super::*;
 
     #[test]
@@ -405,7 +412,9 @@ mod tests {
         let id = ai.object_identifier();
         registry.register(ai);
 
-        let value = registry.read_property(&id, PropertyId::PresentValue).unwrap();
+        let value = registry
+            .read_property(&id, PropertyId::PresentValue)
+            .unwrap();
         assert_eq!(value.as_real(), Some(25.0));
     }
 

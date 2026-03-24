@@ -26,12 +26,6 @@ use mabi_modbus::{
 // Constants
 // =============================================================================
 
-/// Target number of concurrent units (devices)
-const TARGET_UNITS: u8 = 247; // Max valid unit ID
-
-/// Target for data points
-const TARGET_DATA_POINTS: usize = 1_000_000;
-
 /// Target TPS
 const TARGET_TPS: u64 = 100_000;
 
@@ -70,7 +64,9 @@ fn test_max_concurrent_units() {
         assert!(manager.has_unit(unit_id), "Unit {} not found", unit_id);
 
         // Write and read from each unit
-        manager.write_holding_register(unit_id, 0, unit_id as u16).unwrap();
+        manager
+            .write_holding_register(unit_id, 0, unit_id as u16)
+            .unwrap();
         let values = manager.read_holding_registers(unit_id, 0, 1).unwrap();
         assert_eq!(values[0], unit_id as u16);
     }
@@ -145,7 +141,10 @@ fn test_10k_virtual_devices_simulation() {
     println!("Read time: {:?}", read_time);
     println!("Read rate: {:.0} points/sec", read_rate);
 
-    println!("\nStatus: PASS ✓ (Simulated {} data points)", total_data_points);
+    println!(
+        "\nStatus: PASS ✓ (Simulated {} data points)",
+        total_data_points
+    );
 }
 
 #[test]
@@ -198,7 +197,10 @@ fn test_1m_data_points() {
     println!("\n--- Results ---");
     println!("Total entries: {}", total_entries);
     println!("Write time: {:?}", write_time);
-    println!("Write rate: {:.0} entries/sec", count as f64 / write_time.as_secs_f64());
+    println!(
+        "Write rate: {:.0} entries/sec",
+        count as f64 / write_time.as_secs_f64()
+    );
     println!("Memory usage: {:.2} MB", memory_mb);
 
     // Verify reads
@@ -434,20 +436,30 @@ fn test_memory_budget() {
     println!("  Memory: {:.2} MB", memory_per_device_mb);
 
     println!("\nExtrapolated for 10K devices:");
-    println!("  Estimated memory: {:.2} MB ({:.2} GB)", estimated_10k_mb, estimated_10k_gb);
-    println!("  Budget: {} MB ({:.2} GB)", MEMORY_BUDGET_MB, MEMORY_BUDGET_MB as f64 / 1024.0);
+    println!(
+        "  Estimated memory: {:.2} MB ({:.2} GB)",
+        estimated_10k_mb, estimated_10k_gb
+    );
+    println!(
+        "  Budget: {} MB ({:.2} GB)",
+        MEMORY_BUDGET_MB,
+        MEMORY_BUDGET_MB as f64 / 1024.0
+    );
 
     let within_budget = estimated_10k_mb < MEMORY_BUDGET_MB as f64;
     println!(
         "\nStatus: {}",
-        if within_budget { "PASS ✓" } else { "FAIL ✗" }
+        if within_budget {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
     );
 
     assert!(
         within_budget,
         "Estimated memory ({:.2} MB) exceeds budget ({} MB)",
-        estimated_10k_mb,
-        MEMORY_BUDGET_MB
+        estimated_10k_mb, MEMORY_BUDGET_MB
     );
 }
 
@@ -567,10 +579,18 @@ fn test_concurrent_unit_access() {
     println!("TPS: {:.0}", tps);
     println!(
         "Status: {}",
-        if error_count == 0 { "PASS ✓" } else { "FAIL ✗" }
+        if error_count == 0 {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
     );
 
-    assert_eq!(error_count, 0, "Had {} errors during concurrent access", error_count);
+    assert_eq!(
+        error_count, 0,
+        "Had {} errors during concurrent access",
+        error_count
+    );
 }
 
 #[test]
@@ -655,8 +675,14 @@ fn test_type_conversion_performance() {
     let converters = [
         ("BigEndian", RegisterConverter::big_endian()),
         ("LittleEndian", RegisterConverter::little_endian()),
-        ("BigEndianWordSwap", RegisterConverter::big_endian_word_swap()),
-        ("LittleEndianWordSwap", RegisterConverter::little_endian_word_swap()),
+        (
+            "BigEndianWordSwap",
+            RegisterConverter::big_endian_word_swap(),
+        ),
+        (
+            "LittleEndianWordSwap",
+            RegisterConverter::little_endian_word_swap(),
+        ),
     ];
 
     let iterations = 100_000;
@@ -695,7 +721,10 @@ fn test_type_conversion_performance() {
         }
         let f64_ns = f64_start.elapsed().as_nanos() as f64 / iterations as f64;
 
-        println!("{:>20} {:>15.1} {:>15.1} {:>15.1}", name, f32_ns, i32_ns, f64_ns);
+        println!(
+            "{:>20} {:>15.1} {:>15.1} {:>15.1}",
+            name, f32_ns, i32_ns, f64_ns
+        );
     }
 
     println!("\nStatus: PASS ✓");

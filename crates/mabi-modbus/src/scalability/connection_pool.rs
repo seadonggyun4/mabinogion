@@ -240,9 +240,7 @@ impl ConnectionShard {
 
     /// Get connection by address.
     fn get_by_addr(&self, addr: &SocketAddr) -> Option<ShardedConnectionInfo> {
-        self.addr_to_id
-            .get(addr)
-            .and_then(|id| self.get(*id))
+        self.addr_to_id.get(addr).and_then(|id| self.get(*id))
     }
 
     /// Update connection with a closure.
@@ -265,11 +263,6 @@ impl ConnectionShard {
             .filter(|r| r.value().is_idle(threshold))
             .map(|r| *r.key())
             .collect()
-    }
-
-    /// Get all connection IDs.
-    fn connection_ids(&self) -> Vec<ConnectionId> {
-        self.connections.iter().map(|r| *r.key()).collect()
     }
 }
 
@@ -626,8 +619,10 @@ impl ShardedConnectionPool {
             info.record_success(bytes_in, bytes_out);
         });
         self.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.total_bytes_received.fetch_add(bytes_in, Ordering::Relaxed);
-        self.total_bytes_sent.fetch_add(bytes_out, Ordering::Relaxed);
+        self.total_bytes_received
+            .fetch_add(bytes_in, Ordering::Relaxed);
+        self.total_bytes_sent
+            .fetch_add(bytes_out, Ordering::Relaxed);
     }
 
     /// Record failed request.
@@ -638,7 +633,8 @@ impl ShardedConnectionPool {
             info.record_failure(bytes_in);
         });
         self.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.total_bytes_received.fetch_add(bytes_in, Ordering::Relaxed);
+        self.total_bytes_received
+            .fetch_add(bytes_in, Ordering::Relaxed);
     }
 
     /// Get number of active connections.
@@ -697,7 +693,8 @@ impl ShardedConnectionPool {
 
     /// Get pool statistics.
     pub fn statistics(&self) -> PoolStatistics {
-        let per_shard: Vec<_> = self.shards
+        let per_shard: Vec<_> = self
+            .shards
             .iter()
             .enumerate()
             .map(|(i, shard)| {
@@ -729,9 +726,9 @@ impl ShardedConnectionPool {
 
     /// Iterate over all connections (expensive - use sparingly).
     pub fn iter_all(&self) -> impl Iterator<Item = ShardedConnectionInfo> + '_ {
-        self.shards.iter().flat_map(|shard| {
-            shard.connections.iter().map(|r| r.value().clone())
-        })
+        self.shards
+            .iter()
+            .flat_map(|shard| shard.connections.iter().map(|r| r.value().clone()))
     }
 
     /// Get utilization ratio (0.0-1.0).
@@ -850,17 +847,20 @@ mod tests {
 
         // Check distribution across shards
         let stats = pool.statistics();
-        let total_in_shards: usize = stats.per_shard.iter()
-            .map(|s| s.active_connections)
-            .sum();
+        let total_in_shards: usize = stats.per_shard.iter().map(|s| s.active_connections).sum();
 
         assert_eq!(total_in_shards, 100);
 
         // All shards should have some connections (probabilistic, may occasionally fail)
-        let non_empty_shards = stats.per_shard.iter()
+        let non_empty_shards = stats
+            .per_shard
+            .iter()
             .filter(|s| s.active_connections > 0)
             .count();
-        assert!(non_empty_shards >= 4, "Expected connections distributed across shards");
+        assert!(
+            non_empty_shards >= 4,
+            "Expected connections distributed across shards"
+        );
 
         drop(handles);
     }
@@ -944,7 +944,11 @@ mod tests {
         // Should receive Connected event
         let event = rx.recv().await.unwrap();
         match event {
-            PoolEvent::Connected { connection_id, peer_addr, .. } => {
+            PoolEvent::Connected {
+                connection_id,
+                peer_addr,
+                ..
+            } => {
                 assert_eq!(connection_id, id);
                 assert_eq!(peer_addr, addr);
             }
@@ -956,7 +960,11 @@ mod tests {
         // Should receive Disconnected event
         let event = rx.recv().await.unwrap();
         match event {
-            PoolEvent::Disconnected { connection_id, peer_addr, .. } => {
+            PoolEvent::Disconnected {
+                connection_id,
+                peer_addr,
+                ..
+            } => {
                 assert_eq!(connection_id, id);
                 assert_eq!(peer_addr, addr);
             }

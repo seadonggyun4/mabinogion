@@ -11,17 +11,17 @@
 //! - **Memory efficiency**: Streaming creation to avoid memory spikes
 //! - **Hierarchical creation**: Create entire subtrees with single operation
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-use crate::types::{NodeId, Variant, variant::DataTypeId};
-use crate::error::OpcUaResult;
+use super::builder::{NodeBuilder, ObjectBuilder, VariableBuilder};
 use super::classes::VariableNode;
-use super::store::AddressSpace;
 use super::reference::Reference;
-use super::builder::{VariableBuilder, ObjectBuilder, NodeBuilder};
+use super::store::AddressSpace;
+use crate::error::OpcUaResult;
+use crate::types::{variant::DataTypeId, NodeId, Variant};
 
 /// Configuration for batch node creation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,7 +242,12 @@ impl ObjectTemplate {
 
     /// Count total nodes in this template (recursive).
     pub fn total_node_count(&self) -> usize {
-        1 + self.variables.len() + self.children.iter().map(|c| c.total_node_count()).sum::<usize>()
+        1 + self.variables.len()
+            + self
+                .children
+                .iter()
+                .map(|c| c.total_node_count())
+                .sum::<usize>()
     }
 }
 
@@ -258,7 +263,10 @@ impl std::fmt::Debug for BatchNodeCreator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BatchNodeCreator")
             .field("config", &self.config)
-            .field("progress_callback", &self.progress_callback.as_ref().map(|_| "<callback>"))
+            .field(
+                "progress_callback",
+                &self.progress_callback.as_ref().map(|_| "<callback>"),
+            )
             .field("created_count", &self.created_count)
             .field("failed_count", &self.failed_count)
             .finish()
@@ -309,7 +317,7 @@ impl BatchNodeCreator {
         let chunk_size = self.config.chunk_size;
         let mut all_node_ids = Vec::with_capacity(count);
 
-        for (chunk_idx, chunk) in specs.chunks(chunk_size).enumerate() {
+        for (_chunk_idx, chunk) in specs.chunks(chunk_size).enumerate() {
             let mut chunk_nodes = Vec::with_capacity(chunk.len());
 
             for (node_id, name, value) in chunk {
@@ -582,24 +590,63 @@ pub mod presets {
     /// Create a standard HVAC device template.
     pub fn hvac_device() -> ObjectTemplate {
         ObjectTemplate::new("HVAC")
-            .with_variable(VariableTemplate::new("SupplyTemp", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Random { min: 18.0, max: 28.0 }))
-            .with_variable(VariableTemplate::new("ReturnTemp", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Random { min: 20.0, max: 26.0 }))
-            .with_variable(VariableTemplate::new("SetPoint", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Fixed(22.0))
-                .writable())
-            .with_variable(VariableTemplate::new("FanSpeed", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Random { min: 0.0, max: 100.0 }))
-            .with_variable(VariableTemplate::new("DamperPosition", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Random { min: 0.0, max: 100.0 })
-                .writable())
-            .with_variable(VariableTemplate::new("CoolingValve", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Random { min: 0.0, max: 100.0 }))
-            .with_variable(VariableTemplate::new("HeatingValve", DataTypeId::Double)
-                .with_value_type(ValueGeneratorType::Random { min: 0.0, max: 100.0 }))
-            .with_variable(VariableTemplate::new("OccupancyStatus", DataTypeId::Boolean)
-                .with_value_type(ValueGeneratorType::Fixed(1.0)))
+            .with_variable(
+                VariableTemplate::new("SupplyTemp", DataTypeId::Double).with_value_type(
+                    ValueGeneratorType::Random {
+                        min: 18.0,
+                        max: 28.0,
+                    },
+                ),
+            )
+            .with_variable(
+                VariableTemplate::new("ReturnTemp", DataTypeId::Double).with_value_type(
+                    ValueGeneratorType::Random {
+                        min: 20.0,
+                        max: 26.0,
+                    },
+                ),
+            )
+            .with_variable(
+                VariableTemplate::new("SetPoint", DataTypeId::Double)
+                    .with_value_type(ValueGeneratorType::Fixed(22.0))
+                    .writable(),
+            )
+            .with_variable(
+                VariableTemplate::new("FanSpeed", DataTypeId::Double).with_value_type(
+                    ValueGeneratorType::Random {
+                        min: 0.0,
+                        max: 100.0,
+                    },
+                ),
+            )
+            .with_variable(
+                VariableTemplate::new("DamperPosition", DataTypeId::Double)
+                    .with_value_type(ValueGeneratorType::Random {
+                        min: 0.0,
+                        max: 100.0,
+                    })
+                    .writable(),
+            )
+            .with_variable(
+                VariableTemplate::new("CoolingValve", DataTypeId::Double).with_value_type(
+                    ValueGeneratorType::Random {
+                        min: 0.0,
+                        max: 100.0,
+                    },
+                ),
+            )
+            .with_variable(
+                VariableTemplate::new("HeatingValve", DataTypeId::Double).with_value_type(
+                    ValueGeneratorType::Random {
+                        min: 0.0,
+                        max: 100.0,
+                    },
+                ),
+            )
+            .with_variable(
+                VariableTemplate::new("OccupancyStatus", DataTypeId::Boolean)
+                    .with_value_type(ValueGeneratorType::Fixed(1.0)),
+            )
     }
 
     /// Create a standard sensor array template.
@@ -611,9 +658,9 @@ pub mod presets {
                 VariableTemplate::new(format!("Sensor{}", i), DataTypeId::Double)
                     .with_value_type(ValueGeneratorType::SineWave {
                         amplitude: 100.0,
-                        period: 100
+                        period: 100,
                     })
-                    .historizing()
+                    .historizing(),
             );
         }
 
@@ -621,7 +668,12 @@ pub mod presets {
     }
 
     /// Create a PLC template with typical I/O points.
-    pub fn plc_io(digital_inputs: usize, digital_outputs: usize, analog_inputs: usize, analog_outputs: usize) -> ObjectTemplate {
+    pub fn plc_io(
+        digital_inputs: usize,
+        digital_outputs: usize,
+        analog_inputs: usize,
+        analog_outputs: usize,
+    ) -> ObjectTemplate {
         let mut template = ObjectTemplate::new("PLC");
 
         // Digital inputs
@@ -629,7 +681,7 @@ pub mod presets {
         for i in 0..digital_inputs {
             di_template = di_template.with_variable(
                 VariableTemplate::new(format!("DI{}", i), DataTypeId::Boolean)
-                    .with_value_type(ValueGeneratorType::Zero)
+                    .with_value_type(ValueGeneratorType::Zero),
             );
         }
         template = template.with_child(di_template);
@@ -640,7 +692,7 @@ pub mod presets {
             do_template = do_template.with_variable(
                 VariableTemplate::new(format!("DO{}", i), DataTypeId::Boolean)
                     .with_value_type(ValueGeneratorType::Zero)
-                    .writable()
+                    .writable(),
             );
         }
         template = template.with_child(do_template);
@@ -650,8 +702,11 @@ pub mod presets {
         for i in 0..analog_inputs {
             ai_template = ai_template.with_variable(
                 VariableTemplate::new(format!("AI{}", i), DataTypeId::Double)
-                    .with_value_type(ValueGeneratorType::Random { min: 0.0, max: 100.0 })
-                    .historizing()
+                    .with_value_type(ValueGeneratorType::Random {
+                        min: 0.0,
+                        max: 100.0,
+                    })
+                    .historizing(),
             );
         }
         template = template.with_child(ai_template);
@@ -662,7 +717,7 @@ pub mod presets {
             ao_template = ao_template.with_variable(
                 VariableTemplate::new(format!("AO{}", i), DataTypeId::Double)
                     .with_value_type(ValueGeneratorType::Zero)
-                    .writable()
+                    .writable(),
             );
         }
         template = template.with_child(ao_template);
@@ -679,7 +734,10 @@ mod tests {
     #[test]
     fn test_variable_template() {
         let template = VariableTemplate::new("Temperature", DataTypeId::Double)
-            .with_value_type(ValueGeneratorType::Random { min: 0.0, max: 100.0 })
+            .with_value_type(ValueGeneratorType::Random {
+                min: 0.0,
+                max: 100.0,
+            })
             .writable()
             .historizing()
             .sampling_interval(100.0);
@@ -706,8 +764,10 @@ mod tests {
         let template = ObjectTemplate::new("Device")
             .with_variable(VariableTemplate::new("Var1", DataTypeId::Double))
             .with_variable(VariableTemplate::new("Var2", DataTypeId::Double))
-            .with_child(ObjectTemplate::new("Child")
-                .with_variable(VariableTemplate::new("ChildVar", DataTypeId::Double)));
+            .with_child(
+                ObjectTemplate::new("Child")
+                    .with_variable(VariableTemplate::new("ChildVar", DataTypeId::Double)),
+            );
 
         // Device(1) + 2 vars + Child(1) + 1 var = 5
         assert_eq!(template.total_node_count(), 5);
@@ -722,14 +782,9 @@ mod tests {
         let template = VariableTemplate::new("TestVar", DataTypeId::Double)
             .with_value_type(ValueGeneratorType::Sequential);
 
-        let node_ids = creator.create_variables_from_template(
-            &address_space,
-            &parent_id,
-            &template,
-            2,
-            1000,
-            100,
-        ).unwrap();
+        let node_ids = creator
+            .create_variables_from_template(&address_space, &parent_id, &template, 2, 1000, 100)
+            .unwrap();
 
         assert_eq!(node_ids.len(), 100);
 
@@ -747,14 +802,16 @@ mod tests {
         let template = presets::hvac_device();
         let parent_id = NodeId::numeric(0, 85);
 
-        let root_ids = creator.create_subtree(
-            &address_space,
-            &parent_id,
-            &template,
-            2,
-            1000,
-            5, // Create 5 HVAC devices
-        ).unwrap();
+        let root_ids = creator
+            .create_subtree(
+                &address_space,
+                &parent_id,
+                &template,
+                2,
+                1000,
+                5, // Create 5 HVAC devices
+            )
+            .unwrap();
 
         assert_eq!(root_ids.len(), 5);
 

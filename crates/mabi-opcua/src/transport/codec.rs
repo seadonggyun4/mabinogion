@@ -6,8 +6,10 @@
 use bytes::{Buf, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::error::{OpcUaError, OpcUaResult};
-use crate::transport::messages::{MessageHeader, MessageType, DEFAULT_BUFFER_SIZE, DEFAULT_MAX_MESSAGE_SIZE};
+use crate::error::OpcUaError;
+use crate::transport::messages::{
+    MessageHeader, MessageType, DEFAULT_BUFFER_SIZE, DEFAULT_MAX_MESSAGE_SIZE,
+};
 
 /// A raw OPC UA message frame read from the wire.
 #[derive(Debug, Clone)]
@@ -40,7 +42,10 @@ impl OpcUaTransportCodec {
 
     /// Create a codec with negotiated buffer sizes.
     pub fn with_limits(max_receive_buffer: u32, max_message_size: u32) -> Self {
-        Self { max_receive_buffer, max_message_size }
+        Self {
+            max_receive_buffer,
+            max_message_size,
+        }
     }
 
     /// Update limits after Hello/Acknowledge negotiation.
@@ -124,7 +129,11 @@ impl Encoder<RawMessage> for OpcUaTransportCodec {
 pub fn build_response(msg_type: MessageType, body: Vec<u8>) -> RawMessage {
     use crate::transport::messages::ChunkType;
     RawMessage {
-        header: MessageHeader::new(msg_type, ChunkType::Final, (MessageHeader::SIZE + body.len()) as u32),
+        header: MessageHeader::new(
+            msg_type,
+            ChunkType::Final,
+            (MessageHeader::SIZE + body.len()) as u32,
+        ),
         body,
     }
 }

@@ -2,14 +2,13 @@
 //!
 //! This module provides implementations for all OPC UA node classes.
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::base::{LocalizedText, Node, NodeBase, NodeClass, QualifiedName};
 use crate::types::{
-    NodeId, AttributeId, AccessLevel, WriteMask, Variant, DataValue, StatusCode,
-    variant::DataTypeId,
+    variant::DataTypeId, AccessLevel, AttributeId, DataValue, NodeId, StatusCode, Variant,
+    WriteMask,
 };
-use super::base::{Node, NodeBase, NodeClass, QualifiedName, LocalizedText};
 
 // =============================================================================
 // Object Node
@@ -267,8 +266,12 @@ impl Node for VariableNode {
                 None => DataValue::null(),
             },
             AttributeId::AccessLevel => DataValue::new(Variant::byte(self.access_level.raw())),
-            AttributeId::UserAccessLevel => DataValue::new(Variant::byte(self.user_access_level.raw())),
-            AttributeId::MinimumSamplingInterval => DataValue::new(Variant::double(self.minimum_sampling_interval)),
+            AttributeId::UserAccessLevel => {
+                DataValue::new(Variant::byte(self.user_access_level.raw()))
+            }
+            AttributeId::MinimumSamplingInterval => {
+                DataValue::new(Variant::double(self.minimum_sampling_interval))
+            }
             AttributeId::Historizing => DataValue::new(Variant::boolean(self.historizing)),
             _ => Node::read_attribute(self, attribute_id),
         }
@@ -773,11 +776,7 @@ mod tests {
 
     #[test]
     fn test_method_node() {
-        let node = MethodNode::new(
-            NodeId::numeric(2, 1003),
-            "StartProcess",
-            "Start Process",
-        );
+        let node = MethodNode::new(NodeId::numeric(2, 1003), "StartProcess", "Start Process");
 
         assert_eq!(node.node_class(), NodeClass::Method);
         assert!(node.executable);

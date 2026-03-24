@@ -139,6 +139,7 @@ pub struct DeviceObject {
     utc_offset: RwLock<i16>,
     /// Communication control state.
     communication_control: RwLock<CommunicationControlState>,
+    #[allow(dead_code)]
     /// Last restore time.
     last_restore_time: RwLock<Option<BACnetDateTime>>,
     /// Time offset applied by TimeSynchronization (seconds from system clock).
@@ -410,15 +411,13 @@ impl BACnetObject for DeviceObject {
                 Ok(BACnetValue::Enumerated(*self.system_status.read() as u32))
             }
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::EventState => {
-                Ok(BACnetValue::Enumerated(EventState::Normal as u32))
-            }
+            PropertyId::EventState => Ok(BACnetValue::Enumerated(EventState::Normal as u32)),
             PropertyId::Reliability => {
                 Ok(BACnetValue::Enumerated(Reliability::NoFaultDetected as u32))
             }
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
 
             // --- Vendor information ---
             PropertyId::VendorName => Ok(BACnetValue::CharacterString(self.vendor_name.clone())),
@@ -427,20 +426,20 @@ impl BACnetObject for DeviceObject {
             PropertyId::FirmwareRevision => {
                 Ok(BACnetValue::CharacterString(self.firmware_revision.clone()))
             }
-            PropertyId::ApplicationSoftwareVersion => {
-                Ok(BACnetValue::CharacterString(self.application_software_version.clone()))
-            }
+            PropertyId::ApplicationSoftwareVersion => Ok(BACnetValue::CharacterString(
+                self.application_software_version.clone(),
+            )),
             PropertyId::Location => Ok(BACnetValue::CharacterString(self.location.clone())),
 
             // --- Protocol capabilities ---
             PropertyId::ProtocolVersion => Ok(BACnetValue::Unsigned(1)), // Always 1
             PropertyId::ProtocolRevision => Ok(BACnetValue::Unsigned(22)), // ASHRAE 135-2020
-            PropertyId::ProtocolServicesSupported => {
-                Ok(BACnetValue::BitString(self.services_supported.read().clone()))
-            }
-            PropertyId::ProtocolObjectTypesSupported => {
-                Ok(BACnetValue::BitString(self.object_types_supported.read().clone()))
-            }
+            PropertyId::ProtocolServicesSupported => Ok(BACnetValue::BitString(
+                self.services_supported.read().clone(),
+            )),
+            PropertyId::ProtocolObjectTypesSupported => Ok(BACnetValue::BitString(
+                self.object_types_supported.read().clone(),
+            )),
 
             // --- Network configuration ---
             PropertyId::MaxApduLengthAccepted => {
@@ -456,9 +455,9 @@ impl BACnetObject for DeviceObject {
 
             // --- Object management ---
             PropertyId::ObjectList => Ok(self.build_object_list()),
-            PropertyId::DatabaseRevision => {
-                Ok(BACnetValue::Unsigned(self.database_revision.load(Ordering::Relaxed)))
-            }
+            PropertyId::DatabaseRevision => Ok(BACnetValue::Unsigned(
+                self.database_revision.load(Ordering::Relaxed),
+            )),
 
             // --- Time ---
             PropertyId::LocalDate => {
@@ -692,7 +691,10 @@ mod tests {
     #[test]
     fn test_device_identification() {
         let dev = make_device();
-        assert_eq!(dev.object_identifier(), ObjectId::new(ObjectType::Device, 1234));
+        assert_eq!(
+            dev.object_identifier(),
+            ObjectId::new(ObjectType::Device, 1234)
+        );
         assert_eq!(dev.object_name(), "Test Device");
         assert_eq!(dev.object_type(), ObjectType::Device);
     }
@@ -726,7 +728,12 @@ mod tests {
 
         for prop in required {
             let result = dev.read_property(prop);
-            assert!(result.is_ok(), "Required property {:?} failed: {:?}", prop, result.err());
+            assert!(
+                result.is_ok(),
+                "Required property {:?} failed: {:?}",
+                prop,
+                result.err()
+            );
         }
     }
 
@@ -735,15 +742,21 @@ mod tests {
         let dev = make_device();
 
         assert_eq!(
-            dev.read_property(PropertyId::VendorName).unwrap().as_string(),
+            dev.read_property(PropertyId::VendorName)
+                .unwrap()
+                .as_string(),
             Some("Test Vendor")
         );
         assert_eq!(
-            dev.read_property(PropertyId::VendorIdentifier).unwrap().as_unsigned(),
+            dev.read_property(PropertyId::VendorIdentifier)
+                .unwrap()
+                .as_unsigned(),
             Some(42)
         );
         assert_eq!(
-            dev.read_property(PropertyId::ModelName).unwrap().as_string(),
+            dev.read_property(PropertyId::ModelName)
+                .unwrap()
+                .as_string(),
             Some("TestModel")
         );
     }
@@ -753,19 +766,27 @@ mod tests {
         let dev = make_device();
 
         assert_eq!(
-            dev.read_property(PropertyId::ProtocolVersion).unwrap().as_unsigned(),
+            dev.read_property(PropertyId::ProtocolVersion)
+                .unwrap()
+                .as_unsigned(),
             Some(1)
         );
         assert_eq!(
-            dev.read_property(PropertyId::ProtocolRevision).unwrap().as_unsigned(),
+            dev.read_property(PropertyId::ProtocolRevision)
+                .unwrap()
+                .as_unsigned(),
             Some(22)
         );
         assert_eq!(
-            dev.read_property(PropertyId::MaxApduLengthAccepted).unwrap().as_unsigned(),
+            dev.read_property(PropertyId::MaxApduLengthAccepted)
+                .unwrap()
+                .as_unsigned(),
             Some(1476)
         );
         assert_eq!(
-            dev.read_property(PropertyId::SegmentationSupported).unwrap().as_unsigned(),
+            dev.read_property(PropertyId::SegmentationSupported)
+                .unwrap()
+                .as_unsigned(),
             Some(SegmentationSupport::Both as u32)
         );
     }
@@ -776,7 +797,9 @@ mod tests {
 
         assert_eq!(dev.system_status(), DeviceSystemStatus::Operational);
         assert_eq!(
-            dev.read_property(PropertyId::SystemStatus).unwrap().as_unsigned(),
+            dev.read_property(PropertyId::SystemStatus)
+                .unwrap()
+                .as_unsigned(),
             Some(0) // Operational
         );
 
@@ -864,9 +887,15 @@ mod tests {
     fn test_device_communication_control() {
         let dev = make_device();
 
-        assert_eq!(dev.communication_control(), CommunicationControlState::Enabled);
+        assert_eq!(
+            dev.communication_control(),
+            CommunicationControlState::Enabled
+        );
         dev.set_communication_control(CommunicationControlState::Disabled);
-        assert_eq!(dev.communication_control(), CommunicationControlState::Disabled);
+        assert_eq!(
+            dev.communication_control(),
+            CommunicationControlState::Disabled
+        );
     }
 
     #[test]
@@ -876,12 +905,14 @@ mod tests {
         // Simulate registering ReadProperty(12) and WriteProperty(15)
         dev.update_services_supported(&[12, 15], &[8]); // 8 = Who-Is
 
-        let bits = dev.read_property(PropertyId::ProtocolServicesSupported).unwrap();
+        let bits = dev
+            .read_property(PropertyId::ProtocolServicesSupported)
+            .unwrap();
         match bits {
             BACnetValue::BitString(b) => {
                 assert!(b[12]); // ReadProperty
                 assert!(b[15]); // WriteProperty
-                assert!(b[8]);  // Who-Is (mapped to bit 8)
+                assert!(b[8]); // Who-Is (mapped to bit 8)
                 assert!(!b[0]); // AcknowledgeAlarm not registered
             }
             _ => panic!("Expected BitString"),
@@ -898,11 +929,13 @@ mod tests {
         let dev = DeviceObject::with_defaults(1234, registry);
         dev.update_object_types_supported();
 
-        let bits = dev.read_property(PropertyId::ProtocolObjectTypesSupported).unwrap();
+        let bits = dev
+            .read_property(PropertyId::ProtocolObjectTypesSupported)
+            .unwrap();
         match bits {
             BACnetValue::BitString(b) => {
-                assert!(b[ObjectType::Device as usize]);      // Always
-                assert!(b[ObjectType::AnalogInput as usize]);  // AI registered
+                assert!(b[ObjectType::Device as usize]); // Always
+                assert!(b[ObjectType::AnalogInput as usize]); // AI registered
                 assert!(b[ObjectType::BinaryOutput as usize]); // BO registered
                 assert!(!b[ObjectType::AnalogValue as usize]); // AV not registered
             }

@@ -221,8 +221,8 @@ impl<T> EnvRuleBuilder<T> {
             field_path: self.field_path,
             description: self.description,
             apply: Box::new(move |config, value| {
-                let parsed = parse_bool(value)
-                    .ok_or_else(|| format!("Invalid boolean value: {}", value))?;
+                let parsed =
+                    parse_bool(value).ok_or_else(|| format!("Invalid boolean value: {}", value))?;
                 setter(config, parsed);
                 Ok(())
             }),
@@ -313,26 +313,24 @@ impl<T> EnvOverrides<T> {
             let var_name = self.full_var_name(&rule.suffix);
 
             match env::var(&var_name) {
-                Ok(value) => {
-                    match (rule.apply)(config, &value) {
-                        Ok(()) => {
-                            result.applied += 1;
-                            result.overridden_fields.push(rule.field_path.clone());
-                            tracing::debug!(
-                                env_var = %var_name,
-                                field = %rule.field_path,
-                                "Applied environment override"
-                            );
-                        }
-                        Err(msg) => {
-                            result.errors.push(EnvOverrideError {
-                                env_var: var_name,
-                                field: rule.field_path.clone(),
-                                message: msg,
-                            });
-                        }
+                Ok(value) => match (rule.apply)(config, &value) {
+                    Ok(()) => {
+                        result.applied += 1;
+                        result.overridden_fields.push(rule.field_path.clone());
+                        tracing::debug!(
+                            env_var = %var_name,
+                            field = %rule.field_path,
+                            "Applied environment override"
+                        );
                     }
-                }
+                    Err(msg) => {
+                        result.errors.push(EnvOverrideError {
+                            env_var: var_name,
+                            field: rule.field_path.clone(),
+                            message: msg,
+                        });
+                    }
+                },
                 Err(env::VarError::NotPresent) => {
                     // Variable not set, skip
                 }
@@ -396,7 +394,11 @@ pub struct EnvVarDoc {
 
 impl fmt::Display for EnvVarDoc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} - {}", self.var_name, self.field_path, self.description)
+        write!(
+            f,
+            "{}: {} - {}",
+            self.var_name, self.field_path, self.description
+        )
     }
 }
 
@@ -440,9 +442,7 @@ impl EnvSnapshot {
 
     /// Capture current environment variables with a specific prefix.
     pub fn capture(prefix: &str) -> Self {
-        let vars = env::vars()
-            .filter(|(k, _)| k.starts_with(prefix))
-            .collect();
+        let vars = env::vars().filter(|(k, _)| k.starts_with(prefix)).collect();
         Self { vars }
     }
 
@@ -469,6 +469,7 @@ impl EnvSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
 
     #[derive(Debug, Default)]
     struct TestConfig {
@@ -497,6 +498,11 @@ mod tests {
                     .description("Enable flag")
                     .as_bool(|c: &mut TestConfig, v| c.enabled = v),
             )
+    }
+
+    fn env_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     #[test]
@@ -529,6 +535,8 @@ mod tests {
 
     #[test]
     fn test_apply_overrides() {
+        let _guard = env_test_lock().lock().unwrap();
+
         // Set test environment variables
         env::set_var("TEST_MAX_DEVICES", "5000");
         env::set_var("TEST_NAME", "test-config");
@@ -552,6 +560,8 @@ mod tests {
 
     #[test]
     fn test_parse_error() {
+        let _guard = env_test_lock().lock().unwrap();
+
         env::set_var("TEST_MAX_DEVICES", "not_a_number");
 
         let overrides = test_overrides();
@@ -578,6 +588,8 @@ mod tests {
 
     #[test]
     fn test_env_snapshot() {
+        let _guard = env_test_lock().lock().unwrap();
+
         let mut snapshot = EnvSnapshot::new();
         snapshot.set("TEST_VAR", "value");
         snapshot.apply();

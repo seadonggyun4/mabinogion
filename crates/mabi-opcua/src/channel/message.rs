@@ -4,9 +4,9 @@
 
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
-use crate::error::{OpcUaError, OpcUaResult};
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
 
 // =========================================================================
 // Asymmetric Security Header (used in OPN messages)
@@ -73,12 +73,16 @@ impl BinaryEncodable for SymmetricSecurityHeader {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()> {
         self.token_id.encode(buf)
     }
-    fn encoded_size(&self) -> usize { 4 }
+    fn encoded_size(&self) -> usize {
+        4
+    }
 }
 
 impl BinaryDecodable for SymmetricSecurityHeader {
     fn decode(buf: &mut Bytes) -> OpcUaResult<Self> {
-        Ok(Self { token_id: u32::decode(buf)? })
+        Ok(Self {
+            token_id: u32::decode(buf)?,
+        })
     }
 }
 
@@ -99,7 +103,9 @@ impl BinaryEncodable for SequenceHeader {
         self.request_id.encode(buf)?;
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 8 }
+    fn encoded_size(&self) -> usize {
+        8
+    }
 }
 
 impl BinaryDecodable for SequenceHeader {
@@ -133,7 +139,12 @@ impl OpenSecureChannelBody {
         let security_header = AsymmetricSecurityHeader::decode(&mut buf)?;
         let sequence_header = SequenceHeader::decode(&mut buf)?;
         let payload = buf.to_vec();
-        Ok(Self { secure_channel_id, security_header, sequence_header, payload })
+        Ok(Self {
+            secure_channel_id,
+            security_header,
+            sequence_header,
+            payload,
+        })
     }
 }
 
@@ -155,7 +166,12 @@ impl SecureMessageBody {
         let security_header = SymmetricSecurityHeader::decode(&mut buf)?;
         let sequence_header = SequenceHeader::decode(&mut buf)?;
         let payload = buf.to_vec();
-        Ok(Self { secure_channel_id, security_header, sequence_header, payload })
+        Ok(Self {
+            secure_channel_id,
+            security_header,
+            sequence_header,
+            payload,
+        })
     }
 }
 
@@ -204,7 +220,10 @@ mod tests {
 
     #[test]
     fn test_sequence_header_roundtrip() {
-        let header = SequenceHeader { sequence_number: 1, request_id: 42 };
+        let header = SequenceHeader {
+            sequence_number: 1,
+            request_id: 42,
+        };
         let mut buf = BytesMut::new();
         header.encode(&mut buf).unwrap();
         let mut data = buf.freeze();

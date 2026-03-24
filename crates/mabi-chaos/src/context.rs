@@ -4,11 +4,10 @@
 //! whether a fault should be applied and how it should modify the operation.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use mabi_core::{Protocol, Value, DataPoint, Quality};
+use mabi_core::{DataPoint, Protocol, Quality, Value};
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -137,12 +136,18 @@ impl FaultContext {
 
     /// Check if this is a read operation.
     pub fn is_read(&self) -> bool {
-        matches!(self.operation, OperationType::Read { .. } | OperationType::ReadMultiple { .. })
+        matches!(
+            self.operation,
+            OperationType::Read { .. } | OperationType::ReadMultiple { .. }
+        )
     }
 
     /// Check if this is a write operation.
     pub fn is_write(&self) -> bool {
-        matches!(self.operation, OperationType::Write { .. } | OperationType::WriteMultiple { .. })
+        matches!(
+            self.operation,
+            OperationType::Write { .. } | OperationType::WriteMultiple { .. }
+        )
     }
 
     /// Get point IDs involved in this operation.
@@ -150,9 +155,16 @@ impl FaultContext {
         match &self.operation {
             OperationType::Read { point_id } => vec![point_id.as_str()],
             OperationType::Write { point_id, .. } => vec![point_id.as_str()],
-            OperationType::ReadMultiple { point_ids } => point_ids.iter().map(|s| s.as_str()).collect(),
-            OperationType::WriteMultiple { values } => values.iter().map(|(id, _)| id.as_str()).collect(),
-            OperationType::Initialize | OperationType::Start | OperationType::Stop | OperationType::Tick => vec![],
+            OperationType::ReadMultiple { point_ids } => {
+                point_ids.iter().map(|s| s.as_str()).collect()
+            }
+            OperationType::WriteMultiple { values } => {
+                values.iter().map(|(id, _)| id.as_str()).collect()
+            }
+            OperationType::Initialize
+            | OperationType::Start
+            | OperationType::Stop
+            | OperationType::Tick => vec![],
             OperationType::Custom { .. } => vec![],
         }
     }

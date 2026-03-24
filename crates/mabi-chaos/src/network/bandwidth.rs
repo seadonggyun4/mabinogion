@@ -4,7 +4,6 @@ use std::any::Any;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::context::FaultContext;
@@ -143,8 +142,6 @@ impl BandwidthConfig {
 pub struct BandwidthFault {
     base: BaseFault,
     config: BandwidthConfig,
-    rng: StdRng,
-
     // Token bucket state
     tokens: f64,
     last_update: Instant,
@@ -161,7 +158,6 @@ impl BandwidthFault {
         Self {
             base: BaseFault::new(metadata),
             config,
-            rng: StdRng::from_entropy(),
             tokens: 0.0,
             last_update: Instant::now(),
         }
@@ -265,7 +261,9 @@ impl Fault for BandwidthFault {
 
             tokio::time::sleep(delay).await;
 
-            return Ok(FaultBehavior::Delay { duration_ms: delay_ms });
+            return Ok(FaultBehavior::Delay {
+                duration_ms: delay_ms,
+            });
         }
 
         Ok(FaultBehavior::Continue)

@@ -11,19 +11,18 @@
 //! - **Adaptive strategies**: Adjust prefetch behavior based on cache statistics
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
-use crate::types::NodeId;
-use super::base::Node;
-use super::cache::{NodeCache, CachedNode};
+use super::cache::{CachedNode, NodeCache};
+use super::reference::BrowseDirection;
 use super::store::AddressSpace;
-use super::reference::{ReferenceTypeId, BrowseDirection};
+use crate::types::NodeId;
 
 /// Configuration for the prefetcher.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,11 +186,7 @@ impl PatternTracker {
         // Extract patterns from recent history
         if self.history.len() >= self.window_size {
             let start = self.history.len() - self.window_size;
-            let pattern_sequence: Vec<NodeId> = self.history
-                .iter()
-                .skip(start)
-                .cloned()
-                .collect();
+            let pattern_sequence: Vec<NodeId> = self.history.iter().skip(start).cloned().collect();
 
             let pattern = AccessPattern::new(pattern_sequence);
             *self.frequencies.entry(pattern).or_insert(0) += 1;
@@ -224,8 +219,10 @@ impl PatternTracker {
 struct PrefetchRequest {
     /// Nodes to prefetch.
     node_ids: Vec<NodeId>,
+    #[allow(dead_code)]
     /// Request priority (higher = more important).
     priority: u8,
+    #[allow(dead_code)]
     /// Request timestamp.
     timestamp: Instant,
 }
@@ -237,6 +234,7 @@ pub struct NodePrefetcher {
     address_space: Arc<AddressSpace>,
     pattern_tracker: Mutex<PatternTracker>,
     pending_requests: Mutex<VecDeque<PrefetchRequest>>,
+    #[allow(dead_code)]
     is_running: AtomicBool,
     stats: RwLock<PrefetchStats>,
     stats_nodes_prefetched: AtomicU64,
@@ -285,10 +283,8 @@ impl NodePrefetcher {
         // Pattern-based prefetching
         if self.config.learn_patterns {
             let tracker = self.pattern_tracker.lock();
-            let pattern_candidates = tracker.get_prefetch_candidates(
-                node_id,
-                self.config.min_pattern_frequency,
-            );
+            let pattern_candidates =
+                tracker.get_prefetch_candidates(node_id, self.config.min_pattern_frequency);
             prefetch_nodes.extend(pattern_candidates);
         }
 
@@ -399,7 +395,8 @@ impl NodePrefetcher {
         let count = self.do_prefetch(&node_ids);
 
         self.stats_operations.fetch_add(1, Ordering::Relaxed);
-        self.stats_nodes_prefetched.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats_nodes_prefetched
+            .fetch_add(count as u64, Ordering::Relaxed);
 
         count
     }
@@ -493,7 +490,9 @@ impl NodePrefetcher {
         let mut children = Vec::new();
 
         // Get direct children (forward references are typically parent->child)
-        let references = self.address_space.get_references(node_id, BrowseDirection::Forward);
+        let references = self
+            .address_space
+            .get_references(node_id, BrowseDirection::Forward);
 
         // Filter hierarchical references
         for reference in references {
@@ -515,18 +514,21 @@ impl NodePrefetcher {
         let mut siblings = Vec::new();
 
         // Get parent (inverse hierarchical references)
-        let parents = self.address_space.get_references(node_id, BrowseDirection::Inverse);
+        let parents = self
+            .address_space
+            .get_references(node_id, BrowseDirection::Inverse);
 
         for parent_ref in &parents {
             if parent_ref.reference_type_id.is_hierarchical() {
                 // Get all children of parent (siblings)
-                let parent_children = self.address_space.get_references(
-                    &parent_ref.target_node_id,
-                    BrowseDirection::Forward,
-                );
+                let parent_children = self
+                    .address_space
+                    .get_references(&parent_ref.target_node_id, BrowseDirection::Forward);
 
                 for child_ref in parent_children {
-                    if child_ref.reference_type_id.is_hierarchical() && &child_ref.target_node_id != node_id {
+                    if child_ref.reference_type_id.is_hierarchical()
+                        && &child_ref.target_node_id != node_id
+                    {
                         siblings.push(child_ref.target_node_id);
                     }
                 }
@@ -553,10 +555,14 @@ impl NodePrefetcher {
             nodes.push(node_id.clone());
 
             // Get children
-            let references = self.address_space.get_references(&node_id, BrowseDirection::Forward);
+            let references = self
+                .address_space
+                .get_references(&node_id, BrowseDirection::Forward);
 
             for reference in references {
-                if reference.reference_type_id.is_hierarchical() && !visited.contains(&reference.target_node_id) {
+                if reference.reference_type_id.is_hierarchical()
+                    && !visited.contains(&reference.target_node_id)
+                {
                     queue.push_back((reference.target_node_id, depth + 1));
                 }
             }
@@ -583,9 +589,7 @@ impl AsyncPrefetchWorker {
 
     /// Start the worker.
     pub async fn run(&self) {
-        let batch_interval = Duration::from_millis(
-            self.prefetcher.config.batch_interval_ms
-        );
+        let batch_interval = Duration::from_millis(self.prefetcher.config.batch_interval_ms);
 
         while !self.shutdown.load(Ordering::Relaxed) {
             let processed = self.prefetcher.process_pending();
@@ -666,11 +670,7 @@ impl PrefetchingAddressSpace {
     }
 
     /// Browse with caching and prefetching.
-    pub fn browse(
-        &self,
-        node_id: &NodeId,
-        direction: BrowseDirection,
-    ) -> Vec<NodeId> {
+    pub fn browse(&self, node_id: &NodeId, direction: BrowseDirection) -> Vec<NodeId> {
         let references = self.address_space.get_references(node_id, direction);
 
         let result_ids: Vec<NodeId> = references
@@ -708,8 +708,10 @@ impl PrefetchingAddressSpace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nodes::{AddressSpaceConfig, VariableBuilder, ObjectBuilder, NodeBuilder, Reference};
     use crate::nodes::cache::NodeCacheConfig;
+    use crate::nodes::{
+        AddressSpaceConfig, NodeBuilder, ObjectBuilder, Reference, VariableBuilder,
+    };
     use crate::types::variant::DataTypeId;
 
     fn create_test_address_space() -> Arc<AddressSpace> {
@@ -817,11 +819,8 @@ mod tests {
     fn test_prefetcher_creation() {
         let address_space = create_test_address_space();
         let cache = Arc::new(NodeCache::new(NodeCacheConfig::default()));
-        let prefetcher = NodePrefetcher::new(
-            PrefetchConfig::default(),
-            cache.clone(),
-            address_space,
-        );
+        let prefetcher =
+            NodePrefetcher::new(PrefetchConfig::default(), cache.clone(), address_space);
 
         assert_eq!(prefetcher.stats().nodes_prefetched, 0);
     }
@@ -830,17 +829,11 @@ mod tests {
     fn test_explicit_prefetch() {
         let address_space = create_test_address_space();
         let cache = Arc::new(NodeCache::new(NodeCacheConfig::default()));
-        let prefetcher = NodePrefetcher::new(
-            PrefetchConfig::default(),
-            cache.clone(),
-            address_space,
-        );
+        let prefetcher =
+            NodePrefetcher::new(PrefetchConfig::default(), cache.clone(), address_space);
 
         // Request prefetch for specific nodes
-        prefetcher.prefetch(vec![
-            NodeId::numeric(2, 1001),
-            NodeId::numeric(2, 1002),
-        ]);
+        prefetcher.prefetch(vec![NodeId::numeric(2, 1001), NodeId::numeric(2, 1002)]);
 
         // Process the request
         let processed = prefetcher.process_pending();
@@ -855,11 +848,8 @@ mod tests {
     fn test_subtree_prefetch() {
         let address_space = create_test_address_space();
         let cache = Arc::new(NodeCache::new(NodeCacheConfig::default()));
-        let prefetcher = NodePrefetcher::new(
-            PrefetchConfig::default(),
-            cache.clone(),
-            address_space,
-        );
+        let prefetcher =
+            NodePrefetcher::new(PrefetchConfig::default(), cache.clone(), address_space);
 
         // Prefetch subtree under Folder1
         prefetcher.prefetch_subtree(&NodeId::numeric(2, 1000), 2);
@@ -874,11 +864,8 @@ mod tests {
         let address_space = create_test_address_space();
         let cache = Arc::new(NodeCache::new(NodeCacheConfig::default()));
 
-        let prefetching_as = PrefetchingAddressSpace::new(
-            address_space,
-            cache.clone(),
-            PrefetchConfig::default(),
-        );
+        let prefetching_as =
+            PrefetchingAddressSpace::new(address_space, cache.clone(), PrefetchConfig::default());
 
         // Access a node
         let exists = prefetching_as.get_node_cached(&NodeId::numeric(2, 1000));
@@ -898,16 +885,11 @@ mod tests {
     fn test_disabled_prefetch() {
         let address_space = create_test_address_space();
         let cache = Arc::new(NodeCache::new(NodeCacheConfig::default()));
-        let prefetcher = NodePrefetcher::new(
-            PrefetchConfig::disabled(),
-            cache.clone(),
-            address_space,
-        );
+        let prefetcher =
+            NodePrefetcher::new(PrefetchConfig::disabled(), cache.clone(), address_space);
 
         // Request prefetch - should be ignored
-        prefetcher.prefetch(vec![
-            NodeId::numeric(2, 1001),
-        ]);
+        prefetcher.prefetch(vec![NodeId::numeric(2, 1001)]);
 
         let processed = prefetcher.process_pending();
         assert_eq!(processed, 0);
@@ -917,16 +899,10 @@ mod tests {
     fn test_prefetch_stats() {
         let address_space = create_test_address_space();
         let cache = Arc::new(NodeCache::new(NodeCacheConfig::default()));
-        let prefetcher = NodePrefetcher::new(
-            PrefetchConfig::default(),
-            cache.clone(),
-            address_space,
-        );
+        let prefetcher =
+            NodePrefetcher::new(PrefetchConfig::default(), cache.clone(), address_space);
 
-        prefetcher.prefetch(vec![
-            NodeId::numeric(2, 1001),
-            NodeId::numeric(2, 1002),
-        ]);
+        prefetcher.prefetch(vec![NodeId::numeric(2, 1001), NodeId::numeric(2, 1002)]);
         prefetcher.process_pending();
 
         let stats = prefetcher.stats();

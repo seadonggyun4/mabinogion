@@ -27,8 +27,8 @@ use chrono::{DateTime, Utc};
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use crate::nodes::{AddressSpace, BrowseDirection, QualifiedName};
 use crate::nodes::reference::ReferenceTypeId;
+use crate::nodes::{AddressSpace, BrowseDirection, QualifiedName};
 use crate::types::{AttributeId, NodeId, Variant};
 
 // =========================================================================
@@ -159,8 +159,14 @@ impl EventFilter {
         let base_type = NodeId::numeric(0, 2041); // BaseEventType
 
         let field_names = [
-            "EventId", "EventType", "SourceNode", "SourceName",
-            "Time", "ReceiveTime", "Message", "Severity",
+            "EventId",
+            "EventType",
+            "SourceNode",
+            "SourceName",
+            "Time",
+            "ReceiveTime",
+            "Message",
+            "Severity",
         ];
 
         let select_clauses = field_names
@@ -260,11 +266,7 @@ impl EventData {
     }
 
     /// Add a custom event field.
-    pub fn with_field(
-        mut self,
-        browse_path: Vec<QualifiedName>,
-        value: Variant,
-    ) -> Self {
+    pub fn with_field(mut self, browse_path: Vec<QualifiedName>, value: Variant) -> Self {
         self.custom_fields.push((browse_path, value));
         self
     }
@@ -311,9 +313,9 @@ fn paths_match(a: &[QualifiedName], b: &[QualifiedName]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.iter().zip(b.iter()).all(|(qa, qb)| {
-        qa.namespace_index == qb.namespace_index && qa.name == qb.name
-    })
+    a.iter()
+        .zip(b.iter())
+        .all(|(qa, qb)| qa.namespace_index == qb.namespace_index && qa.name == qb.name)
 }
 
 // =========================================================================
@@ -395,13 +397,10 @@ impl EventManager {
     }
 
     /// Distribute an event to a single subscription's event-monitoring items.
-    fn distribute_to_subscription(
-        &self,
-        subscription_id: u32,
-        event_data: &EventData,
-    ) {
+    fn distribute_to_subscription(&self, subscription_id: u32, event_data: &EventData) {
         // Get event-monitoring items and their filters for this subscription
-        let event_items = self.subscription_manager
+        let event_items = self
+            .subscription_manager
             .get_event_monitored_items(subscription_id);
 
         for (client_handle, filter) in &event_items {
@@ -537,7 +536,7 @@ impl EventManager {
     /// Evaluate a binary comparison operator.
     fn evaluate_comparison<F>(
         &self,
-        elements: &[ContentFilterElement],
+        _elements: &[ContentFilterElement],
         element: &ContentFilterElement,
         event_data: &EventData,
         cmp_fn: F,
@@ -574,12 +573,10 @@ impl EventManager {
     ) -> Option<NodeId> {
         match operand {
             FilterOperand::Literal(Variant::NodeId(nid)) => Some(nid.clone()),
-            FilterOperand::SimpleAttribute(attr) => {
-                match event_data.resolve_field(attr) {
-                    Variant::NodeId(nid) => Some(nid),
-                    _ => None,
-                }
-            }
+            FilterOperand::SimpleAttribute(attr) => match event_data.resolve_field(attr) {
+                Variant::NodeId(nid) => Some(nid),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -597,7 +594,9 @@ impl EventManager {
 
         while depth < MAX_DEPTH {
             // Find the parent type (inverse HasSubtype reference)
-            let refs = self.address_space.get_references(&current, BrowseDirection::Inverse);
+            let refs = self
+                .address_space
+                .get_references(&current, BrowseDirection::Inverse);
             let parent = refs.iter().find_map(|r| {
                 if r.reference_type_id == ReferenceTypeId::HasSubtype {
                     // Inverse HasSubtype: target_node_id is the parent type

@@ -68,7 +68,7 @@ fn test_word_order_known_patterns() {
 fn test_word_order_interoperability() {
     // Simulate reading from a BE device and writing to a LE device
     let be_conv = RegisterConverter::big_endian();
-    let le_conv = RegisterConverter::little_endian();
+    let _le_conv = RegisterConverter::little_endian();
 
     let original_value: f32 = 42.5;
 
@@ -136,7 +136,10 @@ fn test_multi_unit_word_order_per_unit() {
 
     // Unit 1 with Big Endian
     manager
-        .add_unit(1, UnitConfig::with_word_order("BE Unit", WordOrder::BigEndian))
+        .add_unit(
+            1,
+            UnitConfig::with_word_order("BE Unit", WordOrder::BigEndian),
+        )
         .unwrap();
 
     // Unit 2 with Big Endian Word Swap
@@ -208,7 +211,9 @@ fn test_broadcast_selective() {
     manager.add_unit(3, UnitConfig::new("Unit 3")).unwrap();
 
     // Broadcast write
-    manager.broadcast_write_holding_register(600, 0x1234).unwrap();
+    manager
+        .broadcast_write_holding_register(600, 0x1234)
+        .unwrap();
 
     // Units 1 and 3 should have the value
     let v1 = manager.read_holding_registers(1, 600, 1).unwrap();
@@ -260,7 +265,9 @@ fn test_broadcast_mode_disabled() {
     manager.write_holding_register(2, 700, 0x2222).unwrap();
 
     // Broadcast write (should have no effect when disabled)
-    manager.broadcast_write_holding_register(700, 0xFFFF).unwrap();
+    manager
+        .broadcast_write_holding_register(700, 0xFFFF)
+        .unwrap();
 
     // Values should remain unchanged
     let v1 = manager.read_holding_registers(1, 700, 1).unwrap();

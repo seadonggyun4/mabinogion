@@ -138,6 +138,7 @@ impl std::fmt::Display for RegisterValue {
     }
 }
 
+#[cfg(test)]
 /// Represents a register change event with old and new values.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RegisterChange {
@@ -147,6 +148,7 @@ pub struct RegisterChange {
     pub new_value: RegisterValue,
 }
 
+#[cfg(test)]
 impl RegisterChange {
     /// Create a new register change.
     #[inline]

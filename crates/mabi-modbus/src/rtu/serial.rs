@@ -383,8 +383,9 @@ impl VirtualSerial {
         use std::os::unix::io::AsRawFd;
 
         // Open PTY master
-        let master = nix::pty::posix_openpt(nix::fcntl::OFlag::O_RDWR | nix::fcntl::OFlag::O_NOCTTY)
-            .map_err(|e| VirtualSerialError::PtyCreation(e.to_string()))?;
+        let master =
+            nix::pty::posix_openpt(nix::fcntl::OFlag::O_RDWR | nix::fcntl::OFlag::O_NOCTTY)
+                .map_err(|e| VirtualSerialError::PtyCreation(e.to_string()))?;
 
         // Grant access to slave
         nix::pty::grantpt(&master)
@@ -525,14 +526,19 @@ impl Drop for VirtualSerial {
 #[derive(Debug)]
 pub struct SerialPair {
     /// Server-side buffer.
+    #[allow(dead_code)]
     server_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    #[allow(dead_code)]
     server_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
 
     /// Client-side buffer.
+    #[allow(dead_code)]
     client_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    #[allow(dead_code)]
     client_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
 
     /// Configuration.
+    #[allow(dead_code)]
     config: SerialConfig,
 }
 
@@ -568,7 +574,10 @@ pub struct SerialPairServer {
 
 impl SerialPairServer {
     /// Send data to the client.
-    pub async fn send(&self, data: &[u8]) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+    pub async fn send(
+        &self,
+        data: &[u8],
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
         // Simulate transmission delay
         if self.config.baud_rate > 0 {
             let delay = self.config.transmission_time(data.len());
@@ -599,7 +608,10 @@ pub struct SerialPairClient {
 
 impl SerialPairClient {
     /// Send data to the server.
-    pub async fn send(&self, data: &[u8]) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+    pub async fn send(
+        &self,
+        data: &[u8],
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
         // Simulate transmission delay
         if self.config.baud_rate > 0 {
             let delay = self.config.transmission_time(data.len());

@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 
@@ -218,7 +217,7 @@ impl LoadGenerator {
 
         // Calculate interval between requests per connection
         let request_interval = Duration::from_secs_f64(
-            self.config.connections as f64 / self.config.requests_per_second
+            self.config.connections as f64 / self.config.requests_per_second,
         );
 
         // Ramp up connections gradually
@@ -315,23 +314,25 @@ impl LoadGenerator {
         }
     }
 
-    async fn send_request(stream: &TcpStream, config: &LoadConfig, stats: &LoadStats) -> bool {
+    async fn send_request(stream: &TcpStream, _config: &LoadConfig, stats: &LoadStats) -> bool {
         // Modbus TCP read holding registers request
         let request: [u8; 12] = [
-            0x00, 0x01,             // Transaction ID
-            0x00, 0x00,             // Protocol ID
-            0x00, 0x06,             // Length
-            0x01,                   // Unit ID
-            0x03,                   // Function code: Read Holding Registers
-            0x00, 0x00,             // Starting address
-            0x00, 0x0A,             // Quantity (10 registers)
+            0x00, 0x01, // Transaction ID
+            0x00, 0x00, // Protocol ID
+            0x00, 0x06, // Length
+            0x01, // Unit ID
+            0x03, // Function code: Read Holding Registers
+            0x00, 0x00, // Starting address
+            0x00, 0x0A, // Quantity (10 registers)
         ];
 
         // Try to send request
         if stream.try_write(&request).is_err() {
             return false;
         }
-        stats.bytes_sent.fetch_add(request.len() as u64, Ordering::Relaxed);
+        stats
+            .bytes_sent
+            .fetch_add(request.len() as u64, Ordering::Relaxed);
 
         // Small delay for response
         tokio::time::sleep(Duration::from_micros(500)).await;
@@ -436,11 +437,8 @@ impl ConnectionSimulator {
         let mut opened = 0;
 
         for _ in 0..count {
-            match tokio::time::timeout(
-                Duration::from_secs(5),
-                TcpStream::connect(self.server_addr),
-            )
-            .await
+            match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(self.server_addr))
+                .await
             {
                 Ok(Ok(stream)) => {
                     self.connections.push(stream);

@@ -3,11 +3,11 @@
 //! Provides flexible output formatting for CLI commands.
 
 use comfy_table::{presets, Cell, Color, ContentArrangement, Table};
-use console::{style, Style};
+use console::style;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use serde::Serialize;
 use std::fmt::Display;
-use std::io::{self, Write};
+use std::io;
 use std::time::Duration;
 
 /// Output format options.
@@ -216,7 +216,10 @@ impl TableBuilder {
 
     /// Add a row to the table.
     pub fn row(mut self, values: impl IntoIterator<Item = impl Display>) -> Self {
-        let cells: Vec<Cell> = values.into_iter().map(|v| Cell::new(v.to_string())).collect();
+        let cells: Vec<Cell> = values
+            .into_iter()
+            .map(|v| Cell::new(v.to_string()))
+            .collect();
         self.table.add_row(cells);
         self
     }
@@ -299,14 +302,24 @@ impl Default for PaginatedTable {
 impl PaginatedTable {
     /// Create with custom thresholds.
     pub fn new(max_visible: usize, head_count: usize, tail_count: usize) -> Self {
-        Self { max_visible, head_count, tail_count }
+        Self {
+            max_visible,
+            head_count,
+            tail_count,
+        }
     }
 
     /// Render rows into the given `TableBuilder`.
     ///
     /// `row_fn(index)` returns `(cells, status)` for the row at `index` (0-based).
     /// `col_count` is the number of columns (used for the summary row span).
-    pub fn render<F>(self, mut builder: TableBuilder, total: usize, col_count: usize, row_fn: F) -> TableBuilder
+    pub fn render<F>(
+        self,
+        mut builder: TableBuilder,
+        total: usize,
+        col_count: usize,
+        row_fn: F,
+    ) -> TableBuilder
     where
         F: Fn(usize) -> (Vec<String>, StatusType),
     {
@@ -321,10 +334,7 @@ impl PaginatedTable {
                 builder = builder.status_row(cells, status);
             }
             let omitted = total - self.head_count - self.tail_count;
-            builder = builder.summary_row(
-                &format!("... {} more devices ...", omitted),
-                col_count,
-            );
+            builder = builder.summary_row(&format!("... {} more devices ...", omitted), col_count);
             for i in (total - self.tail_count)..total {
                 let (cells, status) = row_fn(i);
                 builder = builder.status_row(cells, status);

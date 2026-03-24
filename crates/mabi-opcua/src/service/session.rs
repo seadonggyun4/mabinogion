@@ -7,15 +7,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::nodes::LocalizedText;
-use crate::types::{NodeId, StatusCode};
-use crate::services::session::UserIdentity;
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::nodes::LocalizedText;
+use crate::services::session::UserIdentity;
+use crate::types::NodeId;
 
 // OPC UA type IDs
 const CREATE_SESSION_REQUEST_ID: u32 = 461;
@@ -79,8 +79,12 @@ impl ServiceHandler for CreateSessionHandler {
         let session_name = format!("Session_{}", chrono::Utc::now().timestamp_millis());
 
         // Create session in the manager
-        let session_info = context.session_manager.create_session(&session_name)
-            .map_err(|e| crate::error::OpcUaError::Server(format!("Create session failed: {:?}", e)))?;
+        let session_info = context
+            .session_manager
+            .create_session(&session_name)
+            .map_err(|e| {
+                crate::error::OpcUaError::Server(format!("Create session failed: {:?}", e))
+            })?;
 
         // Link session to this connection's context so subsequent requests
         // (ActivateSession, Read, Write, Browse, etc.) can use it.
@@ -99,7 +103,7 @@ impl ServiceHandler for CreateSessionHandler {
         session_info.authentication_token.encode(&mut out)?;
         // RevisedSessionTimeout (ms)
         out.put_f64_le(60_000.0); // revised session timeout (ms)
-        // ServerNonce (empty ByteString)
+                                  // ServerNonce (empty ByteString)
         out.put_i32_le(0);
         // ServerCertificate (null ByteString)
         out.put_i32_le(-1);
@@ -114,7 +118,7 @@ impl ServiceHandler for CreateSessionHandler {
             &mut out,
         )?;
         out.put_i32_le(-1); // ServerCertificate
-        out.put_u32_le(1);  // SecurityMode: None
+        out.put_u32_le(1); // SecurityMode: None
         "http://opcfoundation.org/UA/SecurityPolicy#None".encode(&mut out)?;
         out.put_i32_le(1); // UserIdentityTokens
         "anonymous".to_string().encode(&mut out)?;
@@ -124,12 +128,12 @@ impl ServiceHandler for CreateSessionHandler {
         out.put_i32_le(-1); // SecurityPolicyUri (null)
         "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary".encode(&mut out)?;
         out.put_u8(0); // SecurityLevel
-        // ServerSoftwareCertificates (empty array)
+                       // ServerSoftwareCertificates (empty array)
         out.put_i32_le(0);
         // ServerSignature (empty)
         out.put_i32_le(-1); // Algorithm (null)
         out.put_i32_le(-1); // Signature (null)
-        // MaxRequestMessageSize
+                            // MaxRequestMessageSize
         out.put_u32_le(0); // 0 = no limit
 
         Ok(ServiceResponse {
@@ -162,7 +166,9 @@ impl ServiceHandler for ActivateSessionHandler {
 
         // Activate the session using the session ID stored in the context
         if let Some(session_id) = context.current_session_id() {
-            let _ = context.session_manager.activate_session(&session_id, UserIdentity::Anonymous);
+            let _ = context
+                .session_manager
+                .activate_session(&session_id, UserIdentity::Anonymous);
         } else {
             return Err(crate::error::OpcUaError::InvalidState(
                 "No session created on this connection; call CreateSession first".into(),
