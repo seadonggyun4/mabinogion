@@ -67,6 +67,7 @@ pub mod device;
 pub mod error;
 pub mod network;
 pub mod object;
+pub mod runtime;
 pub mod server;
 pub mod service;
 
@@ -83,7 +84,13 @@ pub mod prelude {
     pub use crate::network::bvlc::{BvlcFunction, BvlcMessage};
     pub use crate::network::npdu::{Npdu, NpduControl, Priority};
     pub use crate::network::udp::{BACnetNetwork, NetworkConfig, NetworkHandle};
-    pub use crate::object::property::{BACnetValue, PropertyId, PropertyStore, SegmentationSupport, StatusFlags};
+    pub use crate::object::device::{
+        BACnetDateTime, CommunicationControlState, DeviceObject, DeviceObjectConfig,
+        DeviceSystemStatus,
+    };
+    pub use crate::object::property::{
+        BACnetValue, PropertyId, PropertyStore, SegmentationSupport, StatusFlags,
+    };
     pub use crate::object::registry::{
         default_object_descriptors, ObjectRegistry, ObjectTypeDescriptor, RegistryError,
     };
@@ -91,11 +98,9 @@ pub mod prelude {
         AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
         MultiStateInput, MultiStateOutput, MultiStateValue,
     };
-    pub use crate::object::device::{
-        BACnetDateTime, CommunicationControlState, DeviceObject, DeviceObjectConfig,
-        DeviceSystemStatus,
+    pub use crate::object::traits::{
+        ArcObject, BACnetObject, CovSupport, ObjectBuilder, WritableObject,
     };
-    pub use crate::object::traits::{ArcObject, BACnetObject, CovSupport, ObjectBuilder, WritableObject};
     pub use crate::object::types::{ObjectId, ObjectType};
     pub use crate::server::{BACnetServer, ServerConfig, ServerEvent, ServerMetrics};
     pub use crate::service::cov::{CovManager, CovNotification, CovSubscription};
@@ -104,43 +109,43 @@ pub mod prelude {
         ConfirmedServiceHandler, ServiceContext, ServiceRegistry, ServiceResult,
         UnconfirmedServiceHandler,
     };
-    pub use crate::service::property::{PropertyService, ReadPropertyRequest, WritePropertyRequest};
-    pub use crate::service::tsm::{ServerTsm, TransactionKey, TsmConfig, TsmStatistics};
-    pub use crate::service::property_multiple::{
-        ReadPropertyMultipleRequest, WritePropertyMultipleRequest,
-        ReadPropertyMultipleHandler, WritePropertyMultipleHandler,
-        PropertyReference, PropertyAccessResult,
+    pub use crate::service::property::{
+        PropertyService, ReadPropertyRequest, WritePropertyRequest,
     };
-    pub use crate::service::read_range::{ReadRangeHandler, ReadRangeRequest, RangeType};
+    pub use crate::service::property_multiple::{
+        PropertyAccessResult, PropertyReference, ReadPropertyMultipleHandler,
+        ReadPropertyMultipleRequest, WritePropertyMultipleHandler, WritePropertyMultipleRequest,
+    };
+    pub use crate::service::read_range::{RangeType, ReadRangeHandler, ReadRangeRequest};
+    pub use crate::service::tsm::{ServerTsm, TransactionKey, TsmConfig, TsmStatistics};
     // File access services
     pub use crate::service::file_access::{
-        AtomicReadFileHandler, AtomicWriteFileHandler,
-        AtomicReadFileRequest, AtomicWriteFileRequest,
+        AtomicReadFileHandler, AtomicReadFileRequest, AtomicWriteFileHandler,
+        AtomicWriteFileRequest,
     };
     // File object
     pub use crate::object::file::{FileAccessMethod, FileObject};
     // EventEnrollment + NotificationClass objects
     pub use crate::object::event_enrollment::{
-        EventEnrollment, EventNotification, EventTransitionBits, EventType,
-        NotificationClass, NotificationRecipient, NotifyType,
+        EventEnrollment, EventNotification, EventTransitionBits, EventType, NotificationClass,
+        NotificationRecipient, NotifyType,
     };
     // Alarm services
     pub use crate::service::alarm::{
-        AcknowledgeAlarmHandler, ConfirmedEventNotificationHandler,
-        GetAlarmSummaryHandler, GetEnrollmentSummaryHandler, GetEventInformationHandler,
+        AcknowledgeAlarmHandler, ConfirmedEventNotificationHandler, GetAlarmSummaryHandler,
+        GetEnrollmentSummaryHandler, GetEventInformationHandler,
     };
     // CreateObject/DeleteObject services
     pub use crate::service::create_delete::{
-        CreateObjectHandler, DeleteObjectHandler, ObjectFactory,
-        CreateObjectRequest, DeleteObjectRequest, default_object_factory,
+        default_object_factory, CreateObjectHandler, CreateObjectRequest, DeleteObjectHandler,
+        DeleteObjectRequest, ObjectFactory,
     };
     // COV subscription services
     pub use crate::service::subscribe_cov::{SubscribeCovHandler, SubscribeCovPropertyHandler};
     // Device control services
     pub use crate::service::device_control::{
-        TimeSynchronizationHandler, UtcTimeSynchronizationHandler,
-        DeviceCommunicationControlHandler, ReinitializeDeviceHandler,
-        EnableDisable, ReinitializedState,
+        DeviceCommunicationControlHandler, EnableDisable, ReinitializeDeviceHandler,
+        ReinitializedState, TimeSynchronizationHandler, UtcTimeSynchronizationHandler,
     };
     // Schedule + Calendar objects
     pub use crate::object::schedule::{
@@ -152,14 +157,66 @@ pub mod prelude {
         DeviceObjectPropertyReference, LogDatum, LogRecord, LogStatus, LogTimestamp, TrendLog,
     };
     // Network layer extensions
-    pub use crate::network::bbmd::{Bbmd, BbmdConfig, BroadcastDistributionTable, ForeignDeviceTable};
-    // APDU segmentation (SegmentationSupport already exported from object::property)
-    pub use crate::apdu::segmentation::{
-        SegmentAssembler, SegmentTransmitter,
+    pub use crate::network::bbmd::{
+        Bbmd, BbmdConfig, BroadcastDistributionTable, ForeignDeviceTable,
     };
+    // APDU segmentation (SegmentationSupport already exported from object::property)
+    pub use crate::apdu::segmentation::{SegmentAssembler, SegmentTransmitter};
 }
 
 // Legacy re-exports for backwards compatibility
 pub use config::BacnetServerConfig;
 pub use device::BacnetDevice;
 pub use error::{BacnetError, BacnetResult};
+pub use runtime::{descriptor, driver};
+pub use server::{BACnetServer, ServerConfig, ServerEvent, ServerMetrics, ServerMetricsSnapshot};
+
+/// Canonical configuration surface for architecture-level composition.
+pub type Config = ServerConfig;
+/// Canonical server surface for architecture-level composition.
+pub type Server = BACnetServer;
+/// Canonical device surface for architecture-level composition.
+pub type Device = BacnetDevice;
+/// Canonical factory surface for architecture-level composition.
+pub type Factory = crate::service::create_delete::ObjectFactory;
+/// Canonical stats surface for architecture-level composition.
+pub type Stats = ServerMetrics;
+/// Canonical error surface for architecture-level composition.
+pub type Error = BacnetError;
+/// Canonical result surface for architecture-level composition.
+pub type Result<T> = BacnetResult<T>;
+
+/// Canonical BACnet server builder.
+pub struct Builder {
+    config: Config,
+    objects: crate::object::registry::ObjectRegistry,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            config: Config::default(),
+            objects: crate::object::registry::ObjectRegistry::new(),
+        }
+    }
+}
+
+impl Builder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn objects(mut self, objects: crate::object::registry::ObjectRegistry) -> Self {
+        self.objects = objects;
+        self
+    }
+
+    pub fn build(self) -> Server {
+        Server::new(self.config, self.objects)
+    }
+}

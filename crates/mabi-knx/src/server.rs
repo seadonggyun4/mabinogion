@@ -27,25 +27,19 @@ use tracing::{debug, error, info, trace, warn};
 use crate::address::{GroupAddress, IndividualAddress};
 use crate::cemi::{Apci, CemiFrame, MessageCode};
 use crate::config::KnxServerConfig;
+use crate::diagnostics::{DiagnosticConfig, KnxDiagnostics};
 use crate::error::{KnxError, KnxResult};
-use crate::error_tracker::{SendErrorTracker, ErrorCategory, TrackingResult};
-use crate::filter::{
-    FilterChain, FilterResult, FrameEnvelope,
-    CircuitBreakerState, PaceState,
-};
-use crate::frame::{
-    DibDeviceInfo, Hpai, KnxFrame, ServiceType, SupportedServiceFamilies,
-};
+use crate::error_tracker::{ErrorCategory, SendErrorTracker, TrackingResult};
+use crate::filter::{CircuitBreakerState, FilterChain, FilterResult, FrameEnvelope, PaceState};
+use crate::frame::{DibDeviceInfo, Hpai, KnxFrame, ServiceType, SupportedServiceFamilies};
 use crate::group::GroupObjectTable;
-use crate::diagnostics::{KnxDiagnostics, DiagnosticConfig};
 use crate::group_cache::GroupValueCache;
 use crate::heartbeat::HeartbeatScheduler;
-use crate::metrics::{KnxMetricsCollector, KnxMetricsSnapshot, ConnectionMetricsSnapshot};
+use crate::metrics::{ConnectionMetricsSnapshot, KnxMetricsCollector, KnxMetricsSnapshot};
 use crate::tunnel::{
-    ConnectRequest, ConnectResponse, ConnectStatus, ConnectionResponseData,
+    AckMessage, ConnectRequest, ConnectResponse, ConnectStatus, ConnectionResponseData,
     ConnectionStateRequest, ConnectionStateResponse, DisconnectRequest, DisconnectResponse,
-    TunnelConnection, TunnellingAck, TunnellingRequest,
-    ReceivedValidation, AckMessage,
+    ReceivedValidation, TunnelConnection, TunnellingAck, TunnellingRequest,
 };
 
 // ============================================================================
@@ -60,10 +54,7 @@ pub enum ServerEvent {
     /// Server stopped.
     Stopped,
     /// Client connected.
-    ClientConnected {
-        channel_id: u8,
-        address: SocketAddr,
-    },
+    ClientConnected { channel_id: u8, address: SocketAddr },
     /// Client disconnected.
     ClientDisconnected { channel_id: u8 },
     /// Group value written.
@@ -83,10 +74,7 @@ pub enum ServerEvent {
         validation: SequenceEventType,
     },
     /// L_Data.con sent.
-    ConfirmationSent {
-        channel_id: u8,
-        success: bool,
-    },
+    ConfirmationSent { channel_id: u8, success: bool },
     /// Bus monitor frame sent.
     BusMonitorFrameSent {
         channel_id: u8,
@@ -126,10 +114,7 @@ pub enum ServerEvent {
         queue_depth: usize,
     },
     /// Frame dropped by flow control filter.
-    FrameDropped {
-        channel_id: u8,
-        reason: String,
-    },
+    FrameDropped { channel_id: u8, reason: String },
     /// Circuit breaker state changed.
     CircuitBreakerStateChanged {
         new_state: String,
@@ -147,9 +132,7 @@ pub enum ServerEvent {
         status_code: Option<u8>,
     },
     /// Heartbeat suppressed (NoResponse action).
-    HeartbeatSuppressed {
-        channel_id: u8,
-    },
+    HeartbeatSuppressed { channel_id: u8 },
     /// Group value cache updated.
     GroupValueCacheUpdated {
         address: GroupAddress,
@@ -181,9 +164,17 @@ pub enum SequenceEventType {
     /// Duplicate frame detected (ACK sent, not processed).
     Duplicate { sequence: u8, expected: u8 },
     /// Out-of-order frame (processed with warning).
-    OutOfOrder { sequence: u8, expected: u8, distance: u8 },
+    OutOfOrder {
+        sequence: u8,
+        expected: u8,
+        distance: u8,
+    },
     /// Fatal desync — tunnel restart required.
-    FatalDesync { sequence: u8, expected: u8, distance: u8 },
+    FatalDesync {
+        sequence: u8,
+        expected: u8,
+        distance: u8,
+    },
 }
 
 // ============================================================================
@@ -369,7 +360,9 @@ impl KnxServer {
     /// Create a new KNX server.
     pub fn new(config: KnxServerConfig) -> Self {
         let (event_tx, _) = broadcast::channel(1000);
-        let desync_threshold = config.tunnel_behavior.sequence_validation_enabled
+        let desync_threshold = config
+            .tunnel_behavior
+            .sequence_validation_enabled
             .then_some(5u8)
             .unwrap_or(255); // 255 effectively disables desync detection
 
@@ -377,29 +370,26 @@ impl KnxServer {
 
         // Phase 4: initialize heartbeat scheduler
         let heartbeat_scheduler = if config.tunnel_behavior.heartbeat_scheduler.enabled {
-            HeartbeatScheduler::new(
-                config.tunnel_behavior.heartbeat_scheduler.schedule.clone(),
-            )
+            HeartbeatScheduler::new(config.tunnel_behavior.heartbeat_scheduler.schedule.clone())
         } else {
             HeartbeatScheduler::normal()
         };
 
         // Phase 4: initialize group value cache
-        let group_value_cache = GroupValueCache::new(
-            config.tunnel_behavior.group_value_cache.clone(),
-        );
+        let group_value_cache =
+            GroupValueCache::new(config.tunnel_behavior.group_value_cache.clone());
 
         // Phase 4: initialize send error tracker
-        let error_tracker = SendErrorTracker::new(
-            config.tunnel_behavior.send_error_tracker.clone(),
-        );
+        let error_tracker =
+            SendErrorTracker::new(config.tunnel_behavior.send_error_tracker.clone());
 
         Self {
             connections: ConnectionManager::new(
                 config.max_connections,
                 config.connection_timeout(),
                 config.individual_address,
-            ).with_desync_threshold(desync_threshold),
+            )
+            .with_desync_threshold(desync_threshold),
             filter_chain,
             heartbeat_scheduler,
             group_value_cache,
@@ -542,10 +532,7 @@ impl KnxServer {
             .iter()
             .map(|c| c.sequence_tracker.stats_snapshot())
             .collect();
-        let fsm_stats: Vec<_> = connections
-            .iter()
-            .map(|c| c.fsm.stats_snapshot())
-            .collect();
+        let fsm_stats: Vec<_> = connections.iter().map(|c| c.fsm.stats_snapshot()).collect();
 
         self.metrics_collector.collect(
             server_state,
@@ -634,12 +621,13 @@ impl KnxServer {
         *self.state.write() = ServerState::Starting;
 
         // Bind UDP socket
-        let socket = UdpSocket::bind(&self.config.bind_addr).await.map_err(|e| {
-            KnxError::BindError {
-                address: self.config.bind_addr,
-                reason: e.to_string(),
-            }
-        })?;
+        let socket =
+            UdpSocket::bind(&self.config.bind_addr)
+                .await
+                .map_err(|e| KnxError::BindError {
+                    address: self.config.bind_addr,
+                    reason: e.to_string(),
+                })?;
 
         let local_addr = socket.local_addr()?;
         info!(address = %local_addr, "KNXnet/IP server started");
@@ -696,7 +684,8 @@ impl KnxServer {
 
         *self.state.write() = ServerState::Stopping;
 
-        if let Some(tx) = self.shutdown_tx.lock().take() {
+        let shutdown_tx = self.shutdown_tx.lock().take();
+        if let Some(tx) = shutdown_tx {
             let _ = tx.send(()).await;
         }
 
@@ -726,7 +715,8 @@ impl KnxServer {
                 self.handle_description_request(socket, addr).await?;
             }
             ServiceType::ConnectRequest => {
-                self.handle_connect_request(socket, &frame.body, addr).await?;
+                self.handle_connect_request(socket, &frame.body, addr)
+                    .await?;
             }
             ServiceType::ConnectionStateRequest => {
                 self.handle_connection_state_request(socket, &frame.body, addr)
@@ -742,7 +732,8 @@ impl KnxServer {
             }
             ServiceType::TunnellingAck => {
                 if self.filter_chain.is_enabled() {
-                    self.handle_tunnelling_ack_async(socket, &frame.body).await?;
+                    self.handle_tunnelling_ack_async(socket, &frame.body)
+                        .await?;
                 } else {
                     self.handle_tunnelling_ack(&frame.body)?;
                 }
@@ -759,11 +750,7 @@ impl KnxServer {
     // Discovery handlers (unchanged)
     // ========================================================================
 
-    async fn handle_search_request(
-        &self,
-        socket: &UdpSocket,
-        addr: SocketAddr,
-    ) -> KnxResult<()> {
+    async fn handle_search_request(&self, socket: &UdpSocket, addr: SocketAddr) -> KnxResult<()> {
         debug!(from = %addr, "Handling SearchRequest");
 
         let local_addr = socket.local_addr()?;
@@ -773,9 +760,10 @@ impl KnxServer {
         };
 
         let hpai = Hpai::udp_ipv4(local_ip, local_addr.port());
-        let device_info = DibDeviceInfo::new(&self.config.device_name, self.config.individual_address)
-            .with_serial_number(self.config.serial_number)
-            .with_mac_address(self.config.mac_address);
+        let device_info =
+            DibDeviceInfo::new(&self.config.device_name, self.config.individual_address)
+                .with_serial_number(self.config.serial_number)
+                .with_mac_address(self.config.mac_address);
         let families = SupportedServiceFamilies::default_families();
 
         let mut body = hpai.encode();
@@ -795,9 +783,10 @@ impl KnxServer {
     ) -> KnxResult<()> {
         debug!(from = %addr, "Handling DescriptionRequest");
 
-        let device_info = DibDeviceInfo::new(&self.config.device_name, self.config.individual_address)
-            .with_serial_number(self.config.serial_number)
-            .with_mac_address(self.config.mac_address);
+        let device_info =
+            DibDeviceInfo::new(&self.config.device_name, self.config.individual_address)
+                .with_serial_number(self.config.serial_number)
+                .with_mac_address(self.config.mac_address);
         let families = SupportedServiceFamilies::default_families();
 
         let mut body = device_info.encode();
@@ -838,7 +827,9 @@ impl KnxServer {
             request.data_endpoint.to_socket_addr_v()
         };
 
-        let connection = self.connections.create_connection(channel_id, addr, data_endpoint);
+        let connection = self
+            .connections
+            .create_connection(channel_id, addr, data_endpoint);
 
         let local_addr = socket.local_addr()?;
         let local_ip = match local_addr {
@@ -922,7 +913,8 @@ impl KnxServer {
                         channel_id: request.channel_id,
                         status,
                     };
-                    let frame = KnxFrame::new(ServiceType::ConnectionStateResponse, response.encode());
+                    let frame =
+                        KnxFrame::new(ServiceType::ConnectionStateResponse, response.encode());
                     socket.send_to(&frame.encode(), addr).await?;
                 }
                 None => {
@@ -942,26 +934,27 @@ impl KnxServer {
         }
 
         // Legacy: static status override
-        let response = if let Some(status_override) = self.config.tunnel_behavior.heartbeat_status_override {
-            debug!(
-                channel_id = request.channel_id,
-                status = status_override,
-                "Heartbeat override"
-            );
-            ConnectionStateResponse {
-                channel_id: request.channel_id,
-                status: status_override,
-            }
-        } else if let Some(conn) = self.connections.get(request.channel_id) {
-            conn.touch();
-            ConnectionStateResponse::ok(request.channel_id)
-        } else {
-            // Unknown channel → 0x21 E_CONNECTION_ID (knxd standard)
-            ConnectionStateResponse {
-                channel_id: request.channel_id,
-                status: 0x21,
-            }
-        };
+        let response =
+            if let Some(status_override) = self.config.tunnel_behavior.heartbeat_status_override {
+                debug!(
+                    channel_id = request.channel_id,
+                    status = status_override,
+                    "Heartbeat override"
+                );
+                ConnectionStateResponse {
+                    channel_id: request.channel_id,
+                    status: status_override,
+                }
+            } else if let Some(conn) = self.connections.get(request.channel_id) {
+                conn.touch();
+                ConnectionStateResponse::ok(request.channel_id)
+            } else {
+                // Unknown channel → 0x21 E_CONNECTION_ID (knxd standard)
+                ConnectionStateResponse {
+                    channel_id: request.channel_id,
+                    status: 0x21,
+                }
+            };
 
         let frame = KnxFrame::new(ServiceType::ConnectionStateResponse, response.encode());
         socket.send_to(&frame.encode(), addr).await?;
@@ -976,13 +969,18 @@ impl KnxServer {
         addr: SocketAddr,
     ) -> KnxResult<()> {
         let request = DisconnectRequest::decode(data)?;
-        debug!(channel_id = request.channel_id, "Handling DisconnectRequest");
+        debug!(
+            channel_id = request.channel_id,
+            "Handling DisconnectRequest"
+        );
 
         self.connections.remove(request.channel_id);
 
         // Clean up flow control queue state for this channel
         if self.filter_chain.is_enabled() {
-            self.filter_chain.queue_filter().clear_channel(request.channel_id);
+            self.filter_chain
+                .queue_filter()
+                .clear_channel(request.channel_id);
         }
 
         // Phase 4: Clean up error tracker state for this channel
@@ -1039,22 +1037,27 @@ impl KnxServer {
 
         // Emit sequence event for observability
         let seq_event = match &validation {
-            ReceivedValidation::Valid { sequence } => {
-                SequenceEventType::Valid { sequence: *sequence }
-            }
+            ReceivedValidation::Valid { sequence } => SequenceEventType::Valid {
+                sequence: *sequence,
+            },
             ReceivedValidation::Duplicate { sequence, expected } => {
                 debug!(
                     channel_id = request.channel_id,
-                    sequence, expected,
-                    "Duplicate frame — ACK only"
+                    sequence, expected, "Duplicate frame — ACK only"
                 );
-                SequenceEventType::Duplicate { sequence: *sequence, expected: *expected }
+                SequenceEventType::Duplicate {
+                    sequence: *sequence,
+                    expected: *expected,
+                }
             }
-            ReceivedValidation::OutOfOrder { sequence, expected, distance } => {
+            ReceivedValidation::OutOfOrder {
+                sequence,
+                expected,
+                distance,
+            } => {
                 warn!(
                     channel_id = request.channel_id,
-                    sequence, expected, distance,
-                    "Out-of-order frame"
+                    sequence, expected, distance, "Out-of-order frame"
                 );
                 SequenceEventType::OutOfOrder {
                     sequence: *sequence,
@@ -1062,11 +1065,14 @@ impl KnxServer {
                     distance: *distance,
                 }
             }
-            ReceivedValidation::FatalDesync { sequence, expected, distance } => {
+            ReceivedValidation::FatalDesync {
+                sequence,
+                expected,
+                distance,
+            } => {
                 error!(
                     channel_id = request.channel_id,
-                    sequence, expected, distance,
-                    "Fatal sequence desync — tunnel restart required"
+                    sequence, expected, distance, "Fatal sequence desync — tunnel restart required"
                 );
                 SequenceEventType::FatalDesync {
                     sequence: *sequence,
@@ -1090,14 +1096,17 @@ impl KnxServer {
 
         // Process frame only if it should be processed
         if validation.should_process() {
-            self.process_cemi(socket, addr, &request.cemi, &connection).await?;
+            self.process_cemi(socket, addr, &request.cemi, &connection)
+                .await?;
         }
 
         // FatalDesync → trigger disconnect event
         if validation.requires_restart() {
             // Clean up flow control queue state
             if self.filter_chain.is_enabled() {
-                self.filter_chain.queue_filter().clear_channel(request.channel_id);
+                self.filter_chain
+                    .queue_filter()
+                    .clear_channel(request.channel_id);
             }
 
             // Phase 4: Clean up error tracker
@@ -1150,10 +1159,7 @@ impl KnxServer {
             if ack.status == 0 {
                 self.error_tracker.on_send_success(conn.channel_id);
             } else {
-                self.handle_send_error_tracking(
-                    conn.channel_id,
-                    ErrorCategory::AckError,
-                );
+                self.handle_send_error_tracking(conn.channel_id, ErrorCategory::AckError);
             }
         }
 
@@ -1164,11 +1170,7 @@ impl KnxServer {
     ///
     /// This is the async variant that also drains queued frames after
     /// backpressure is released.
-    async fn handle_tunnelling_ack_async(
-        &self,
-        socket: &UdpSocket,
-        data: &[u8],
-    ) -> KnxResult<()> {
+    async fn handle_tunnelling_ack_async(&self, socket: &UdpSocket, data: &[u8]) -> KnxResult<()> {
         let ack = TunnellingAck::decode(data)?;
 
         if let Some(conn) = self.connections.get(ack.channel_id) {
@@ -1202,10 +1204,7 @@ impl KnxServer {
             if ack.status == 0 {
                 self.error_tracker.on_send_success(conn.channel_id);
             } else {
-                self.handle_send_error_tracking(
-                    conn.channel_id,
-                    ErrorCategory::AckError,
-                );
+                self.handle_send_error_tracking(conn.channel_id, ErrorCategory::AckError);
             }
         }
 
@@ -1234,30 +1233,36 @@ impl KnxServer {
     ) -> KnxResult<()> {
         match cemi.message_code {
             MessageCode::LDataReq => {
-                self.handle_ldata_req(socket, client_addr, cemi, connection).await?;
+                self.handle_ldata_req(socket, client_addr, cemi, connection)
+                    .await?;
             }
             MessageCode::LDataInd => {
                 // Client sending L_Data.ind — unusual but process group services
-                self.handle_ldata_data(socket, client_addr, cemi, connection).await?;
+                self.handle_ldata_data(socket, client_addr, cemi, connection)
+                    .await?;
             }
             MessageCode::MPropReadReq => {
                 if self.config.tunnel_behavior.property_service_enabled {
-                    self.handle_prop_read_req(socket, client_addr, cemi, connection).await?;
+                    self.handle_prop_read_req(socket, client_addr, cemi, connection)
+                        .await?;
                 }
             }
             MessageCode::MPropWriteReq => {
                 if self.config.tunnel_behavior.property_service_enabled {
-                    self.handle_prop_write_req(socket, client_addr, cemi, connection).await?;
+                    self.handle_prop_write_req(socket, client_addr, cemi, connection)
+                        .await?;
                 }
             }
             MessageCode::MResetReq => {
                 if self.config.tunnel_behavior.reset_service_enabled {
-                    self.handle_reset_req(socket, client_addr, connection).await?;
+                    self.handle_reset_req(socket, client_addr, connection)
+                        .await?;
                 }
             }
             MessageCode::LRawReq => {
                 // L_Raw.req: send L_Raw.con (success) — raw bus access
-                self.send_ldata_con(socket, client_addr, connection, cemi, true).await?;
+                self.send_ldata_con(socket, client_addr, connection, cemi, true)
+                    .await?;
             }
             _ => {
                 debug!(
@@ -1270,7 +1275,8 @@ impl KnxServer {
 
         // Generate Bus Monitor frame if enabled
         if self.config.tunnel_behavior.bus_monitor_enabled {
-            self.emit_bus_monitor_frame(socket, cemi, connection).await?;
+            self.emit_bus_monitor_frame(socket, cemi, connection)
+                .await?;
         }
 
         Ok(())
@@ -1289,7 +1295,9 @@ impl KnxServer {
         connection: &TunnelConnection,
     ) -> KnxResult<()> {
         // Process group value services if applicable
-        let bus_success = self.handle_ldata_data(socket, client_addr, cemi, connection).await?;
+        let bus_success = self
+            .handle_ldata_data(socket, client_addr, cemi, connection)
+            .await?;
 
         // Always send L_Data.con for L_Data.req when enabled
         if self.config.tunnel_behavior.ldata_con_enabled {
@@ -1301,7 +1309,8 @@ impl KnxServer {
                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             }
 
-            self.send_ldata_con(socket, client_addr, connection, cemi, confirm_success).await?;
+            self.send_ldata_con(socket, client_addr, connection, cemi, confirm_success)
+                .await?;
 
             let _ = self.event_tx.send(ServerEvent::ConfirmationSent {
                 channel_id: connection.channel_id,
@@ -1312,7 +1321,8 @@ impl KnxServer {
         // Broadcast L_Data.ind to other tunnel connections
         if self.config.tunnel_behavior.ldata_ind_broadcast_enabled {
             if let Some(group_addr) = cemi.destination_group() {
-                self.broadcast_ldata_ind(socket, cemi, connection, group_addr).await?;
+                self.broadcast_ldata_ind(socket, cemi, connection, group_addr)
+                    .await?;
             }
         }
 
@@ -1348,11 +1358,10 @@ impl KnxServer {
                     "Group Value Write"
                 );
 
-                let write_ok = self.group_objects.write(
-                    &group_addr,
-                    &cemi.data,
-                    Some(cemi.source.to_string()),
-                ).is_ok();
+                let write_ok = self
+                    .group_objects
+                    .write(&group_addr, &cemi.data, Some(cemi.source.to_string()))
+                    .is_ok();
 
                 // Phase 4: Update group value cache on write
                 self.group_value_cache.on_write(
@@ -1393,7 +1402,8 @@ impl KnxServer {
                     response_data,
                 );
 
-                self.send_tunnelling_request(socket, client_addr, connection, response_cemi).await?;
+                self.send_tunnelling_request(socket, client_addr, connection, response_cemi)
+                    .await?;
                 Ok(true)
             }
             Apci::GroupValueResponse => {
@@ -1443,25 +1453,21 @@ impl KnxServer {
         cemi: &CemiFrame,
         connection: &TunnelConnection,
     ) -> KnxResult<()> {
-        let (object_index, property_id, count, start_index, _) =
-            match cemi.parse_property_request() {
-                Some(parsed) => parsed,
-                None => {
-                    debug!(
-                        channel_id = connection.channel_id,
-                        "M_PropRead.req with invalid data format"
-                    );
-                    return Ok(());
-                }
-            };
+        let (object_index, property_id, count, start_index, _) = match cemi.parse_property_request()
+        {
+            Some(parsed) => parsed,
+            None => {
+                debug!(
+                    channel_id = connection.channel_id,
+                    "M_PropRead.req with invalid data format"
+                );
+                return Ok(());
+            }
+        };
 
         debug!(
             channel_id = connection.channel_id,
-            object_index,
-            property_id,
-            count,
-            start_index,
-            "M_PropRead.req"
+            object_index, property_id, count, start_index, "M_PropRead.req"
         );
 
         // Simulate well-known interface object properties (KNX AN033)
@@ -1475,7 +1481,8 @@ impl KnxServer {
             response_value,
         );
 
-        self.send_tunnelling_request(socket, client_addr, connection, response_cemi).await?;
+        self.send_tunnelling_request(socket, client_addr, connection, response_cemi)
+            .await?;
 
         let _ = self.event_tx.send(ServerEvent::PropertyRead {
             channel_id: connection.channel_id,
@@ -1525,7 +1532,8 @@ impl KnxServer {
             true, // success
         );
 
-        self.send_tunnelling_request(socket, client_addr, connection, response_cemi).await?;
+        self.send_tunnelling_request(socket, client_addr, connection, response_cemi)
+            .await?;
 
         let _ = self.event_tx.send(ServerEvent::PropertyWrite {
             channel_id: connection.channel_id,
@@ -1549,7 +1557,8 @@ impl KnxServer {
         );
 
         let response_cemi = CemiFrame::reset_ind();
-        self.send_tunnelling_request(socket, client_addr, connection, response_cemi).await?;
+        self.send_tunnelling_request(socket, client_addr, connection, response_cemi)
+            .await?;
 
         let _ = self.event_tx.send(ServerEvent::DeviceReset {
             channel_id: connection.channel_id,
@@ -1590,12 +1599,10 @@ impl KnxServer {
             // PID_KNX_INDIVIDUAL_ADDRESS (52)
             (11, 52) => self.config.individual_address.to_bytes().to_vec(),
             // PID_CURRENT_IP_ADDRESS (55)
-            (11, 55) => {
-                match self.config.bind_addr {
-                    SocketAddr::V4(v4) => v4.ip().octets().to_vec(),
-                    _ => vec![0, 0, 0, 0],
-                }
-            }
+            (11, 55) => match self.config.bind_addr {
+                SocketAddr::V4(v4) => v4.ip().octets().to_vec(),
+                _ => vec![0, 0, 0, 0],
+            },
             // PID_FRIENDLY_NAME (7)
             (11, 7) => {
                 let mut name = self.config.device_name.as_bytes().to_vec();
@@ -1640,12 +1647,10 @@ impl KnxServer {
         let all_connections = self.connections.all();
         for conn in &all_connections {
             let target_addr = conn.data_endpoint;
-            if let Err(e) = self.send_tunnelling_request(
-                socket,
-                target_addr,
-                conn,
-                busmon_cemi.clone(),
-            ).await {
+            if let Err(e) = self
+                .send_tunnelling_request(socket, target_addr, conn, busmon_cemi.clone())
+                .await
+            {
                 debug!(
                     error = %e,
                     channel_id = conn.channel_id,
@@ -1705,7 +1710,10 @@ impl KnxServer {
             };
 
             let target_addr = conn.data_endpoint;
-            if let Err(e) = self.send_tunnelling_request(socket, target_addr, conn, ind_cemi).await {
+            if let Err(e) = self
+                .send_tunnelling_request(socket, target_addr, conn, ind_cemi)
+                .await
+            {
                 debug!(
                     error = %e,
                     channel_id = conn.channel_id,
@@ -1762,11 +1770,7 @@ impl KnxServer {
     ) -> KnxResult<()> {
         // If filter chain is enabled, process through it
         if self.filter_chain.is_enabled() {
-            let mut envelope = FrameEnvelope::new(
-                cemi.clone(),
-                connection.channel_id,
-                client_addr,
-            );
+            let mut envelope = FrameEnvelope::new(cemi.clone(), connection.channel_id, client_addr);
 
             let result = self.filter_chain.send(&mut envelope);
 
@@ -1783,9 +1787,9 @@ impl KnxServer {
                     }
 
                     // Proceed with actual transmission
-                    let result = self.send_tunnelling_request_raw(
-                        socket, client_addr, connection, cemi,
-                    ).await;
+                    let result = self
+                        .send_tunnelling_request_raw(socket, client_addr, connection, cemi)
+                        .await;
 
                     match &result {
                         Ok(()) => {
@@ -1793,10 +1797,8 @@ impl KnxServer {
                             self.error_tracker.on_send_success(connection.channel_id);
                         }
                         Err(e) => {
-                            self.filter_chain.on_send_failure(
-                                connection.channel_id,
-                                &e.to_string(),
-                            );
+                            self.filter_chain
+                                .on_send_failure(connection.channel_id, &e.to_string());
                             self.handle_send_error_tracking(
                                 connection.channel_id,
                                 ErrorCategory::SendFailure,
@@ -1837,7 +1839,8 @@ impl KnxServer {
         }
 
         // Filter chain not enabled — direct send
-        self.send_tunnelling_request_raw(socket, client_addr, connection, cemi).await
+        self.send_tunnelling_request_raw(socket, client_addr, connection, cemi)
+            .await
     }
 
     /// Raw TUNNELLING_REQUEST send without filter chain processing.
@@ -1853,19 +1856,14 @@ impl KnxServer {
         cemi: CemiFrame,
     ) -> KnxResult<()> {
         let seq = connection.next_send_sequence();
-        let tunnel_req = TunnellingRequest::new(
-            connection.channel_id,
-            seq,
-            cemi,
-        );
+        let tunnel_req = TunnellingRequest::new(connection.channel_id, seq, cemi);
         let frame = KnxFrame::new(ServiceType::TunnellingRequest, tunnel_req.encode());
 
         // Activate backpressure before sending (we're now waiting for ACK)
         if self.filter_chain.is_enabled() {
-            self.filter_chain.queue_filter().set_waiting_for_ack(
-                connection.channel_id,
-                true,
-            );
+            self.filter_chain
+                .queue_filter()
+                .set_waiting_for_ack(connection.channel_id, true);
         }
 
         if let Err(e) = socket.send_to(&frame.encode(), client_addr).await {
@@ -1881,11 +1879,7 @@ impl KnxServer {
     /// When the QueueFilter has been holding frames due to WaitingForAck
     /// backpressure, this method drains and sends them in priority order
     /// once the ACK is received.
-    async fn drain_queued_frames(
-        &self,
-        socket: &UdpSocket,
-        connection: &TunnelConnection,
-    ) {
+    async fn drain_queued_frames(&self, socket: &UdpSocket, connection: &TunnelConnection) {
         if !self.filter_chain.is_enabled() {
             return;
         }
@@ -1909,25 +1903,18 @@ impl KnxServer {
                 }
             }
 
-            if let Err(e) = self.send_tunnelling_request_raw(
-                socket,
-                env.target_addr,
-                connection,
-                env.cemi,
-            ).await {
+            if let Err(e) = self
+                .send_tunnelling_request_raw(socket, env.target_addr, connection, env.cemi)
+                .await
+            {
                 debug!(
                     error = %e,
                     channel_id = connection.channel_id,
                     "Failed to send drained frame"
                 );
-                self.filter_chain.on_send_failure(
-                    connection.channel_id,
-                    &e.to_string(),
-                );
-                self.handle_send_error_tracking(
-                    connection.channel_id,
-                    ErrorCategory::SendFailure,
-                );
+                self.filter_chain
+                    .on_send_failure(connection.channel_id, &e.to_string());
+                self.handle_send_error_tracking(connection.channel_id, ErrorCategory::SendFailure);
                 break;
             } else {
                 self.filter_chain.on_send_success(connection.channel_id);
@@ -1944,11 +1931,7 @@ impl KnxServer {
     }
 
     /// Handle send error tracking result — emit events if thresholds are exceeded.
-    fn handle_send_error_tracking(
-        &self,
-        channel_id: u8,
-        category: ErrorCategory,
-    ) {
+    fn handle_send_error_tracking(&self, channel_id: u8, category: ErrorCategory) {
         let result = self.error_tracker.on_send_failure(channel_id, category);
 
         match result {
@@ -2006,7 +1989,8 @@ impl KnxServer {
         success: bool,
     ) -> KnxResult<()> {
         // Use the appropriate confirmation message code
-        let con_message_code = original_cemi.message_code
+        let con_message_code = original_cemi
+            .message_code
             .to_confirmation()
             .unwrap_or(MessageCode::LDataCon);
 
@@ -2033,7 +2017,8 @@ impl KnxServer {
             "Sending confirmation frame"
         );
 
-        self.send_tunnelling_request(socket, client_addr, connection, con_cemi).await
+        self.send_tunnelling_request(socket, client_addr, connection, con_cemi)
+            .await
     }
 }
 
@@ -2060,11 +2045,8 @@ mod tests {
 
     #[test]
     fn test_connection_manager() {
-        let manager = ConnectionManager::new(
-            10,
-            Duration::from_secs(60),
-            IndividualAddress::new(1, 1, 0),
-        );
+        let manager =
+            ConnectionManager::new(10, Duration::from_secs(60), IndividualAddress::new(1, 1, 0));
 
         let channel_id = manager.allocate_channel().unwrap();
         assert!(channel_id > 0);
@@ -2088,11 +2070,8 @@ mod tests {
 
     #[test]
     fn test_connection_with_sequence_tracker() {
-        let manager = ConnectionManager::new(
-            10,
-            Duration::from_secs(60),
-            IndividualAddress::new(1, 1, 0),
-        );
+        let manager =
+            ConnectionManager::new(10, Duration::from_secs(60), IndividualAddress::new(1, 1, 0));
 
         let channel_id = manager.allocate_channel().unwrap();
         let conn = manager.create_connection(
@@ -2103,13 +2082,19 @@ mod tests {
 
         // Test sequence tracking
         let validation = conn.validate_recv_sequence(0);
-        assert!(matches!(validation, ReceivedValidation::Valid { sequence: 0 }));
+        assert!(matches!(
+            validation,
+            ReceivedValidation::Valid { sequence: 0 }
+        ));
 
         let validation = conn.validate_recv_sequence(0);
         assert!(matches!(validation, ReceivedValidation::Duplicate { .. }));
 
         let validation = conn.validate_recv_sequence(1);
-        assert!(matches!(validation, ReceivedValidation::Valid { sequence: 1 }));
+        assert!(matches!(
+            validation,
+            ReceivedValidation::Valid { sequence: 1 }
+        ));
 
         // Test send sequence
         assert_eq!(conn.next_send_sequence(), 0);
@@ -2127,11 +2112,8 @@ mod tests {
 
     #[test]
     fn test_connection_fsm_lifecycle() {
-        let manager = ConnectionManager::new(
-            10,
-            Duration::from_secs(60),
-            IndividualAddress::new(1, 1, 0),
-        );
+        let manager =
+            ConnectionManager::new(10, Duration::from_secs(60), IndividualAddress::new(1, 1, 0));
 
         let channel_id = manager.allocate_channel().unwrap();
         let conn = manager.create_connection(
@@ -2146,11 +2128,17 @@ mod tests {
 
         // Send frame → WaitingForAck
         conn.fsm.on_frame_sent(0);
-        assert!(matches!(conn.fsm.state(), TunnelState::WaitingForAck { sequence: 0, .. }));
+        assert!(matches!(
+            conn.fsm.state(),
+            TunnelState::WaitingForAck { sequence: 0, .. }
+        ));
 
         // ACK received → WaitingForConfirmation (for L_Data.req)
         conn.fsm.on_ack_received(0);
-        assert!(matches!(conn.fsm.state(), TunnelState::WaitingForConfirmation { .. }));
+        assert!(matches!(
+            conn.fsm.state(),
+            TunnelState::WaitingForConfirmation { .. }
+        ));
 
         // Confirmation received → Idle
         conn.fsm.on_confirmation_received();
@@ -2159,11 +2147,8 @@ mod tests {
 
     #[test]
     fn test_connection_reset() {
-        let manager = ConnectionManager::new(
-            10,
-            Duration::from_secs(60),
-            IndividualAddress::new(1, 1, 0),
-        );
+        let manager =
+            ConnectionManager::new(10, Duration::from_secs(60), IndividualAddress::new(1, 1, 0));
 
         let channel_id = manager.allocate_channel().unwrap();
         let conn = manager.create_connection(
@@ -2184,11 +2169,9 @@ mod tests {
 
     #[test]
     fn test_desync_threshold_custom() {
-        let manager = ConnectionManager::new(
-            10,
-            Duration::from_secs(60),
-            IndividualAddress::new(1, 1, 0),
-        ).with_desync_threshold(10);
+        let manager =
+            ConnectionManager::new(10, Duration::from_secs(60), IndividualAddress::new(1, 1, 0))
+                .with_desync_threshold(10);
 
         let channel_id = manager.allocate_channel().unwrap();
         let conn = manager.create_connection(
@@ -2221,8 +2204,8 @@ mod tests {
 
     #[test]
     fn test_read_property_device_object() {
-        let config = KnxServerConfig::default()
-            .with_individual_address(IndividualAddress::new(1, 2, 3));
+        let config =
+            KnxServerConfig::default().with_individual_address(IndividualAddress::new(1, 2, 3));
         let server = KnxServer::new(config);
 
         // PID_SERIAL_NUMBER

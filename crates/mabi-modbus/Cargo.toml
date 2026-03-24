@@ -13,8 +13,13 @@ readme = "README.md"
 keywords = ["modbus", "protocol", "simulator", "industrial", "plc"]
 categories = ["simulation", "network-programming"]
 
+[features]
+default = []
+performance-tests = []
+
 [dependencies]
 mabi-core = { workspace = true }
+mabi-runtime = { workspace = true }
 
 # Async
 tokio = { workspace = true }

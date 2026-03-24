@@ -129,51 +129,65 @@ pub use tcp::ModbusTcpServerV2;
 // Re-exports for new sparse register store (Task 2.3)
 pub use registers::{
     // Config types
-    AddressRange, DefaultValue, InitializationMode, RegisterRangeConfig, RegisterStoreConfig,
-    // Store implementation
-    SparseRegisterStore,
+    AddressRange,
     // Callback system
-    CallbackManager, CallbackPriority, ReadCallback, ReadCallbackFn, WriteCallback,
-    WriteCallbackFn,
+    CallbackManager,
+    CallbackPriority,
+    DefaultValue,
+    InitializationMode,
+    ReadCallback,
+    ReadCallbackFn,
+    RegisterRangeConfig,
+    RegisterStoreConfig,
     // Value types
     RegisterValue,
+    // Store implementation
+    SparseRegisterStore,
+    WriteCallback,
+    WriteCallbackFn,
 };
 
 // Re-exports for RTU
 pub use rtu::{
-    ModbusRtuServer, RtuCodec, RtuFrame, RtuServerConfig, RtuTiming,
-    SerialConfig, VirtualSerial, VirtualSerialConfig,
+    ModbusRtuServer, RtuCodec, RtuFrame, RtuServerConfig, RtuTiming, SerialConfig, VirtualSerial,
+    VirtualSerialConfig,
 };
 
 // Re-exports for data types and conversion (Task 2.5)
 pub use types::{RegisterConverter, RegisterDataType, TypedValue, WordOrder};
 
 // Re-exports for multi-unit management (Task 2.5)
-pub use unit::{
-    BroadcastMode, MultiUnitManager, UnitConfig, UnitInfo, UnitManagerConfig,
-};
+pub use unit::{BroadcastMode, MultiUnitManager, UnitConfig, UnitInfo, UnitManagerConfig};
 
 // Re-exports for testing utilities
 pub use testing::{
-    // Performance validation
-    PerformanceValidator, PerformanceConfig, PerformanceTarget, ValidationResult,
-    // Memory profiling
-    MemoryProfiler, MemorySnapshot, MemoryReport, AllocationTracker,
+    AllocationTracker,
+    ConnectionSimulator,
+    LoadConfig,
     // Load generation
-    LoadGenerator, LoadConfig, LoadPattern, ConnectionSimulator,
+    LoadGenerator,
+    LoadPattern,
+    // Memory profiling
+    MemoryProfiler,
+    MemoryReport,
+    MemorySnapshot,
+    PerformanceConfig,
+    PerformanceTarget,
+    // Performance validation
+    PerformanceValidator,
+    TestMetrics,
     // Reporting
-    TestReport, TestMetrics, TestSummary,
+    TestReport,
+    TestSummary,
+    ValidationResult,
 };
 
 // Re-exports for fault injection
 pub use fault_injection::{
-    FaultAction, FaultPipeline, ModbusFault, ModbusFaultContext, TransportKind,
-    FaultInjectionConfig, FaultConfig, FaultType, FaultTarget,
-    FaultStats, FaultStatsSnapshot,
-    CrcCorruptionFault, WrongUnitIdFault, WrongFunctionCodeFault,
-    WrongTransactionIdFault, TruncatedResponseFault, ExtraDataFault,
-    DelayedResponseFault, NoResponseFault, ExceptionInjectionFault,
-    PartialFrameFault,
+    CrcCorruptionFault, DelayedResponseFault, ExceptionInjectionFault, ExtraDataFault, FaultAction,
+    FaultConfig, FaultInjectionConfig, FaultPipeline, FaultStats, FaultStatsSnapshot, FaultTarget,
+    FaultType, ModbusFault, ModbusFaultContext, NoResponseFault, PartialFrameFault, TransportKind,
+    TruncatedResponseFault, WrongFunctionCodeFault, WrongTransactionIdFault, WrongUnitIdFault,
 };
 
 // Re-exports for connection disruption
@@ -183,18 +197,77 @@ pub use fault_injection::connection_disruption::{
 
 // Re-exports for RTU timing faults
 pub use fault_injection::rtu_timing::{
-    RtuTimingFaultConfig, InterCharGapConfig, GapPosition,
-    BusCollisionConfig, CollisionMode,
-    ByteJitterConfig, TimingPlan, TimingSegment,
+    BusCollisionConfig, ByteJitterConfig, CollisionMode, GapPosition, InterCharGapConfig,
+    RtuTimingFaultConfig, TimingPlan, TimingSegment,
 };
 
 // Re-exports for runtime configuration
+pub use runtime::{descriptor, driver};
 pub use runtime::{
-    // Core types
-    RuntimeConfigManager, RuntimeState, ConfigUpdate, ConfigEvent, UpdateCategory,
+    AccessControl,
+    AddressRange as RuntimeAddressRange,
+    ConfigEvent,
+    ConfigUpdate,
     // Config types
-    ConnectionLimits, TimeoutConfig, AccessControl, AddressRange as RuntimeAddressRange,
+    ConnectionLimits,
     FeatureFlags,
+    FieldChange,
+    // Core types
+    RuntimeConfigManager,
+    RuntimeState,
+    StateDiff,
+    TimeoutConfig,
+    UpdateAuditLog,
     // Update utilities
-    UpdateBuilder, UpdateRecord, UpdateAuditLog, StateDiff, FieldChange,
+    UpdateBuilder,
+    UpdateCategory,
+    UpdateRecord,
 };
+
+/// Canonical server configuration surface for architecture-level composition.
+pub type Config = tcp::ServerConfigV2;
+/// Canonical device surface for architecture-level composition.
+pub type Device = ModbusDevice;
+/// Canonical server surface for architecture-level composition.
+pub type Server = ModbusTcpServerV2;
+/// Canonical error surface for architecture-level composition.
+pub type Error = ModbusError;
+/// Canonical result surface for architecture-level composition.
+pub type Result<T> = ModbusResult<T>;
+/// Canonical stats surface for architecture-level composition.
+pub type Stats = tcp::ServerMetrics;
+
+/// Canonical server builder.
+#[derive(Debug, Clone, Default)]
+pub struct Builder {
+    config: Config,
+}
+
+impl Builder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn build(self) -> Server {
+        Server::new(self.config)
+    }
+}
+
+/// Canonical factory helpers.
+#[derive(Debug, Clone, Default)]
+pub struct Factory;
+
+impl Factory {
+    pub fn server(config: Config) -> Server {
+        Server::new(config)
+    }
+
+    pub fn device(config: ModbusDeviceConfig) -> Device {
+        Device::new(config)
+    }
+}

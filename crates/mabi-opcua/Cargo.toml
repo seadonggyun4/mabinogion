@@ -20,6 +20,7 @@ full = []
 
 [dependencies]
 mabi-core = { workspace = true }
+mabi-runtime = { workspace = true }
 
 # Async
 tokio = { workspace = true }

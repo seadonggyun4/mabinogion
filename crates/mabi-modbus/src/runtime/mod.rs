@@ -32,9 +32,11 @@
 //! ```
 
 pub mod config;
+pub mod service;
 pub mod updates;
 
 pub use config::*;
+pub use service::{descriptor, driver};
 pub use updates::*;
 
 use std::sync::Arc;
@@ -178,10 +180,7 @@ pub enum ConfigEvent {
     },
 
     /// Update failed.
-    UpdateFailed {
-        update: ConfigUpdate,
-        error: String,
-    },
+    UpdateFailed { update: ConfigUpdate, error: String },
 
     /// Update was rolled back.
     RolledBack {
@@ -190,9 +189,7 @@ pub enum ConfigEvent {
     },
 
     /// Configuration was reset to defaults.
-    Reset {
-        timestamp: std::time::SystemTime,
-    },
+    Reset { timestamp: std::time::SystemTime },
 }
 
 /// Runtime configuration state.
@@ -256,9 +253,6 @@ pub struct RuntimeConfigManager {
     /// Event broadcaster.
     event_tx: broadcast::Sender<ConfigEvent>,
 
-    /// Pending updates (for batch operations).
-    pending_updates: RwLock<Vec<ConfigUpdate>>,
-
     /// Callback for applying updates to the server.
     update_callback: RwLock<Option<Box<dyn Fn(&ConfigUpdate) -> Result<()> + Send + Sync>>>,
 
@@ -279,7 +273,6 @@ impl RuntimeConfigManager {
         Self {
             state: Arc::new(RwLock::new(state)),
             event_tx,
-            pending_updates: RwLock::new(Vec::new()),
             update_callback: RwLock::new(None),
             validate_updates: true,
         }

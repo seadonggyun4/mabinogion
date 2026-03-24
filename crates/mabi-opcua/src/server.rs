@@ -25,26 +25,25 @@
 //! ```
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
 
 use crate::config::OpcUaServerConfig;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::nodes::{
-    AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig,
-    NodePrefetcher, PrefetchConfig,
+    AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig, NodePrefetcher, PrefetchConfig,
 };
 use crate::security::{SecurityManager, SecurityManagerConfig};
 use crate::service::registry::ServiceRegistry;
 use crate::services::{
-    HistoryStore, HistoryStoreConfig,
-    SessionManager, SessionManagerConfig,
-    SubscriptionManager, SubscriptionManagerConfig,
+    HistoryStore, HistoryStoreConfig, SessionManager, SessionManagerConfig, SubscriptionManager,
+    SubscriptionManagerConfig,
 };
 use crate::transport::connection::ServiceContextTemplate;
 use crate::transport::tcp_listener::{OpcUaTcpListener, TcpTransportConfig};
@@ -157,6 +156,10 @@ pub struct OpcUaServer {
     node_prefetcher: Arc<NodePrefetcher>,
     /// Security manager.
     security_manager: Arc<SecurityManager>,
+    /// TCP listener instance tracked for graceful shutdown.
+    tcp_listener: RwLock<Option<Arc<OpcUaTcpListener>>>,
+    /// TCP listener task.
+    tcp_listener_task: RwLock<Option<JoinHandle<()>>>,
     /// Server event broadcaster.
     event_tx: broadcast::Sender<ServerEvent>,
     /// Shutdown signal.
@@ -238,6 +241,8 @@ impl OpcUaServer {
             node_cache,
             node_prefetcher,
             security_manager,
+            tcp_listener: RwLock::new(None),
+            tcp_listener_task: RwLock::new(None),
             event_tx,
             shutdown: Arc::new(AtomicBool::new(false)),
             start_time: RwLock::new(None),
@@ -304,8 +309,12 @@ impl OpcUaServer {
         value: impl Into<Variant>,
     ) -> OpcUaResult<NodeId> {
         let node_id_str = node_id.into();
-        let node_id: NodeId = node_id_str.parse()
-            .map_err(|e: crate::types::NodeIdParseError| OpcUaError::InvalidNodeId(e.to_string()))?;
+        let node_id: NodeId =
+            node_id_str
+                .parse()
+                .map_err(|e: crate::types::NodeIdParseError| {
+                    OpcUaError::InvalidNodeId(e.to_string())
+                })?;
         let name = name.into();
         let variant = value.into();
 
@@ -335,8 +344,12 @@ impl OpcUaServer {
         value: impl Into<Variant>,
     ) -> OpcUaResult<NodeId> {
         let node_id_str = node_id.into();
-        let node_id: NodeId = node_id_str.parse()
-            .map_err(|e: crate::types::NodeIdParseError| OpcUaError::InvalidNodeId(e.to_string()))?;
+        let node_id: NodeId =
+            node_id_str
+                .parse()
+                .map_err(|e: crate::types::NodeIdParseError| {
+                    OpcUaError::InvalidNodeId(e.to_string())
+                })?;
         let name = name.into();
         let variant = value.into();
 
@@ -362,18 +375,18 @@ impl OpcUaServer {
         parent_id: Option<&NodeId>,
     ) -> OpcUaResult<NodeId> {
         let node_id_str = node_id.into();
-        let node_id: NodeId = node_id_str.parse()
-            .map_err(|e: crate::types::NodeIdParseError| OpcUaError::InvalidNodeId(e.to_string()))?;
+        let node_id: NodeId =
+            node_id_str
+                .parse()
+                .map_err(|e: crate::types::NodeIdParseError| {
+                    OpcUaError::InvalidNodeId(e.to_string())
+                })?;
         let name = name.into();
         let default_parent = NodeId::objects_folder();
         let parent = parent_id.unwrap_or(&default_parent);
 
-        self.address_space.add_folder(
-            node_id.clone(),
-            &name,
-            &name,
-            parent,
-        )?;
+        self.address_space
+            .add_folder(node_id.clone(), &name, &name, parent)?;
 
         Ok(node_id)
     }
@@ -410,7 +423,9 @@ impl OpcUaServer {
             let subscription_manager = self.subscription_manager.clone();
             let node_id_clone = node_id.clone();
             tokio::spawn(async move {
-                subscription_manager.on_value_change(&node_id_clone, data_value).await;
+                subscription_manager
+                    .on_value_change(&node_id_clone, data_value)
+                    .await;
             });
 
             // Broadcast event
@@ -449,6 +464,7 @@ impl OpcUaServer {
         }
 
         info!(endpoint = %self.config.endpoint_url, "Starting OPC UA server");
+        self.shutdown.store(false, Ordering::Relaxed);
 
         // Record start time
         *self.start_time.write() = Some(std::time::Instant::now());
@@ -457,13 +473,17 @@ impl OpcUaServer {
         self.start_background_tasks().await;
 
         // Start TCP listener in a background task
-        let tcp_listener = self.create_tcp_listener()?;
-        let shutdown = self.shutdown.clone();
-        tokio::spawn(async move {
-            if let Err(e) = tcp_listener.run().await {
-                warn!(error = %e, "TCP listener error");
-            }
-        });
+        let tcp_listener = Arc::new(self.create_tcp_listener()?);
+        let listener_task = {
+            let tcp_listener = tcp_listener.clone();
+            tokio::spawn(async move {
+                if let Err(e) = tcp_listener.run().await {
+                    warn!(error = %e, "TCP listener error");
+                }
+            })
+        };
+        *self.tcp_listener.write() = Some(tcp_listener);
+        *self.tcp_listener_task.write() = Some(listener_task);
 
         // Update state
         *self.state.write() = ServerState::Running;
@@ -510,7 +530,10 @@ impl OpcUaServer {
         crate::service::history::register_handlers(&mut registry);
         crate::service::method_call::register_handlers(&mut registry);
 
-        info!(handlers = registry.handler_count(), "Registered service handlers");
+        info!(
+            handlers = registry.handler_count(),
+            "Registered service handlers"
+        );
 
         // Create method registry with sample methods
         let method_registry = Arc::new(crate::service::method_call::MethodRegistry::new());
@@ -534,14 +557,21 @@ impl OpcUaServer {
             server_buffer_size: 65535,
         };
 
-        Ok(OpcUaTcpListener::new(tcp_config, Arc::new(registry), context))
+        Ok(OpcUaTcpListener::new(
+            tcp_config,
+            Arc::new(registry),
+            context,
+        ))
     }
 
     /// Register default server methods (sample callable methods for testing).
     ///
     /// Creates a Multiply method node with InputArguments/OutputArguments
     /// property nodes so TRAP's MethodCallManager can discover and call it.
-    fn register_default_methods(&self, method_registry: &Arc<crate::service::method_call::MethodRegistry>) {
+    fn register_default_methods(
+        &self,
+        method_registry: &Arc<crate::service::method_call::MethodRegistry>,
+    ) {
         use crate::nodes::classes::MethodNode;
         use crate::nodes::reference::Reference;
 
@@ -549,11 +579,7 @@ impl OpcUaServer {
         let method_node_id = NodeId::numeric(0, 62541);
 
         // Create method node in address space
-        let method_node = MethodNode::new(
-            method_node_id.clone(),
-            "Multiply",
-            "Multiply",
-        );
+        let method_node = MethodNode::new(method_node_id.clone(), "Multiply", "Multiply");
         self.address_space.insert_node(method_node);
         self.address_space.add_reference(Reference::has_component(
             NodeId::server(), // Parent: Server object
@@ -567,7 +593,7 @@ impl OpcUaServer {
             "InputArguments",
             "InputArguments",
             NodeId::numeric(0, 296), // Argument DataType
-            Variant::Null, // Placeholder — TRAP reads the structure via attribute
+            Variant::Null,           // Placeholder — TRAP reads the structure via attribute
         );
         self.address_space.insert_node(input_args_var);
         self.address_space.add_reference(Reference::has_property(
@@ -597,8 +623,12 @@ impl OpcUaServer {
                 if args.len() < 2 {
                     return Err(crate::types::StatusCode::BAD_INVALID_ARGUMENT);
                 }
-                let a = args[0].as_f64().ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
-                let b = args[1].as_f64().ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
+                let a = args[0]
+                    .as_f64()
+                    .ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
+                let b = args[1]
+                    .as_f64()
+                    .ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
                 Ok(vec![Variant::Double(a * b)])
             }),
         );
@@ -619,13 +649,22 @@ impl OpcUaServer {
 
         // Signal shutdown
         self.shutdown.store(true, Ordering::Relaxed);
+        if let Some(listener) = self.tcp_listener.read().as_ref() {
+            listener.shutdown();
+        }
 
         // Close all sessions
         for session_id in self.session_manager.session_ids() {
             let _ = self.session_manager.close_session(&session_id);
         }
 
-        // Wait for tasks to complete
+        let listener_task = self.tcp_listener_task.write().take();
+        if let Some(listener_task) = listener_task {
+            let _ = tokio::time::timeout(Duration::from_secs(5), listener_task).await;
+        }
+        self.tcp_listener.write().take();
+
+        // Wait for background tasks to observe cancellation
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Update state
@@ -655,7 +694,9 @@ impl OpcUaServer {
 
     /// Get server statistics.
     pub fn stats(&self) -> ServerStats {
-        let uptime = self.start_time.read()
+        let uptime = self
+            .start_time
+            .read()
             .map(|t| t.elapsed().as_secs())
             .unwrap_or(0);
 
@@ -729,9 +770,7 @@ impl OpcUaServer {
 /// Parse an OPC UA endpoint URL (e.g., "opc.tcp://0.0.0.0:4840/") into a SocketAddr.
 fn parse_endpoint_url(url: &str) -> OpcUaResult<SocketAddr> {
     // Strip protocol prefix
-    let addr_part = url
-        .strip_prefix("opc.tcp://")
-        .unwrap_or(url);
+    let addr_part = url.strip_prefix("opc.tcp://").unwrap_or(url);
     // Strip trailing path
     let addr_part = addr_part.split('/').next().unwrap_or(addr_part);
 
@@ -828,11 +867,9 @@ mod tests {
     fn test_add_variable() {
         let server = OpcUaServer::new(OpcUaServerConfig::default()).unwrap();
 
-        let node_id = server.add_variable(
-            "ns=2;i=1001",
-            "Temperature",
-            25.5f64,
-        ).unwrap();
+        let node_id = server
+            .add_variable("ns=2;i=1001", "Temperature", 25.5f64)
+            .unwrap();
 
         assert_eq!(node_id, NodeId::numeric(2, 1001));
 
@@ -845,11 +882,7 @@ mod tests {
     fn test_add_folder() {
         let server = OpcUaServer::new(OpcUaServerConfig::default()).unwrap();
 
-        let folder_id = server.add_folder(
-            "ns=2;i=1000",
-            "MyFolder",
-            None,
-        ).unwrap();
+        let folder_id = server.add_folder("ns=2;i=1000", "MyFolder", None).unwrap();
 
         assert!(server.address_space().contains_node(&folder_id));
     }
@@ -859,17 +892,22 @@ mod tests {
         let server = OpcUaServer::new(OpcUaServerConfig::default()).unwrap();
 
         // Add a writable variable
-        server.address_space().add_writable_variable(
-            NodeId::numeric(2, 1001),
-            "Temperature",
-            "Temperature",
-            NodeId::numeric(0, 11), // Double
-            25.5f64,
-            &NodeId::objects_folder(),
-        ).unwrap();
+        server
+            .address_space()
+            .add_writable_variable(
+                NodeId::numeric(2, 1001),
+                "Temperature",
+                "Temperature",
+                NodeId::numeric(0, 11), // Double
+                25.5f64,
+                &NodeId::objects_folder(),
+            )
+            .unwrap();
 
         // Write a new value
-        server.write_value(&NodeId::numeric(2, 1001), 30.0f64).unwrap();
+        server
+            .write_value(&NodeId::numeric(2, 1001), 30.0f64)
+            .unwrap();
 
         // Verify
         let value = server.read_value(&NodeId::numeric(2, 1001));

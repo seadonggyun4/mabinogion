@@ -79,70 +79,113 @@
 //! - [`device`]: Device trait implementation
 //! - [`factory`]: Device factory for creating OPC UA devices
 
+pub mod channel;
 pub mod codec;
 pub mod config;
 pub mod device;
 pub mod error;
 pub mod factory;
 pub mod nodes;
+pub mod runtime;
 pub mod security;
 pub mod server;
+pub mod service;
 pub mod services;
 pub mod transport;
-pub mod channel;
-pub mod service;
 pub mod types;
 
 // Re-exports for convenience
 pub use config::{
-    OpcUaServerConfig, SecurityPolicy, MessageSecurityMode, EndpointConfig, UserTokenConfig,
+    EndpointConfig, MessageSecurityMode, OpcUaServerConfig, SecurityPolicy, UserTokenConfig,
 };
 pub use device::OpcUaDevice;
 pub use error::{OpcUaError, OpcUaResult};
-pub use factory::{OpcUaDeviceFactory, OpcUaDeviceBuilder};
-pub use server::{OpcUaServer, OpcUaServerBuilder, ServerState, ServerStats, ServerEvent};
+pub use factory::{OpcUaDeviceBuilder, OpcUaDeviceFactory};
+pub use server::{OpcUaServer, OpcUaServerBuilder, ServerEvent, ServerState, ServerStats};
 
 // Type re-exports
-pub use types::{
-    NodeId, StatusCode, Variant, DataValue, AttributeId, AccessLevel, DataTypeId,
-};
+pub use types::{AccessLevel, AttributeId, DataTypeId, DataValue, NodeId, StatusCode, Variant};
 
 // Node re-exports
 pub use nodes::{
-    Node, NodeClass, NodeBase, QualifiedName, LocalizedText,
-    ObjectNode, VariableNode, MethodNode,
-    AddressSpace, AddressSpaceConfig, NodeStoreStats,
-    VariableBuilder, ObjectBuilder, FolderBuilder, BatchVariableBuilder, AddToAddressSpace,
-    NodeCache, NodeCacheConfig, CacheStats,
-    Reference, ReferenceTypeId, BrowseDirection, BrowseResult,
-    VariableFactory, AnalogVariable, DiscreteVariable,
+    AddToAddressSpace,
+    AddressSpace,
+    AddressSpaceConfig,
+    AnalogVariable,
+    AsyncPrefetchWorker,
+    BatchConfig,
     // Batch node creation
-    BatchNodeCreator, BatchConfig, BatchProgress, ProgressCallback,
-    VariableTemplate, ObjectTemplate, ValueGeneratorType,
+    BatchNodeCreator,
+    BatchProgress,
+    BatchVariableBuilder,
+    BrowseDirection,
+    BrowseResult,
+    CacheStats,
+    DiscreteVariable,
+    FolderBuilder,
+    LocalizedText,
+    MethodNode,
+    Node,
+    NodeBase,
+    NodeCache,
+    NodeCacheConfig,
+    NodeClass,
     // Prefetching
-    NodePrefetcher, PrefetchConfig, PrefetchStats,
-    AsyncPrefetchWorker, PrefetchingAddressSpace,
+    NodePrefetcher,
+    NodeStoreStats,
+    ObjectBuilder,
+    ObjectNode,
+    ObjectTemplate,
+    PrefetchConfig,
+    PrefetchStats,
+    PrefetchingAddressSpace,
+    ProgressCallback,
+    QualifiedName,
+    Reference,
+    ReferenceTypeId,
+    ValueGeneratorType,
+    VariableBuilder,
+    VariableFactory,
+    VariableNode,
+    VariableTemplate,
 };
 
 // Service re-exports
 pub use services::{
-    SessionManager, SessionManagerConfig, Session, SessionInfo,
-    SubscriptionManager, SubscriptionManagerConfig, Subscription, SubscriptionConfig,
-    MonitoredItem, MonitoredItemConfig, MonitoredItemNotification, MonitoringMode,
-    DataChangeFilter, DataChangeTrigger, DeadbandType,
-    HistoryStore, HistoryStoreConfig, HistoricalDataPoint, AggregateType,
+    AggregateType, DataChangeFilter, DataChangeTrigger, DeadbandType, HistoricalDataPoint,
+    HistoryStore, HistoryStoreConfig, MonitoredItem, MonitoredItemConfig,
+    MonitoredItemNotification, MonitoringMode, Session, SessionInfo, SessionManager,
+    SessionManagerConfig, Subscription, SubscriptionConfig, SubscriptionManager,
+    SubscriptionManagerConfig,
 };
 
 // Security re-exports
+pub use runtime::{descriptor, driver};
 pub use security::{
-    SecurityManager, SecurityManagerConfig, SecurityContext,
-    CertificateManager, CertificateManagerConfig, Certificate, CertificateStore,
-    CertificateValidator, ValidationResult,
-    CryptoProvider, CryptoProviderConfig, SymmetricAlgorithm, AsymmetricAlgorithm,
-    HashAlgorithm, EncryptionResult, DecryptionResult, SignatureResult,
-    UserAuthenticator, UserAuthConfig, AuthenticationResult, UserCredentials, UserToken,
-    SecurityPolicyConfig, SecurityPolicyProvider,
+    AsymmetricAlgorithm, AuthenticationResult, Certificate, CertificateManager,
+    CertificateManagerConfig, CertificateStore, CertificateValidator, CryptoProvider,
+    CryptoProviderConfig, DecryptionResult, EncryptionResult, HashAlgorithm, SecurityContext,
+    SecurityManager, SecurityManagerConfig, SecurityPolicyConfig, SecurityPolicyProvider,
+    SignatureResult, SymmetricAlgorithm, UserAuthConfig, UserAuthenticator, UserCredentials,
+    UserToken, ValidationResult,
 };
+
+/// Canonical configuration surface for architecture-level composition.
+pub type Config = OpcUaServerConfig;
+/// Canonical builder surface for architecture-level composition.
+pub type Builder = OpcUaServerBuilder;
+/// Canonical server surface for architecture-level composition.
+pub type Server = OpcUaServer;
+/// Canonical device surface for architecture-level composition.
+pub type Device = OpcUaDevice;
+/// Canonical factory surface for architecture-level composition.
+pub type Factory = OpcUaDeviceFactory;
+/// Canonical stats surface for architecture-level composition.
+pub type Stats = ServerStats;
+/// Canonical error surface for architecture-level composition.
+pub type Error = OpcUaError;
+/// Canonical result surface for architecture-level composition.
+pub type Result<T> = OpcUaResult<T>;
 
 /// Crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

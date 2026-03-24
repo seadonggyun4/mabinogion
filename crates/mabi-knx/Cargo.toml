@@ -15,6 +15,7 @@ categories = ["simulation", "network-programming"]
 
 [dependencies]
 mabi-core = { workspace = true }
+mabi-runtime = { workspace = true }
 
 tokio = { workspace = true }
 async-trait = { workspace = true }

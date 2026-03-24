@@ -339,6 +339,34 @@ impl ModbusDevice {
 
         Ok(())
     }
+
+    /// Shared read surface for runtime-backed device ports.
+    pub async fn read_point(&self, point_id: &str) -> Result<DataPoint> {
+        if !self.response_delay.is_zero() {
+            tokio::time::sleep(self.response_delay).await;
+        }
+
+        let value = self.read_value(point_id)?;
+        self.stats.write().record_read();
+
+        let id = DataPointId::new(&self.info.id, point_id);
+        Ok(DataPoint::new(id, value))
+    }
+
+    /// Shared write surface for runtime-backed device ports.
+    pub async fn write_point(&self, point_id: &str, value: Value) -> Result<()> {
+        if !self.response_delay.is_zero() {
+            tokio::time::sleep(self.response_delay).await;
+        }
+
+        self.write_value(point_id, value.clone())?;
+        self.stats.write().record_write();
+
+        let id = DataPointId::new(&self.info.id, point_id);
+        let _ = self.event_tx.send(DataPoint::new(id, value));
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -387,33 +415,12 @@ impl Device for ModbusDevice {
 
     #[instrument(skip(self))]
     async fn read(&self, point_id: &str) -> Result<DataPoint> {
-        // Simulate response delay
-        if !self.response_delay.is_zero() {
-            tokio::time::sleep(self.response_delay).await;
-        }
-
-        let value = self.read_value(point_id)?;
-        self.stats.write().record_read();
-
-        let id = DataPointId::new(&self.info.id, point_id);
-        Ok(DataPoint::new(id, value))
+        self.read_point(point_id).await
     }
 
     #[instrument(skip(self, value))]
     async fn write(&mut self, point_id: &str, value: Value) -> Result<()> {
-        // Simulate response delay
-        if !self.response_delay.is_zero() {
-            tokio::time::sleep(self.response_delay).await;
-        }
-
-        self.write_value(point_id, value.clone())?;
-        self.stats.write().record_write();
-
-        // Broadcast value change
-        let id = DataPointId::new(&self.info.id, point_id);
-        let _ = self.event_tx.send(DataPoint::new(id, value));
-
-        Ok(())
+        self.write_point(point_id, value).await
     }
 
     fn subscribe(&self) -> Option<broadcast::Receiver<DataPoint>> {

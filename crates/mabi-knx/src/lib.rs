@@ -45,83 +45,142 @@
 //! - [`factory`]: Device factory for creating KNX devices
 
 // Core modules
-pub mod error;
-pub mod config;
 pub mod address;
+pub mod config;
+pub mod error;
 
 // Protocol modules
-pub mod dpt;
 pub mod cemi;
+pub mod dpt;
 pub mod frame;
 
 // Device and server modules
+pub mod device;
+pub mod diagnostics;
+pub mod error_tracker;
+pub mod factory;
+pub mod filter;
 pub mod group;
 pub mod group_cache;
-pub mod tunnel;
-pub mod filter;
 pub mod heartbeat;
-pub mod error_tracker;
 pub mod metrics;
-pub mod diagnostics;
+pub mod runtime;
 pub mod server;
-pub mod device;
-pub mod factory;
+pub mod tunnel;
 
 // Re-exports for convenience
-pub use error::{KnxError, KnxResult};
-pub use config::{
-    KnxServerConfig, KnxDeviceConfig, GroupObjectConfig,
-    GroupObjectFlagsConfig, TunnelConfig,
-};
-pub use address::{GroupAddress, IndividualAddress, AddressType, GroupAddressRange};
-pub use dpt::{
-    DptId, DptValue, DptCodec, DptRegistry, BoxedDptCodec,
-    encode_dpt9, decode_dpt9,
-};
-pub use cemi::{CemiFrame, MessageCode, Priority, Apci, AdditionalInfo, AdditionalInfoType};
-pub use frame::{KnxFrame, FrameBuilder, KnxNetIpHeader, ServiceType, Hpai, DibDeviceInfo, SupportedServiceFamilies, ServiceFamily};
-pub use group::{GroupObject, GroupObjectTable, GroupObjectFlags, GroupEvent};
-pub use tunnel::{
-    TunnelConnection,
-    ConnectRequest, ConnectResponse, ConnectionType,
-    TunnellingRequest, TunnellingAck,
-    ConnectionStateRequest, ConnectionStateResponse,
-    DisconnectRequest, DisconnectResponse,
-    // Phase 1: Sequence tracking, ACK management, FSM
-    SequenceTracker, ReceivedValidation, AckValidation, SequenceStatsSnapshot,
-    AckWaiter, AckResult, AckMessage, AckWaiterStatsSnapshot,
-    TunnelFsm, TunnelState, TunnelErrorReason, FsmStatsSnapshot,
-};
+pub use address::{AddressType, GroupAddress, GroupAddressRange, IndividualAddress};
+pub use cemi::{AdditionalInfo, AdditionalInfoType, Apci, CemiFrame, MessageCode, Priority};
 pub use config::TunnelBehaviorConfig;
+pub use config::{
+    GroupObjectConfig, GroupObjectFlagsConfig, KnxDeviceConfig, KnxServerConfig, TunnelConfig,
+};
+pub use device::{KnxDevice, KnxDeviceBuilder};
+pub use diagnostics::{
+    DiagnosticConfig, DiagnosticResult, DiagnosticRule, DiagnosticSeverity, KnxDiagnostics,
+};
+pub use dpt::{decode_dpt9, encode_dpt9, BoxedDptCodec, DptCodec, DptId, DptRegistry, DptValue};
+pub use error::{KnxError, KnxResult};
+pub use error_tracker::{
+    ChannelErrorSummary, ErrorCategory, SendErrorTracker, SendErrorTrackerConfig,
+    TrackerStatsSnapshot, TrackingResult,
+};
+pub use factory::{register_knx_factory, KnxDeviceFactory};
 pub use filter::{
-    FilterChain, FilterChainConfig, FilterChainStats, FilterChainStatsSnapshot,
-    FilterDirection, FilterResult, FrameEnvelope,
-    PaceFilter, PaceFilterConfig, PaceState, PaceFilterStats, PaceFilterStatsSnapshot,
-    QueueFilter, QueueFilterConfig, QueuePriority, QueueFilterStats, QueueFilterStatsSnapshot,
-    RetryFilter, RetryFilterConfig, CircuitBreakerState, RetryFilterStats, RetryFilterStatsSnapshot,
+    CircuitBreakerState, FilterChain, FilterChainConfig, FilterChainStats,
+    FilterChainStatsSnapshot, FilterDirection, FilterResult, FrameEnvelope, PaceFilter,
+    PaceFilterConfig, PaceFilterStats, PaceFilterStatsSnapshot, PaceState, QueueFilter,
+    QueueFilterConfig, QueueFilterStats, QueueFilterStatsSnapshot, QueuePriority, RetryFilter,
+    RetryFilterConfig, RetryFilterStats, RetryFilterStatsSnapshot,
+};
+pub use frame::{
+    DibDeviceInfo, FrameBuilder, Hpai, KnxFrame, KnxNetIpHeader, ServiceFamily, ServiceType,
+    SupportedServiceFamilies,
+};
+pub use group::{GroupEvent, GroupObject, GroupObjectFlags, GroupObjectTable};
+pub use group_cache::{
+    CacheEntry, CacheEntryInfo, CacheStatsSnapshot, GroupValueCache, GroupValueCacheConfig,
+    UpdateSource,
 };
 pub use heartbeat::{
     HeartbeatAction, HeartbeatSchedule, HeartbeatScheduler, HeartbeatSchedulerConfig,
     HeartbeatStatsSnapshot,
 };
-pub use group_cache::{
-    GroupValueCache, GroupValueCacheConfig, CacheEntry, CacheEntryInfo,
-    CacheStatsSnapshot, UpdateSource,
+pub use metrics::{ConnectionMetricsSnapshot, KnxMetricsCollector, KnxMetricsSnapshot};
+pub use runtime::{descriptor, driver};
+pub use server::{ConnectionManager, KnxServer, ServerEvent, ServerState};
+pub use tunnel::{
+    AckMessage,
+    AckResult,
+    AckValidation,
+    AckWaiter,
+    AckWaiterStatsSnapshot,
+    ConnectRequest,
+    ConnectResponse,
+    ConnectionStateRequest,
+    ConnectionStateResponse,
+    ConnectionType,
+    DisconnectRequest,
+    DisconnectResponse,
+    FsmStatsSnapshot,
+    ReceivedValidation,
+    SequenceStatsSnapshot,
+    // Phase 1: Sequence tracking, ACK management, FSM
+    SequenceTracker,
+    TunnelConnection,
+    TunnelErrorReason,
+    TunnelFsm,
+    TunnelState,
+    TunnellingAck,
+    TunnellingRequest,
 };
-pub use error_tracker::{
-    SendErrorTracker, SendErrorTrackerConfig, ErrorCategory, TrackingResult,
-    ChannelErrorSummary, TrackerStatsSnapshot,
-};
-pub use metrics::{
-    KnxMetricsSnapshot, KnxMetricsCollector, ConnectionMetricsSnapshot,
-};
-pub use diagnostics::{
-    KnxDiagnostics, DiagnosticResult, DiagnosticSeverity, DiagnosticRule,
-    DiagnosticConfig,
-};
-pub use server::{KnxServer, ServerState, ServerEvent, ConnectionManager};
-pub use device::{KnxDevice, KnxDeviceBuilder};
-pub use factory::{KnxDeviceFactory, register_knx_factory};
+
+/// Canonical configuration surface for architecture-level composition.
+pub type Config = KnxServerConfig;
+/// Canonical server surface for architecture-level composition.
+pub type Server = KnxServer;
+/// Canonical device surface for architecture-level composition.
+pub type Device = KnxDevice;
+/// Canonical factory surface for architecture-level composition.
+pub type Factory = KnxDeviceFactory;
+/// Canonical stats surface for architecture-level composition.
+pub type Stats = KnxMetricsSnapshot;
+/// Canonical error surface for architecture-level composition.
+pub type Error = KnxError;
+/// Canonical result surface for architecture-level composition.
+pub type Result<T> = KnxResult<T>;
+
+/// Canonical KNX server builder.
+#[derive(Clone, Default)]
+pub struct Builder {
+    config: Config,
+    group_objects: Option<std::sync::Arc<GroupObjectTable>>,
+}
+
+impl Builder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn group_objects(mut self, table: std::sync::Arc<GroupObjectTable>) -> Self {
+        self.group_objects = Some(table);
+        self
+    }
+
+    pub fn build(self) -> Server {
+        let server = Server::new(self.config);
+        if let Some(table) = self.group_objects {
+            server.with_group_objects(table)
+        } else {
+            server
+        }
+    }
+}
 
 /// Protocol version for KNXnet/IP
 pub const KNXNETIP_VERSION: u8 = 0x10;
@@ -135,19 +194,29 @@ pub const DEFAULT_MULTICAST_ADDR: &str = "224.0.23.12";
 /// Prelude module for convenient imports
 pub mod prelude {
     pub use crate::{
-        // Error handling
-        KnxError, KnxResult,
-        // Addresses
-        GroupAddress, IndividualAddress,
+        DptCodec,
         // DPT
-        DptId, DptValue, DptCodec, DptRegistry,
-        // Device and server
-        KnxDevice, KnxDeviceBuilder,
-        KnxServer, KnxServerConfig,
+        DptId,
+        DptRegistry,
+        DptValue,
+        // Addresses
+        GroupAddress,
+        GroupEvent,
         // Group objects
-        GroupObject, GroupObjectTable, GroupEvent,
+        GroupObject,
+        GroupObjectConfig,
+        GroupObjectTable,
+        IndividualAddress,
+        // Device and server
+        KnxDevice,
+        KnxDeviceBuilder,
         // Configuration
-        KnxDeviceConfig, GroupObjectConfig,
+        KnxDeviceConfig,
+        // Error handling
+        KnxError,
+        KnxResult,
+        KnxServer,
+        KnxServerConfig,
     };
 }
 
