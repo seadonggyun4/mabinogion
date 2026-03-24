@@ -3,11 +3,12 @@
 //! Lists devices, protocols, and other resources.
 
 use crate::context::CliContext;
-use crate::error::{CliError, CliResult};
+use crate::error::CliResult;
 use crate::output::{DeviceSummary, OutputFormat, StatusType, TableBuilder};
 use crate::runner::{Command, CommandOutput};
 use async_trait::async_trait;
 use mabi_core::prelude::*;
+use mabi_scenario::Scenario;
 use serde::Serialize;
 
 /// Resource type to list.
@@ -100,15 +101,13 @@ impl ListCommand {
                         true
                     })
                     .take(self.limit.unwrap_or(usize::MAX))
-                    .map(|info| {
-                        DeviceSummary {
-                            id: info.id.clone(),
-                            name: info.name.clone(),
-                            protocol: format!("{:?}", info.protocol),
-                            status: format!("{:?}", info.state),
-                            points: info.point_count,
-                            last_update: info.updated_at.to_rfc3339(),
-                        }
+                    .map(|info| DeviceSummary {
+                        id: info.id.clone(),
+                        name: info.name.clone(),
+                        protocol: format!("{:?}", info.protocol),
+                        status: format!("{:?}", info.state),
+                        points: info.point_count,
+                        last_update: info.updated_at.to_rfc3339(),
                     })
                     .collect()
             } else {
@@ -166,7 +165,11 @@ impl ListCommand {
                 protocol: "modbus_tcp".into(),
                 default_port: 502,
                 description: "Modbus TCP/IP protocol".into(),
-                features: vec!["Read/Write Coils", "Read/Write Registers", "Multi-unit support"],
+                features: vec![
+                    "Read/Write Coils",
+                    "Read/Write Registers",
+                    "Multi-unit support",
+                ],
             },
             ProtocolInfo {
                 name: "Modbus RTU".into(),
@@ -187,7 +190,12 @@ impl ListCommand {
                 protocol: "bacnet".into(),
                 default_port: 47808,
                 description: "BACnet over IP".into(),
-                features: vec!["Read/Write Properties", "COV Subscriptions", "BBMD", "Device discovery"],
+                features: vec![
+                    "Read/Write Properties",
+                    "COV Subscriptions",
+                    "BBMD",
+                    "Device discovery",
+                ],
             },
             ProtocolInfo {
                 name: "KNXnet/IP".into(),
@@ -269,8 +277,13 @@ impl ListCommand {
         if points.is_empty() {
             output.info("No data points found");
         } else {
-            let mut table = TableBuilder::new(output.colors_enabled())
-                .header(["Device", "Point ID", "Type", "Access", "Description"]);
+            let mut table = TableBuilder::new(output.colors_enabled()).header([
+                "Device",
+                "Point ID",
+                "Type",
+                "Access",
+                "Description",
+            ]);
 
             for point in &points {
                 table = table.row([
@@ -301,12 +314,19 @@ impl ListCommand {
             let mut entries = tokio::fs::read_dir(&scenarios_dir).await?;
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
-                if path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
+                if path
+                    .extension()
+                    .map_or(false, |e| e == "yaml" || e == "yml")
+                {
                     if let Ok(content) = tokio::fs::read_to_string(&path).await {
-                        if let Ok(scenario) = serde_yaml::from_str::<super::run::ScenarioConfig>(&content) {
+                        if let Ok(scenario) = serde_yaml::from_str::<Scenario>(&content) {
                             scenarios.push(ScenarioInfo {
                                 name: scenario.name,
-                                file: path.file_name().unwrap_or_default().to_string_lossy().into(),
+                                file: path
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .into(),
                                 devices: scenario.devices.len(),
                                 events: scenario.events.len(),
                                 description: scenario.description,

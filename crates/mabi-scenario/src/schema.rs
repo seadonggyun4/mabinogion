@@ -1,6 +1,7 @@
 //! Scenario schema definitions.
 
 use mabi_core::tags::Tags;
+use mabi_runtime::RuntimeSessionSpec;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -37,6 +38,10 @@ pub struct Scenario {
     /// Variables.
     #[serde(default)]
     pub variables: HashMap<String, f64>,
+
+    /// Optional same-process runtime session used for execution.
+    #[serde(default)]
+    pub runtime: Option<RuntimeSessionSpec>,
 }
 
 fn default_time_scale() -> f64 {
@@ -54,6 +59,7 @@ impl Default for Scenario {
             points: Vec::new(),
             events: Vec::new(),
             variables: HashMap::new(),
+            runtime: None,
         }
     }
 }

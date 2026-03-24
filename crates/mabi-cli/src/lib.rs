@@ -14,6 +14,7 @@ pub mod error;
 pub mod output;
 pub mod prelude;
 pub mod runner;
+pub mod runtime_registry;
 pub mod validation;
 
 pub use context::{CliContext, CliContextBuilder};

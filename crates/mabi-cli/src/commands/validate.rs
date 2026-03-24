@@ -4,9 +4,12 @@
 
 use crate::context::CliContext;
 use crate::error::{CliError, CliResult};
-use crate::output::{StatusType, TableBuilder, ValidationError, ValidationResult, ValidationWarning};
+use crate::output::{
+    StatusType, TableBuilder, ValidationError, ValidationResult, ValidationWarning,
+};
 use crate::runner::{Command, CommandOutput};
 use async_trait::async_trait;
+use mabi_scenario::Scenario;
 use std::path::PathBuf;
 
 /// Validate command for checking configuration files.
@@ -77,7 +80,10 @@ impl ValidateCommand {
         };
 
         // Determine file type and validate
-        let extension = resolved_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let extension = resolved_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
 
         match extension {
             "yaml" | "yml" => {
@@ -168,7 +174,7 @@ impl ValidateCommand {
         warnings: &mut Vec<ValidationWarning>,
     ) {
         // Try to parse as scenario
-        if let Ok(scenario) = serde_yaml::from_str::<super::run::ScenarioConfig>(content) {
+        if let Ok(scenario) = serde_yaml::from_str::<Scenario>(content) {
             // Validate scenario fields
             if scenario.name.is_empty() {
                 errors.push(ValidationError {
@@ -208,15 +214,29 @@ impl ValidateCommand {
                         message: format!("Unknown protocol: {}", device.protocol),
                     });
                 }
+            }
 
-                // Validate points
-                for (pidx, point) in device.points.iter().enumerate() {
-                    if point.id.is_empty() {
-                        errors.push(ValidationError {
-                            path: format!("{}:devices[{}].points[{}]", path.display(), idx, pidx),
-                            message: "Point ID is required".into(),
-                        });
-                    }
+            // Validate scenario points
+            for (idx, point) in scenario.points.iter().enumerate() {
+                if point.id.is_empty() {
+                    errors.push(ValidationError {
+                        path: format!("{}:points[{}]", path.display(), idx),
+                        message: "Point ID is required".into(),
+                    });
+                }
+
+                if point.point_id.is_empty() {
+                    errors.push(ValidationError {
+                        path: format!("{}:points[{}]", path.display(), idx),
+                        message: "Target point_id is required".into(),
+                    });
+                }
+
+                if point.device_id.is_empty() && point.device_tags.is_empty() {
+                    warnings.push(ValidationWarning {
+                        path: format!("{}:points[{}]", path.display(), idx),
+                        message: "Point has neither device_id nor device_tags".into(),
+                    });
                 }
             }
         }

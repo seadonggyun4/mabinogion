@@ -131,7 +131,10 @@ fn create_bacnet_hvac_template() -> Template {
                 id: format!("{}-sat", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_input:0:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 14.0, std_dev: 0.4 },
+                pattern: PatternConfig::Noise {
+                    mean: 14.0,
+                    std_dev: 0.4,
+                },
                 interval_ms: interval,
                 device_tags: Tags::new(),
             });
@@ -173,7 +176,7 @@ fn create_bacnet_hvac_template() -> Template {
                 point_id: "binary_input:0:present_value".to_string(),
                 pattern: PatternConfig::Step {
                     levels: vec![1.0, 1.0, 1.0, 0.0], // mostly ON, periodic off
-                    step_duration_secs: 21600.0 / ts,   // 6h steps
+                    step_duration_secs: 21600.0 / ts, // 6h steps
                 },
                 interval_ms: interval * 5,
                 device_tags: Tags::new(),
@@ -214,7 +217,7 @@ fn create_bacnet_hvac_template() -> Template {
                 point_id: "schedule:0:present_value".to_string(),
                 pattern: PatternConfig::Step {
                     levels: vec![2.0, 1.0, 1.0, 3.0], // Unocc→Occ→Occ→Standby
-                    step_duration_secs: 21600.0 / ts,   // 6h blocks
+                    step_duration_secs: 21600.0 / ts, // 6h blocks
                 },
                 interval_ms: interval * 60, // schedules update slowly
                 device_tags: Tags::new(),
@@ -372,7 +375,10 @@ fn create_bacnet_hvac_template() -> Template {
             id: "oat-humidity".to_string(),
             device_id: oat_id.to_string(),
             point_id: "analog_input:1:present_value".to_string(),
-            pattern: PatternConfig::Noise { mean: 55.0, std_dev: 8.0 },
+            pattern: PatternConfig::Noise {
+                mean: 55.0,
+                std_dev: 8.0,
+            },
             interval_ms: interval * 10,
             device_tags: Tags::new(),
         });
@@ -454,6 +460,7 @@ fn create_bacnet_hvac_template() -> Template {
             points,
             events,
             variables: opts.variables,
+            runtime: None,
         }
     })
 }
@@ -519,7 +526,10 @@ fn create_bacnet_alarm_template() -> Template {
                 &dev_id,
                 &format!("Alarm Source #{}", i + 1),
                 inst,
-                &[("type", "alarm-source"), ("zone", &format!("zone-{}", (i % 4) + 1))],
+                &[
+                    ("type", "alarm-source"),
+                    ("zone", &format!("zone-{}", (i % 4) + 1)),
+                ],
                 &["alarm", "monitored"],
             ));
 
@@ -645,7 +655,8 @@ fn create_bacnet_alarm_template() -> Template {
             },
             actions: vec![
                 EventAction::Log {
-                    message: "Alarm storm: chiller failure causing multi-zone high temperature".to_string(),
+                    message: "Alarm storm: chiller failure causing multi-zone high temperature"
+                        .to_string(),
                     level: "alarm".to_string(),
                 },
                 EventAction::ChangePattern {
@@ -700,7 +711,8 @@ fn create_bacnet_alarm_template() -> Template {
                 start_secs: 900.0 / ts,
             },
             actions: vec![EventAction::Log {
-                message: "Alarm summary: evaluating active alarms and unacknowledged transitions".to_string(),
+                message: "Alarm summary: evaluating active alarms and unacknowledged transitions"
+                    .to_string(),
                 level: "info".to_string(),
             }],
         });
@@ -717,6 +729,7 @@ fn create_bacnet_alarm_template() -> Template {
             points,
             events,
             variables: opts.variables,
+            runtime: None,
         }
     })
 }
@@ -761,7 +774,10 @@ fn create_bacnet_trend_template() -> Template {
                 &dev_id,
                 &format!("Trend Source #{}", i + 1),
                 inst,
-                &[("type", "trend-source"), ("group", &format!("group-{}", (i % 3) + 1))],
+                &[
+                    ("type", "trend-source"),
+                    ("group", &format!("group-{}", (i % 3) + 1)),
+                ],
                 &["trend", "monitored"],
             ));
 
@@ -984,6 +1000,7 @@ fn create_bacnet_trend_template() -> Template {
             points,
             events,
             variables: opts.variables,
+            runtime: None,
         }
     })
 }
@@ -1025,7 +1042,11 @@ fn create_bacnet_resilience_template() -> Template {
             let dev_id = format!("resilience-{:03}", i + 1);
             let inst = 500 + i as u32;
 
-            let reliability = if i < device_count / 2 { "primary" } else { "secondary" };
+            let reliability = if i < device_count / 2 {
+                "primary"
+            } else {
+                "secondary"
+            };
             devices.push(tagged_device(
                 &dev_id,
                 &format!("Resilience Target #{}", i + 1),
@@ -1071,7 +1092,10 @@ fn create_bacnet_resilience_template() -> Template {
                 id: format!("{}-cov-target", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_value:0:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 100.0, std_dev: 5.0 },
+                pattern: PatternConfig::Noise {
+                    mean: 100.0,
+                    std_dev: 5.0,
+                },
                 interval_ms: interval * 2,
                 device_tags: Tags::new(),
             });
@@ -1081,7 +1105,10 @@ fn create_bacnet_resilience_template() -> Template {
                 id: format!("{}-multi-1", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_input:1:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 25.0, std_dev: 2.0 },
+                pattern: PatternConfig::Noise {
+                    mean: 25.0,
+                    std_dev: 2.0,
+                },
                 interval_ms: interval,
                 device_tags: Tags::new(),
             });
@@ -1090,7 +1117,10 @@ fn create_bacnet_resilience_template() -> Template {
                 id: format!("{}-multi-2", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_input:2:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 75.0, std_dev: 3.0 },
+                pattern: PatternConfig::Noise {
+                    mean: 75.0,
+                    std_dev: 3.0,
+                },
                 interval_ms: interval,
                 device_tags: Tags::new(),
             });
@@ -1147,7 +1177,8 @@ fn create_bacnet_resilience_template() -> Template {
                 at_secs: duration * 0.1 / ts,
             },
             actions: vec![EventAction::Log {
-                message: "Phase 2: NETWORK LATENCY — injecting 100-500ms response delays".to_string(),
+                message: "Phase 2: NETWORK LATENCY — injecting 100-500ms response delays"
+                    .to_string(),
                 level: "warn".to_string(),
             }],
         });
@@ -1194,7 +1225,8 @@ fn create_bacnet_resilience_template() -> Template {
                 at_secs: duration * 0.55 / ts,
             },
             actions: vec![EventAction::Log {
-                message: "Phase 5: COV DISRUPTION — dropping COV notifications, wrong process IDs".to_string(),
+                message: "Phase 5: COV DISRUPTION — dropping COV notifications, wrong process IDs"
+                    .to_string(),
                 level: "warn".to_string(),
             }],
         });
@@ -1206,7 +1238,8 @@ fn create_bacnet_resilience_template() -> Template {
                 at_secs: duration * 0.70 / ts,
             },
             actions: vec![EventAction::Log {
-                message: "Phase 6: APDU CORRUPTION — malformed PDUs, invalid service choices".to_string(),
+                message: "Phase 6: APDU CORRUPTION — malformed PDUs, invalid service choices"
+                    .to_string(),
                 level: "alarm".to_string(),
             }],
         });
@@ -1219,7 +1252,9 @@ fn create_bacnet_resilience_template() -> Template {
             },
             actions: vec![
                 EventAction::Log {
-                    message: "Phase 7: RECOVERY — all faults cleared, verifying baseline restoration".to_string(),
+                    message:
+                        "Phase 7: RECOVERY — all faults cleared, verifying baseline restoration"
+                            .to_string(),
                     level: "info".to_string(),
                 },
                 // Restore device to normal
@@ -1246,6 +1281,7 @@ fn create_bacnet_resilience_template() -> Template {
             points,
             events,
             variables: opts.variables,
+            runtime: None,
         }
     })
 }
@@ -1343,7 +1379,10 @@ fn create_bacnet_bems_template() -> Template {
                 id: format!("{}-pf", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_input:2:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 0.93, std_dev: 0.02 },
+                pattern: PatternConfig::Noise {
+                    mean: 0.93,
+                    std_dev: 0.02,
+                },
                 interval_ms: interval * 5,
                 device_tags: Tags::new(),
             });
@@ -1399,7 +1438,10 @@ fn create_bacnet_bems_template() -> Template {
                 id: format!("{}-chwst", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_input:1:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 6.7, std_dev: 0.3 },
+                pattern: PatternConfig::Noise {
+                    mean: 6.7,
+                    std_dev: 0.3,
+                },
                 interval_ms: interval * 2,
                 device_tags: Tags::new(),
             });
@@ -1422,7 +1464,10 @@ fn create_bacnet_bems_template() -> Template {
                 id: format!("{}-cop", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_value:0:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 4.2, std_dev: 0.3 },
+                pattern: PatternConfig::Noise {
+                    mean: 4.2,
+                    std_dev: 0.3,
+                },
                 interval_ms: interval * 15,
                 device_tags: Tags::new(),
             });
@@ -1448,7 +1493,10 @@ fn create_bacnet_bems_template() -> Template {
                 id: format!("{}-sat", dev_id),
                 device_id: dev_id.clone(),
                 point_id: "analog_input:0:present_value".to_string(),
-                pattern: PatternConfig::Noise { mean: 14.0, std_dev: 0.5 },
+                pattern: PatternConfig::Noise {
+                    mean: 14.0,
+                    std_dev: 0.5,
+                },
                 interval_ms: interval,
                 device_tags: Tags::new(),
             });
@@ -1540,12 +1588,11 @@ fn create_bacnet_bems_template() -> Template {
                 operator: ">".to_string(),
                 value: 220.0,
             },
-            actions: vec![
-                EventAction::Log {
-                    message: "DEMAND LIMIT: main meter exceeds 220 kW — initiating load shed".to_string(),
-                    level: "alarm".to_string(),
-                },
-            ],
+            actions: vec![EventAction::Log {
+                message: "DEMAND LIMIT: main meter exceeds 220 kW — initiating load shed"
+                    .to_string(),
+                level: "alarm".to_string(),
+            }],
         });
 
         // Load shed command
@@ -1626,6 +1673,7 @@ fn create_bacnet_bems_template() -> Template {
             points,
             events,
             variables: opts.variables,
+            runtime: None,
         }
     })
 }
@@ -1679,9 +1727,18 @@ mod tests {
         assert!(scenario.devices.iter().any(|d| d.id == "oat-001"));
 
         // Check point IDs reference BACnet object types
-        assert!(scenario.points.iter().any(|p| p.point_id.contains("analog_input")));
-        assert!(scenario.points.iter().any(|p| p.point_id.contains("analog_output")));
-        assert!(scenario.points.iter().any(|p| p.point_id.contains("schedule")));
+        assert!(scenario
+            .points
+            .iter()
+            .any(|p| p.point_id.contains("analog_input")));
+        assert!(scenario
+            .points
+            .iter()
+            .any(|p| p.point_id.contains("analog_output")));
+        assert!(scenario
+            .points
+            .iter()
+            .any(|p| p.point_id.contains("schedule")));
     }
 
     #[test]
@@ -1696,9 +1753,15 @@ mod tests {
         assert!(scenario.events.len() >= 3);
 
         // Must have event enrollment and notification points
-        assert!(scenario.points.iter().any(|p| p.point_id.contains("event_enrollment")));
+        assert!(scenario
+            .points
+            .iter()
+            .any(|p| p.point_id.contains("event_enrollment")));
         // Must have alarm storm events
-        assert!(scenario.events.iter().any(|e| e.name.contains("alarm-storm")));
+        assert!(scenario
+            .events
+            .iter()
+            .any(|e| e.name.contains("alarm-storm")));
     }
 
     #[test]
@@ -1712,7 +1775,10 @@ mod tests {
         assert!(!scenario.points.is_empty());
 
         // Must have trend_log references
-        assert!(scenario.points.iter().any(|p| p.point_id.contains("trend_log")));
+        assert!(scenario
+            .points
+            .iter()
+            .any(|p| p.point_id.contains("trend_log")));
         // Must have buffer management events
         assert!(scenario.events.iter().any(|e| e.name.contains("buffer")));
     }
@@ -1722,18 +1788,29 @@ mod tests {
         let mut registry = TemplateRegistry::new();
         register_bacnet_templates(&mut registry);
 
-        let scenario = registry.generate("bacnet-resilience", default_opts(6)).unwrap();
+        let scenario = registry
+            .generate("bacnet-resilience", default_opts(6))
+            .unwrap();
 
         assert!(!scenario.devices.is_empty());
         assert!(!scenario.points.is_empty());
         assert!(scenario.events.len() >= 7); // 7 phases
 
         // Must have phase events
-        assert!(scenario.events.iter().any(|e| e.name.contains("phase-baseline")));
-        assert!(scenario.events.iter().any(|e| e.name.contains("phase-recovery")));
+        assert!(scenario
+            .events
+            .iter()
+            .any(|e| e.name.contains("phase-baseline")));
+        assert!(scenario
+            .events
+            .iter()
+            .any(|e| e.name.contains("phase-recovery")));
 
         // Devices must have chaos-target label
-        assert!(scenario.devices.iter().all(|d| d.tags.has_label("chaos-target")));
+        assert!(scenario
+            .devices
+            .iter()
+            .all(|d| d.tags.has_label("chaos-target")));
     }
 
     #[test]
@@ -1749,12 +1826,24 @@ mod tests {
 
         // Must have meters, chillers, AHUs, and zones
         assert!(scenario.devices.iter().any(|d| d.id.starts_with("meter-")));
-        assert!(scenario.devices.iter().any(|d| d.id.starts_with("chiller-")));
-        assert!(scenario.devices.iter().any(|d| d.id.starts_with("bems-ahu-")));
-        assert!(scenario.devices.iter().any(|d| d.id.starts_with("bems-zone-")));
+        assert!(scenario
+            .devices
+            .iter()
+            .any(|d| d.id.starts_with("chiller-")));
+        assert!(scenario
+            .devices
+            .iter()
+            .any(|d| d.id.starts_with("bems-ahu-")));
+        assert!(scenario
+            .devices
+            .iter()
+            .any(|d| d.id.starts_with("bems-zone-")));
 
         // Must have demand limiting events
-        assert!(scenario.events.iter().any(|e| e.name.contains("demand-limit")));
+        assert!(scenario
+            .events
+            .iter()
+            .any(|e| e.name.contains("demand-limit")));
     }
 
     #[test]
@@ -1786,18 +1875,33 @@ mod tests {
         let mut registry = TemplateRegistry::new();
         register_bacnet_templates(&mut registry);
 
-        for id in &["bacnet-hvac", "bacnet-alarm", "bacnet-trend", "bacnet-resilience", "bacnet-bems"] {
+        for id in &[
+            "bacnet-hvac",
+            "bacnet-alarm",
+            "bacnet-trend",
+            "bacnet-resilience",
+            "bacnet-bems",
+        ] {
             let scenario = registry.generate(id, default_opts(8)).unwrap();
             assert!(!scenario.devices.is_empty(), "{} has no devices", id);
 
             // Every device must have a protocol set
             for device in &scenario.devices {
-                assert_eq!(device.protocol, "bacnet", "{}: device {} has wrong protocol", id, device.id);
+                assert_eq!(
+                    device.protocol, "bacnet",
+                    "{}: device {} has wrong protocol",
+                    id, device.id
+                );
             }
 
             // Every device must have at least one tag
             for device in &scenario.devices {
-                assert!(!device.tags.is_empty(), "{}: device {} has no tags", id, device.id);
+                assert!(
+                    !device.tags.is_empty(),
+                    "{}: device {} has no tags",
+                    id,
+                    device.id
+                );
             }
         }
     }
@@ -1807,21 +1911,31 @@ mod tests {
         let mut registry = TemplateRegistry::new();
         register_bacnet_templates(&mut registry);
 
-        let real_time = registry.generate("bacnet-hvac", TemplateOptions {
-            device_count: 4,
-            time_scale: 1.0,
-            duration_secs: 86400,
-            interval_ms: 1000,
-            variables: HashMap::new(),
-        }).unwrap();
+        let real_time = registry
+            .generate(
+                "bacnet-hvac",
+                TemplateOptions {
+                    device_count: 4,
+                    time_scale: 1.0,
+                    duration_secs: 86400,
+                    interval_ms: 1000,
+                    variables: HashMap::new(),
+                },
+            )
+            .unwrap();
 
-        let accelerated = registry.generate("bacnet-hvac", TemplateOptions {
-            device_count: 4,
-            time_scale: 10.0,
-            duration_secs: 86400,
-            interval_ms: 1000,
-            variables: HashMap::new(),
-        }).unwrap();
+        let accelerated = registry
+            .generate(
+                "bacnet-hvac",
+                TemplateOptions {
+                    device_count: 4,
+                    time_scale: 10.0,
+                    duration_secs: 86400,
+                    interval_ms: 1000,
+                    variables: HashMap::new(),
+                },
+            )
+            .unwrap();
 
         // In accelerated mode, events should fire sooner
         let first_event_real = match &real_time.events[0].trigger {

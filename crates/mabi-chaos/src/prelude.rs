@@ -20,8 +20,8 @@ pub use crate::error::{ChaosError, ChaosResult};
 // =============================================================================
 
 pub use crate::fault::{
-    Fault, FaultBehavior, FaultCategory, FaultMetadata, FaultSeverity, FaultState, FaultStatistics,
-    BaseFault,
+    BaseFault, Fault, FaultBehavior, FaultCategory, FaultMetadata, FaultSeverity, FaultState,
+    FaultStatistics,
 };
 
 pub use crate::context::{
@@ -36,6 +36,7 @@ pub use crate::context::{
 pub use crate::registry::{FaultEntry, FaultFilter, FaultRegistry};
 
 pub use crate::engine::{ChaosEngine, ChaosEngineBuilder, EngineEvent, EngineState};
+pub use crate::runtime::ChaosRuntime;
 
 // =============================================================================
 // Middleware
@@ -57,8 +58,8 @@ pub use crate::scheduler::{
 // =============================================================================
 
 pub use crate::config::{
-    ChaosConfig, FaultConfig, FaultTypeConfig, GlobalConfig, ScheduleConfig, ScheduleEntryConfig,
-    ScheduleFaultConfig,
+    ChaosConfig, FaultConfig, FaultTypeConfig, GlobalConfig, ScenarioInvocation, ScheduleConfig,
+    ScheduleEntryConfig, ScheduleFaultConfig,
 };
 
 // =============================================================================
@@ -66,25 +67,25 @@ pub use crate::config::{
 // =============================================================================
 
 pub use crate::network::{
-    // Latency
-    LatencyConfig,
-    LatencyDistribution,
-    NetworkLatencyFault,
-    LatencyFaultBuilder,
+    // Bandwidth
+    BandwidthConfig,
+    BandwidthFault,
+    BandwidthFaultBuilder,
     // Packet Loss
     BurstConfig,
-    PacketLossConfig,
-    PacketLossFault,
-    PacketLossFaultBuilder,
     // Connection
     ConnectionConfig,
     ConnectionFault,
     ConnectionFaultBuilder,
     DisconnectMode,
-    // Bandwidth
-    BandwidthConfig,
-    BandwidthFault,
-    BandwidthFaultBuilder,
+    // Latency
+    LatencyConfig,
+    LatencyDistribution,
+    LatencyFaultBuilder,
+    NetworkLatencyFault,
+    PacketLossConfig,
+    PacketLossFault,
+    PacketLossFaultBuilder,
 };
 
 // =============================================================================
@@ -92,6 +93,11 @@ pub use crate::network::{
 // =============================================================================
 
 pub use crate::device::{
+    // Corrupted Data
+    CorruptedDataFault,
+    CorruptionConfig,
+    CorruptionFaultBuilder,
+    CorruptionStrategy,
     // Offline
     DeviceOfflineFault,
     OfflineConfig,
@@ -101,11 +107,6 @@ pub use crate::device::{
     SlowResponseConfig,
     SlowResponseFault,
     SlowResponseFaultBuilder,
-    // Corrupted Data
-    CorruptedDataFault,
-    CorruptionFaultBuilder,
-    CorruptionConfig,
-    CorruptionStrategy,
     // State Transition
     StateTransitionFault,
     TransitionConfig,
@@ -117,24 +118,24 @@ pub use crate::device::{
 // =============================================================================
 
 pub use crate::protocol::{
-    // Malformed
-    MalformationType,
-    MalformedConfig,
-    MalformedPacketFault,
-    MalformedFaultBuilder,
     // Checksum
     ChecksumConfig,
     ChecksumFault,
     ChecksumFaultBuilder,
+    // Malformed
+    MalformationType,
+    MalformedConfig,
+    MalformedFaultBuilder,
+    MalformedPacketFault,
+    // Reorder
+    ReorderConfig,
+    ReorderFault,
+    ReorderFaultBuilder,
     // Timeout
     TimeoutConfig,
     TimeoutFault,
     TimeoutFaultBuilder,
     TimeoutPattern,
-    // Reorder
-    ReorderConfig,
-    ReorderFault,
-    ReorderFaultBuilder,
 };
 
 // =============================================================================
@@ -147,11 +148,6 @@ pub use crate::bacnet::{
     ApduFaultBuilder,
     ApduFaultConfig,
     ApduFaultType,
-    // Service
-    ServiceFault,
-    ServiceFaultBuilder,
-    ServiceFaultConfig,
-    ServiceFaultType,
     // COV
     CovFault,
     CovFaultBuilder,
@@ -167,6 +163,11 @@ pub use crate::bacnet::{
     SegmentationFaultBuilder,
     SegmentationFaultConfig,
     SegmentationFaultType,
+    // Service
+    ServiceFault,
+    ServiceFaultBuilder,
+    ServiceFaultConfig,
+    ServiceFaultType,
 };
 
 // =============================================================================

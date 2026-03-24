@@ -63,6 +63,7 @@
 //! }
 //! ```
 
+pub mod bacnet_templates;
 pub mod event;
 pub mod executor;
 pub mod follow;
@@ -72,7 +73,6 @@ pub mod player;
 pub mod replay;
 pub mod schema;
 pub mod templates;
-pub mod bacnet_templates;
 pub mod validation;
 
 pub use generator::{PatternGenerator, PatternType};
@@ -82,9 +82,10 @@ pub use schema::{Scenario, ScenarioEvent, ScenarioPoint};
 
 // Prelude for common imports
 pub mod prelude {
+    pub use crate::bacnet_templates::register_bacnet_templates;
     pub use crate::event::{
-        ActionCommand, ActionResult, ComparisonOperator, EventBuilder, EventContext,
-        EventInstance, EventManager, LogLevel,
+        ActionCommand, ActionResult, ComparisonOperator, EventBuilder, EventContext, EventInstance,
+        EventManager, LogLevel,
     };
     pub use crate::executor::{
         DeviceRegistry, ExecutorBuilder, ExecutorConfig, ExecutorMetrics, ExecutorState,
@@ -106,16 +107,18 @@ pub mod prelude {
     pub use crate::templates::{
         Template, TemplateCategory, TemplateInfo, TemplateOptions, TemplateRegistry,
     };
-    pub use crate::bacnet_templates::register_bacnet_templates;
     pub use crate::validation::{
         ScenarioValidator, ValidationCode, ValidationIssue, ValidationOptions, ValidationResult,
         ValidationSeverity,
     };
     pub use crate::{ScenarioError, ScenarioResult};
+    pub use mabi_runtime::{
+        CoreDevicePort, DevicePort, DeviceRegistry as RuntimeDeviceRegistry, DynDevicePort,
+    };
 }
 
-use thiserror::Error;
 use mabi_core::Error as CoreError;
+use thiserror::Error;
 
 /// Scenario result type.
 pub type ScenarioResult<T> = Result<T, ScenarioError>;

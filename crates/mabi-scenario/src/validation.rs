@@ -10,8 +10,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use mabi_core::tags::Tags;
-
 use crate::schema::{EventAction, EventTrigger, PatternConfig, Scenario};
 
 /// Validation severity level.
@@ -55,12 +53,20 @@ impl ValidationIssue {
     }
 
     /// Create an error.
-    pub fn error(code: ValidationCode, message: impl Into<String>, path: impl Into<String>) -> Self {
+    pub fn error(
+        code: ValidationCode,
+        message: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self::new(ValidationSeverity::Error, code, message, path)
     }
 
     /// Create a warning.
-    pub fn warning(code: ValidationCode, message: impl Into<String>, path: impl Into<String>) -> Self {
+    pub fn warning(
+        code: ValidationCode,
+        message: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self::new(ValidationSeverity::Warning, code, message, path)
     }
 
@@ -157,7 +163,10 @@ impl ValidationResult {
 
     /// Check if validation passed (no errors).
     pub fn is_valid(&self) -> bool {
-        !self.issues.iter().any(|i| i.severity == ValidationSeverity::Error)
+        !self
+            .issues
+            .iter()
+            .any(|i| i.severity == ValidationSeverity::Error)
     }
 
     /// Check if there are any issues.
@@ -286,7 +295,10 @@ impl ScenarioValidator {
         } else if scenario.time_scale > 1000.0 {
             result.add(ValidationIssue::warning(
                 ValidationCode::PerformanceWarning,
-                format!("Very high time scale ({}) may cause timing issues", scenario.time_scale),
+                format!(
+                    "Very high time scale ({}) may cause timing issues",
+                    scenario.time_scale
+                ),
                 "time_scale",
             ));
         }
@@ -352,10 +364,23 @@ impl ScenarioValidator {
     }
 
     /// Validate a pattern configuration.
-    fn validate_pattern(&self, result: &mut ValidationResult, pattern: &PatternConfig, path: String) {
+    fn validate_pattern(
+        &self,
+        result: &mut ValidationResult,
+        pattern: &PatternConfig,
+        path: String,
+    ) {
         match pattern {
-            PatternConfig::Sine { amplitude, period_secs, .. }
-            | PatternConfig::Cosine { amplitude, period_secs, .. } => {
+            PatternConfig::Sine {
+                amplitude,
+                period_secs,
+                ..
+            }
+            | PatternConfig::Cosine {
+                amplitude,
+                period_secs,
+                ..
+            } => {
                 if *amplitude < 0.0 {
                     result.add(ValidationIssue::warning(
                         ValidationCode::InvalidAmplitude,
@@ -382,7 +407,10 @@ impl ScenarioValidator {
                 }
             }
 
-            PatternConfig::Step { levels, step_duration_secs } => {
+            PatternConfig::Step {
+                levels,
+                step_duration_secs,
+            } => {
                 if levels.is_empty() {
                     result.add(ValidationIssue::error(
                         ValidationCode::EmptyStepLevels,
@@ -505,7 +533,12 @@ impl ScenarioValidator {
     }
 
     /// Validate trigger.
-    fn validate_trigger(&self, result: &mut ValidationResult, trigger: &EventTrigger, path: String) {
+    fn validate_trigger(
+        &self,
+        result: &mut ValidationResult,
+        trigger: &EventTrigger,
+        path: String,
+    ) {
         match trigger {
             EventTrigger::Time { at_secs } => {
                 if *at_secs < 0.0 {
@@ -517,7 +550,10 @@ impl ScenarioValidator {
                 }
             }
 
-            EventTrigger::Periodic { interval_secs, start_secs } => {
+            EventTrigger::Periodic {
+                interval_secs,
+                start_secs,
+            } => {
                 if *interval_secs <= 0.0 {
                     result.add(ValidationIssue::error(
                         ValidationCode::InvalidTriggerInterval,
@@ -535,11 +571,16 @@ impl ScenarioValidator {
             }
 
             EventTrigger::Condition { operator, .. } => {
-                let valid_ops = ["==", "=", "eq", "!=", "<>", "ne", "<", "lt", "<=", "le", ">", "gt", ">=", "ge"];
+                let valid_ops = [
+                    "==", "=", "eq", "!=", "<>", "ne", "<", "lt", "<=", "le", ">", "gt", ">=", "ge",
+                ];
                 if !valid_ops.contains(&operator.as_str()) {
                     result.add(ValidationIssue::error(
                         ValidationCode::InvalidConditionOperator,
-                        format!("Invalid condition operator: '{}'. Valid: {:?}", operator, valid_ops),
+                        format!(
+                            "Invalid condition operator: '{}'. Valid: {:?}",
+                            operator, valid_ops
+                        ),
                         &path,
                     ));
                 }
@@ -704,7 +745,10 @@ impl ScenarioValidator {
             if interval < 10 {
                 result.add(ValidationIssue::warning(
                     ValidationCode::PerformanceWarning,
-                    format!("Very small interval ({}ms) may cause high CPU usage", interval),
+                    format!(
+                        "Very small interval ({}ms) may cause high CPU usage",
+                        interval
+                    ),
                     "points",
                 ));
             }
@@ -722,6 +766,7 @@ impl Default for ScenarioValidator {
 mod tests {
     use super::*;
     use crate::schema::{ScenarioEvent, ScenarioPoint};
+    use mabi_core::Tags;
 
     fn create_valid_scenario() -> Scenario {
         Scenario {
@@ -730,18 +775,17 @@ mod tests {
             duration_secs: 60,
             time_scale: 1.0,
             devices: vec![],
-            points: vec![
-                ScenarioPoint {
-                    id: "temp".to_string(),
-                    device_id: "device-1".to_string(),
-                    point_id: "temperature".to_string(),
-                    pattern: PatternConfig::Constant { value: 25.0 },
-                    interval_ms: 1000,
-                    device_tags: Tags::new(),
-                },
-            ],
+            points: vec![ScenarioPoint {
+                id: "temp".to_string(),
+                device_id: "device-1".to_string(),
+                point_id: "temperature".to_string(),
+                pattern: PatternConfig::Constant { value: 25.0 },
+                interval_ms: 1000,
+                device_tags: Tags::new(),
+            }],
             events: vec![],
             variables: HashMap::new(),
+            runtime: None,
         }
     }
 
@@ -764,7 +808,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::EmptyName));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::EmptyName));
     }
 
     #[test]
@@ -776,7 +823,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::InvalidTimeScale));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::InvalidTimeScale));
     }
 
     #[test]
@@ -795,7 +845,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::DuplicatePointId));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::DuplicatePointId));
     }
 
     #[test]
@@ -812,7 +865,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::InvalidPeriod));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::InvalidPeriod));
     }
 
     #[test]
@@ -836,7 +892,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::FollowSourceNotFound));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::FollowSourceNotFound));
     }
 
     #[test]
@@ -875,7 +934,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::FollowCircularDependency));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::FollowCircularDependency));
     }
 
     #[test]
@@ -898,7 +960,10 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(!result.is_valid());
-        assert!(result.errors().iter().any(|e| e.code == ValidationCode::InvalidConditionOperator));
+        assert!(result
+            .errors()
+            .iter()
+            .any(|e| e.code == ValidationCode::InvalidConditionOperator));
     }
 
     #[test]
@@ -910,6 +975,9 @@ mod tests {
         let result = validator.validate(&scenario);
 
         assert!(result.is_valid()); // Warnings don't make it invalid
-        assert!(result.warnings().iter().any(|e| e.code == ValidationCode::PerformanceWarning));
+        assert!(result
+            .warnings()
+            .iter()
+            .any(|e| e.code == ValidationCode::PerformanceWarning));
     }
 }

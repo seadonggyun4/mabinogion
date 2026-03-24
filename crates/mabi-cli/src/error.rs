@@ -89,7 +89,10 @@ impl CliError {
 
     /// Create a validation failed error from multiple messages.
     pub fn validation_failed(errors: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
-        let errors: Vec<String> = errors.into_iter().map(|s| format!("  - {}", s.as_ref())).collect();
+        let errors: Vec<String> = errors
+            .into_iter()
+            .map(|s| format!("  - {}", s.as_ref()))
+            .collect();
         CliError::ValidationFailed {
             errors: errors.join("\n"),
         }
@@ -113,6 +116,14 @@ impl CliError {
             CliError::Interrupted => 130,
             CliError::Timeout { .. } => 124,
             CliError::WithContext { source, .. } => source.exit_code(),
+        }
+    }
+}
+
+impl From<mabi_runtime::RuntimeError> for CliError {
+    fn from(error: mabi_runtime::RuntimeError) -> Self {
+        CliError::ExecutionFailed {
+            message: error.to_string(),
         }
     }
 }

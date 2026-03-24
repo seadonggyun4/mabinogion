@@ -92,19 +92,20 @@
 // Module Declarations
 // =============================================================================
 
+pub mod context;
+pub mod engine;
 pub mod error;
 pub mod fault;
-pub mod context;
-pub mod registry;
-pub mod engine;
 pub mod middleware;
+pub mod registry;
+pub mod runtime;
 pub mod scheduler;
 
 // Fault implementations
-pub mod network;
-pub mod device;
-pub mod protocol;
 pub mod bacnet;
+pub mod device;
+pub mod network;
+pub mod protocol;
 
 // Configuration and prelude
 pub mod config;
@@ -118,48 +119,42 @@ pub mod prelude;
 pub use error::{ChaosError, ChaosResult};
 
 // Core abstractions
-pub use fault::{Fault, FaultBehavior, FaultSeverity, FaultState, FaultMetadata};
 pub use context::{FaultContext, FaultContextBuilder, RequestPhase, TargetInfo};
-pub use registry::{FaultRegistry, FaultEntry, FaultFilter};
-pub use engine::{ChaosEngine, ChaosEngineBuilder, EngineState, EngineEvent};
+pub use engine::{ChaosEngine, ChaosEngineBuilder, EngineEvent, EngineState};
+pub use fault::{Fault, FaultBehavior, FaultMetadata, FaultSeverity, FaultState};
 pub use middleware::{ChaosMiddleware, MiddlewareConfig, MiddlewareResult};
+pub use registry::{FaultEntry, FaultFilter, FaultRegistry};
+pub use runtime::ChaosRuntime;
 pub use scheduler::{
-    ChaosScheduler, ChaosSchedule, ChaosEntry, ChaosType,
-    ActiveChaos, ChaosEvent, ScheduleState,
+    ActiveChaos, ChaosEntry, ChaosEvent, ChaosSchedule, ChaosScheduler, ChaosType, ScheduleState,
 };
 
 // Network faults
 pub use network::{
-    NetworkLatencyFault, LatencyConfig, LatencyDistribution,
-    PacketLossFault, PacketLossConfig, BurstConfig,
-    ConnectionFault, DisconnectMode, ConnectionConfig,
-    BandwidthFault, BandwidthConfig,
+    BandwidthConfig, BandwidthFault, BurstConfig, ConnectionConfig, ConnectionFault,
+    DisconnectMode, LatencyConfig, LatencyDistribution, NetworkLatencyFault, PacketLossConfig,
+    PacketLossFault,
 };
 
 // Device faults
 pub use device::{
-    DeviceOfflineFault, OfflineConfig, OfflinePattern,
-    SlowResponseFault, SlowResponseConfig,
-    CorruptedDataFault, CorruptionConfig, CorruptionStrategy,
-    StateTransitionFault, TransitionConfig,
+    CorruptedDataFault, CorruptionConfig, CorruptionStrategy, DeviceOfflineFault, OfflineConfig,
+    OfflinePattern, SlowResponseConfig, SlowResponseFault, StateTransitionFault, TransitionConfig,
 };
 
 // Protocol faults
 pub use protocol::{
-    MalformedPacketFault, MalformedConfig, MalformationType,
-    ChecksumFault, ChecksumConfig,
-    TimeoutFault, TimeoutConfig, TimeoutPattern,
-    ReorderFault, ReorderConfig,
+    ChecksumConfig, ChecksumFault, MalformationType, MalformedConfig, MalformedPacketFault,
+    ReorderConfig, ReorderFault, TimeoutConfig, TimeoutFault, TimeoutPattern,
 };
 
 // BACnet faults
 pub use bacnet::{
-    ApduFault, ApduFaultConfig, ApduFaultType,
-    ServiceFault, ServiceFaultConfig, ServiceFaultType,
-    CovFault, CovFaultConfig, CovFaultType,
-    PropertyFault, PropertyFaultConfig, PropertyFaultType,
-    SegmentationFault, SegmentationFaultConfig, SegmentationFaultType,
+    ApduFault, ApduFaultConfig, ApduFaultType, CovFault, CovFaultConfig, CovFaultType,
+    PropertyFault, PropertyFaultConfig, PropertyFaultType, SegmentationFault,
+    SegmentationFaultConfig, SegmentationFaultType, ServiceFault, ServiceFaultConfig,
+    ServiceFaultType,
 };
 
 // Configuration
-pub use config::{ChaosConfig, FaultConfig, ScheduleConfig, GlobalConfig};
+pub use config::{ChaosConfig, FaultConfig, GlobalConfig, ScenarioInvocation, ScheduleConfig};

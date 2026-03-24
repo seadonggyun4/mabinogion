@@ -3,14 +3,15 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use mabi_runtime::RuntimeSessionSpec;
 use serde::{Deserialize, Serialize};
 
+use crate::device::{CorruptionConfig, OfflineConfig, SlowResponseConfig, TransitionConfig};
 use crate::error::{ChaosError, ChaosResult};
 use crate::fault::FaultSeverity;
-use crate::network::{LatencyConfig, PacketLossConfig, ConnectionConfig, BandwidthConfig};
-use crate::device::{OfflineConfig, SlowResponseConfig, CorruptionConfig, TransitionConfig};
-use crate::protocol::{MalformedConfig, ChecksumConfig, TimeoutConfig, ReorderConfig};
-use crate::scheduler::{ChaosSchedule, ChaosEntry, ChaosType};
+use crate::network::{BandwidthConfig, ConnectionConfig, LatencyConfig, PacketLossConfig};
+use crate::protocol::{ChecksumConfig, MalformedConfig, ReorderConfig, TimeoutConfig};
+use crate::scheduler::{ChaosEntry, ChaosSchedule, ChaosType};
 
 // =============================================================================
 // Global Configuration
@@ -22,6 +23,14 @@ pub struct ChaosConfig {
     /// Global settings.
     #[serde(default)]
     pub global: GlobalConfig,
+
+    /// Optional same-process runtime session to launch for execution.
+    #[serde(default)]
+    pub session: Option<RuntimeSessionSpec>,
+
+    /// Optional scenario invocation to run inside the same runtime session.
+    #[serde(default)]
+    pub scenario: Option<ScenarioInvocation>,
 
     /// Fault definitions.
     #[serde(default)]
@@ -36,6 +45,8 @@ impl Default for ChaosConfig {
     fn default() -> Self {
         Self {
             global: GlobalConfig::default(),
+            session: None,
+            scenario: None,
             faults: HashMap::new(),
             schedules: Vec::new(),
         }
@@ -103,20 +114,35 @@ impl ChaosConfig {
 
         // Validate faults
         for (id, fault) in &self.faults {
-            fault.validate().map_err(|e| {
-                ChaosError::Config(format!("Invalid fault '{}': {}", id, e))
-            })?;
+            fault
+                .validate()
+                .map_err(|e| ChaosError::Config(format!("Invalid fault '{}': {}", id, e)))?;
         }
 
         // Validate schedules
         for (i, schedule) in self.schedules.iter().enumerate() {
-            schedule.validate().map_err(|e| {
-                ChaosError::Config(format!("Invalid schedule {}: {}", i, e))
-            })?;
+            schedule
+                .validate()
+                .map_err(|e| ChaosError::Config(format!("Invalid schedule {}: {}", i, e)))?;
         }
 
         Ok(())
     }
+}
+
+/// Optional scenario invocation bundled into a chaos run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioInvocation {
+    /// Relative or absolute path to the scenario file.
+    pub path: String,
+
+    /// Optional time scale override for the scenario.
+    #[serde(default)]
+    pub time_scale: Option<f64>,
+
+    /// Optional maximum duration override in seconds.
+    #[serde(default)]
+    pub duration_secs: Option<u64>,
 }
 
 // =============================================================================
@@ -310,16 +336,12 @@ impl FaultTypeConfig {
             }
             Self::Timeout(c) => {
                 if c.timeout_ms == 0 {
-                    return Err(ChaosError::Config(
-                        "timeout_ms must be > 0".to_string(),
-                    ));
+                    return Err(ChaosError::Config("timeout_ms must be > 0".to_string()));
                 }
             }
             Self::Reorder(c) => {
                 if c.buffer_size == 0 {
-                    return Err(ChaosError::Config(
-                        "buffer_size must be > 0".to_string(),
-                    ));
+                    return Err(ChaosError::Config("buffer_size must be > 0".to_string()));
                 }
             }
             // Other types don't have specific validation
@@ -379,17 +401,21 @@ impl ScheduleConfig {
     /// Validate the schedule configuration.
     pub fn validate(&self) -> ChaosResult<()> {
         if self.name.is_empty() {
-            return Err(ChaosError::Config("Schedule name cannot be empty".to_string()));
+            return Err(ChaosError::Config(
+                "Schedule name cannot be empty".to_string(),
+            ));
         }
 
         if self.entries.is_empty() {
-            return Err(ChaosError::Config("Schedule must have at least one entry".to_string()));
+            return Err(ChaosError::Config(
+                "Schedule must have at least one entry".to_string(),
+            ));
         }
 
         for (i, entry) in self.entries.iter().enumerate() {
-            entry.validate().map_err(|e| {
-                ChaosError::Config(format!("Invalid entry {}: {}", i, e))
-            })?;
+            entry
+                .validate()
+                .map_err(|e| ChaosError::Config(format!("Invalid entry {}: {}", i, e)))?;
         }
 
         Ok(())
@@ -441,11 +467,15 @@ impl ScheduleEntryConfig {
     /// Validate the entry configuration.
     pub fn validate(&self) -> ChaosResult<()> {
         if self.start_secs < 0.0 {
-            return Err(ChaosError::Config("start_secs cannot be negative".to_string()));
+            return Err(ChaosError::Config(
+                "start_secs cannot be negative".to_string(),
+            ));
         }
 
         if self.duration_secs <= 0.0 {
-            return Err(ChaosError::Config("duration_secs must be positive".to_string()));
+            return Err(ChaosError::Config(
+                "duration_secs must be positive".to_string(),
+            ));
         }
 
         if self.intensity < 0.0 || self.intensity > 1.0 {
@@ -492,9 +522,7 @@ impl ScheduleFaultConfig {
                     base_ms: c.base_ms,
                     jitter_ms: c.jitter_ms,
                 }),
-                FaultTypeConfig::PacketLoss(c) => Ok(ChaosType::PacketLoss {
-                    rate: c.loss_rate,
-                }),
+                FaultTypeConfig::PacketLoss(c) => Ok(ChaosType::PacketLoss { rate: c.loss_rate }),
                 FaultTypeConfig::Connection(_) => Ok(ChaosType::Disconnect),
                 FaultTypeConfig::Offline(_) => Ok(ChaosType::DeviceOffline),
                 FaultTypeConfig::SlowResponse(c) => Ok(ChaosType::SlowResponse {
@@ -508,11 +536,11 @@ impl ScheduleFaultConfig {
                 }),
                 FaultTypeConfig::Malformed(_) => Ok(ChaosType::MalformedPacket),
                 FaultTypeConfig::Checksum(_) => Ok(ChaosType::InvalidChecksum),
-                FaultTypeConfig::Bandwidth(_) | FaultTypeConfig::StateTransition(_) | FaultTypeConfig::Reorder(_) => {
-                    Ok(ChaosType::Custom {
-                        fault_id: config.category().to_string(),
-                    })
-                }
+                FaultTypeConfig::Bandwidth(_)
+                | FaultTypeConfig::StateTransition(_)
+                | FaultTypeConfig::Reorder(_) => Ok(ChaosType::Custom {
+                    fault_id: config.category().to_string(),
+                }),
             },
         }
     }

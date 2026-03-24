@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 
-use crate::schema::{EventAction, EventTrigger, PatternConfig, Scenario, ScenarioEvent, ScenarioPoint};
+use crate::schema::{
+    EventAction, EventTrigger, PatternConfig, Scenario, ScenarioEvent, ScenarioPoint,
+};
 use mabi_core::tags::Tags;
 
 /// Template category.
@@ -195,7 +197,8 @@ fn create_hvac_template() -> Template {
     let info = TemplateInfo {
         id: "hvac-building".to_string(),
         name: "HVAC Building Automation".to_string(),
-        description: "Simulates a building HVAC system with multiple zones, AHUs, and VAV boxes".to_string(),
+        description: "Simulates a building HVAC system with multiple zones, AHUs, and VAV boxes"
+            .to_string(),
         category: TemplateCategory::BuildingAutomation,
         protocols: vec!["BACnet".to_string(), "Modbus".to_string()],
         device_count: 10,
@@ -216,9 +219,9 @@ fn create_hvac_template() -> Template {
                 point_id: "zone_temperature".to_string(),
                 pattern: PatternConfig::Sine {
                     amplitude: 2.0,
-                    offset: 22.0, // 22°C base
+                    offset: 22.0,                              // 22°C base
                     period_secs: 86400.0 / options.time_scale, // 24-hour cycle
-                    phase: (i as f64) * 0.5, // Phase offset per zone
+                    phase: (i as f64) * 0.5,                   // Phase offset per zone
                 },
                 interval_ms: options.interval_ms,
                 device_tags: Tags::new(),
@@ -271,7 +274,7 @@ fn create_hvac_template() -> Template {
                 device_id: device_id.clone(),
                 point_id: "occupancy".to_string(),
                 pattern: PatternConfig::Step {
-                    levels: vec![0.0, 1.0], // Unoccupied / Occupied
+                    levels: vec![0.0, 1.0],      // Unoccupied / Occupied
                     step_duration_secs: 28800.0, // 8-hour cycle
                 },
                 interval_ms: options.interval_ms * 10, // Less frequent updates
@@ -287,23 +290,25 @@ fn create_hvac_template() -> Template {
                 operator: ">".to_string(),
                 value: 26.0,
             },
-            actions: vec![
-                EventAction::Log {
-                    message: "High temperature alarm triggered".to_string(),
-                    level: "warn".to_string(),
-                },
-            ],
+            actions: vec![EventAction::Log {
+                message: "High temperature alarm triggered".to_string(),
+                level: "warn".to_string(),
+            }],
         });
 
         Scenario {
             name: "HVAC Building Simulation".to_string(),
-            description: format!("Simulates {} HVAC units with temperature and airflow control", options.device_count),
+            description: format!(
+                "Simulates {} HVAC units with temperature and airflow control",
+                options.device_count
+            ),
             duration_secs: options.duration_secs,
             time_scale: options.time_scale,
             points,
             events,
             devices: vec![],
             variables: options.variables,
+            runtime: None,
         }
     })
 }
@@ -417,6 +422,7 @@ fn create_manufacturing_template() -> Template {
             events,
             devices: vec![],
             variables: options.variables,
+            runtime: None,
         }
     })
 }
@@ -519,6 +525,7 @@ fn create_energy_template() -> Template {
             events: vec![],
             devices: vec![],
             variables: options.variables,
+            runtime: None,
         }
     })
 }
@@ -528,7 +535,8 @@ fn create_water_template() -> Template {
     let info = TemplateInfo {
         id: "water-treatment".to_string(),
         name: "Water Treatment Plant".to_string(),
-        description: "Simulates a water treatment facility with pumps, tanks, and analyzers".to_string(),
+        description: "Simulates a water treatment facility with pumps, tanks, and analyzers"
+            .to_string(),
         category: TemplateCategory::Water,
         protocols: vec!["Modbus".to_string(), "BACnet".to_string()],
         device_count: 12,
@@ -660,12 +668,10 @@ fn create_water_template() -> Template {
                 operator: "<".to_string(),
                 value: 20.0,
             },
-            actions: vec![
-                EventAction::Log {
-                    message: "Tank level low - starting backup pump".to_string(),
-                    level: "warn".to_string(),
-                },
-            ],
+            actions: vec![EventAction::Log {
+                message: "Tank level low - starting backup pump".to_string(),
+                level: "warn".to_string(),
+            }],
         });
 
         Scenario {
@@ -677,6 +683,7 @@ fn create_water_template() -> Template {
             events,
             devices: vec![],
             variables: options.variables,
+            runtime: None,
         }
     })
 }
@@ -686,9 +693,14 @@ fn create_datacenter_template() -> Template {
     let info = TemplateInfo {
         id: "datacenter-infrastructure".to_string(),
         name: "Data Center Infrastructure".to_string(),
-        description: "Simulates data center cooling, power, and environmental monitoring".to_string(),
+        description: "Simulates data center cooling, power, and environmental monitoring"
+            .to_string(),
         category: TemplateCategory::DataCenter,
-        protocols: vec!["Modbus".to_string(), "BACnet".to_string(), "OPC UA".to_string()],
+        protocols: vec![
+            "Modbus".to_string(),
+            "BACnet".to_string(),
+            "OPC UA".to_string(),
+        ],
         device_count: 25,
         point_count: 125,
     };
@@ -821,6 +833,7 @@ fn create_datacenter_template() -> Template {
             events: vec![],
             devices: vec![],
             variables: options.variables,
+            runtime: None,
         }
     })
 }
@@ -867,7 +880,10 @@ mod tests {
 
         assert!(!scenario.points.is_empty());
         // Check for expected point types
-        assert!(scenario.points.iter().any(|p| p.point_id.contains("conveyor")));
+        assert!(scenario
+            .points
+            .iter()
+            .any(|p| p.point_id.contains("conveyor")));
     }
 
     #[test]

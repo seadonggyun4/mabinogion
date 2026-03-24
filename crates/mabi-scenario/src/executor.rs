@@ -34,14 +34,15 @@
 //! - **Metrics**: Execution statistics and performance tracking
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
 use mabi_core::device::DeviceHandle;
+use mabi_runtime::{CoreDevicePort, DeviceRegistry as RuntimeDeviceRegistry, DynDevicePort};
 
 use crate::player::{PlayerConfig, PlayerState, ScenarioPlayer, ValueUpdate};
 use crate::schema::Scenario;
@@ -136,8 +137,7 @@ impl ExecutorMetrics {
         if self.writes_successful == 1 {
             self.avg_write_latency_us = latency_us;
         } else {
-            self.avg_write_latency_us = (self.avg_write_latency_us
-                * (self.writes_successful - 1)
+            self.avg_write_latency_us = (self.avg_write_latency_us * (self.writes_successful - 1)
                 + latency_us)
                 / self.writes_successful;
         }
@@ -166,64 +166,8 @@ impl ExecutorMetrics {
     }
 }
 
-// ============================================================================
-// Device Registry
-// ============================================================================
-
-/// Registry for managing devices during scenario execution.
-#[derive(Default)]
-pub struct DeviceRegistry {
-    devices: HashMap<String, DeviceHandle>,
-}
-
-impl DeviceRegistry {
-    /// Create a new empty registry.
-    pub fn new() -> Self {
-        Self {
-            devices: HashMap::new(),
-        }
-    }
-
-    /// Register a device.
-    pub fn register(&mut self, device_id: impl Into<String>, handle: DeviceHandle) {
-        self.devices.insert(device_id.into(), handle);
-    }
-
-    /// Get a device handle.
-    pub fn get(&self, device_id: &str) -> Option<&DeviceHandle> {
-        self.devices.get(device_id)
-    }
-
-    /// Check if a device is registered.
-    pub fn contains(&self, device_id: &str) -> bool {
-        self.devices.contains_key(device_id)
-    }
-
-    /// Get all registered device IDs.
-    pub fn device_ids(&self) -> Vec<&str> {
-        self.devices.keys().map(|s| s.as_str()).collect()
-    }
-
-    /// Get the number of registered devices.
-    pub fn len(&self) -> usize {
-        self.devices.len()
-    }
-
-    /// Check if empty.
-    pub fn is_empty(&self) -> bool {
-        self.devices.is_empty()
-    }
-
-    /// Remove a device.
-    pub fn remove(&mut self, device_id: &str) -> Option<DeviceHandle> {
-        self.devices.remove(device_id)
-    }
-
-    /// Clear all devices.
-    pub fn clear(&mut self) {
-        self.devices.clear();
-    }
-}
+/// Shared device registry used by the scenario control plane.
+pub type DeviceRegistry = RuntimeDeviceRegistry;
 
 // ============================================================================
 // Executor State
@@ -253,9 +197,9 @@ pub struct ScenarioExecutor {
     config: ExecutorConfig,
     scenario: Scenario,
     player: ScenarioPlayer,
-    devices: Arc<RwLock<DeviceRegistry>>,
+    devices: DeviceRegistry,
     state: ExecutorState,
-    metrics: Arc<RwLock<ExecutorMetrics>>,
+    metrics: Arc<parking_lot::RwLock<ExecutorMetrics>>,
     start_time: Option<Instant>,
     event_tx: broadcast::Sender<ExecutorEvent>,
 }
@@ -290,7 +234,15 @@ pub enum ExecutorEvent {
 impl ScenarioExecutor {
     /// Create a new executor.
     pub fn new(scenario: Scenario, config: ExecutorConfig) -> Self {
-        let player_config = PlayerConfig::default();
+        Self::new_with_player_config(scenario, config, PlayerConfig::default())
+    }
+
+    /// Create a new executor with an explicit player configuration.
+    pub fn new_with_player_config(
+        scenario: Scenario,
+        config: ExecutorConfig,
+        player_config: PlayerConfig,
+    ) -> Self {
         let player = ScenarioPlayer::new(scenario.clone(), player_config);
         let (event_tx, _) = broadcast::channel(config.update_buffer_size);
 
@@ -298,9 +250,9 @@ impl ScenarioExecutor {
             config,
             scenario,
             player,
-            devices: Arc::new(RwLock::new(DeviceRegistry::new())),
+            devices: DeviceRegistry::new(),
             state: ExecutorState::Idle,
-            metrics: Arc::new(RwLock::new(ExecutorMetrics::default())),
+            metrics: Arc::new(parking_lot::RwLock::new(ExecutorMetrics::default())),
             start_time: None,
             event_tx,
         }
@@ -331,23 +283,38 @@ impl ScenarioExecutor {
         self.event_tx.subscribe()
     }
 
+    /// Returns the shared stop signal used by external controllers.
+    pub fn stop_signal(&self) -> Arc<AtomicBool> {
+        self.player.stop_signal()
+    }
+
+    /// Requests a cooperative stop without needing mutable access.
+    pub fn request_stop(&self) {
+        self.player.stop_signal().store(true, Ordering::SeqCst);
+    }
+
     /// Register a device for the scenario.
-    pub fn register_device(&self, device_id: impl Into<String>, handle: DeviceHandle) {
-        self.devices.write().register(device_id, handle);
+    pub fn register_device(&self, device_id: impl Into<String>, port: DynDevicePort) {
+        self.devices.register(device_id, port);
+    }
+
+    /// Register a legacy core device handle for the scenario.
+    pub fn register_device_handle(&self, device_id: impl Into<String>, handle: DeviceHandle) {
+        self.devices
+            .register(device_id, CoreDevicePort::new(handle).into_shared());
     }
 
     /// Get the device registry.
-    pub fn devices(&self) -> Arc<RwLock<DeviceRegistry>> {
-        Arc::clone(&self.devices)
+    pub fn devices(&self) -> DeviceRegistry {
+        self.devices.clone()
     }
 
     /// Validate that all required devices are registered.
     pub fn validate_devices(&self) -> ScenarioResult<()> {
-        let devices = self.devices.read();
         let mut missing = Vec::new();
 
         for point in &self.scenario.points {
-            if !devices.contains(&point.device_id) {
+            if !self.devices.contains(&point.device_id) {
                 if !missing.contains(&point.device_id) {
                     missing.push(point.device_id.clone());
                 }
@@ -423,30 +390,46 @@ impl ScenarioExecutor {
 
         // Subscribe to player updates
         let update_rx = self.player.subscribe();
-        let devices = Arc::clone(&self.devices);
+        let devices = self.devices.clone();
         let metrics = Arc::clone(&self.metrics);
         let event_tx = self.event_tx.clone();
         let config = self.config.clone();
+        let stop_flag = self.player.stop_signal();
 
         // Spawn value writer task
         let writer_handle = tokio::spawn(async move {
-            Self::value_writer_loop(update_rx, devices, metrics, event_tx, config).await
+            Self::value_writer_loop(update_rx, devices, metrics, event_tx, config, stop_flag).await
         });
 
         // Run the player
         let player_result = self.player.run().await;
 
-        // Wait for writer to finish (with timeout)
-        let _ = tokio::time::timeout(Duration::from_secs(5), writer_handle).await;
+        // Wait for the writer to finish so we don't detach a blocked task.
+        let writer_result = match tokio::time::timeout(Duration::from_secs(5), writer_handle).await
+        {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => Err(ScenarioError::Player(format!("Writer task failed: {}", e))),
+            Err(_) => Err(ScenarioError::Player(
+                "Writer task did not shut down within 5 seconds".into(),
+            )),
+        };
 
-        // Update state based on player result
-        match &player_result {
+        let result = match (player_result, writer_result) {
+            (Err(error), _) => Err(error),
+            (Ok(()), Err(error)) => Err(error),
+            (Ok(()), Ok(())) => Ok(()),
+        };
+
+        // Update state based on the combined player/writer result
+        match &result {
             Ok(()) => {
                 if self.player.state() == PlayerState::Completed {
                     self.state = ExecutorState::Completed;
                     let metrics = self.metrics();
                     let _ = self.event_tx.send(ExecutorEvent::Completed { metrics });
                     info!(scenario = %self.scenario.name, "Executor completed");
+                } else {
+                    self.state = ExecutorState::Idle;
                 }
             }
             Err(e) => {
@@ -462,28 +445,43 @@ impl ScenarioExecutor {
             self.metrics.write().execution_time = start.elapsed();
         }
 
-        player_result
+        result
     }
 
     /// Internal value writer loop.
     async fn value_writer_loop(
         mut update_rx: broadcast::Receiver<ValueUpdate>,
-        devices: Arc<RwLock<DeviceRegistry>>,
-        metrics: Arc<RwLock<ExecutorMetrics>>,
+        devices: DeviceRegistry,
+        metrics: Arc<parking_lot::RwLock<ExecutorMetrics>>,
         event_tx: broadcast::Sender<ExecutorEvent>,
         config: ExecutorConfig,
-    ) {
-        while let Ok(update) = update_rx.recv().await {
+        stop_flag: Arc<AtomicBool>,
+    ) -> ScenarioResult<()> {
+        loop {
+            let update = tokio::select! {
+                result = update_rx.recv() => match result {
+                    Ok(update) => update,
+                    Err(broadcast::error::RecvError::Closed) => break Ok(()),
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!(skipped, "Scenario writer lagged behind the player");
+                        continue;
+                    }
+                },
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                    if stop_flag.load(Ordering::SeqCst) {
+                        break Ok(());
+                    }
+                    continue;
+                }
+            };
+
             metrics.write().values_generated += 1;
 
             let device_id = &update.point_id.device_id;
             let point_id = &update.point_id.point_id;
 
             // Get device handle
-            let device_opt = {
-                let registry = devices.read();
-                registry.get(device_id).cloned()
-            };
+            let device_opt = devices.get(device_id);
 
             let Some(device) = device_opt else {
                 warn!(device_id, "Device not found for value update");
@@ -492,14 +490,14 @@ impl ScenarioExecutor {
 
             // Write value with timeout
             let write_start = Instant::now();
-            let write_result: Result<crate::ScenarioResult<()>, _> = tokio::time::timeout(
-                config.write_timeout,
-                async {
-                    device.write(point_id, update.value.clone()).await
+            let write_result: Result<crate::ScenarioResult<()>, _> =
+                tokio::time::timeout(config.write_timeout, async {
+                    device
+                        .write(point_id, update.value.clone())
+                        .await
                         .map_err(|e| crate::ScenarioError::Core(e))
-                },
-            )
-            .await;
+                })
+                .await;
 
             let latency_us = write_start.elapsed().as_micros() as u64;
 
@@ -529,7 +527,11 @@ impl ScenarioExecutor {
                     warn!(device_id, point_id, error = %e, "Write failed");
 
                     if !config.continue_on_error {
-                        break;
+                        stop_flag.store(true, Ordering::SeqCst);
+                        return Err(ScenarioError::Player(format!(
+                            "Write failed for {}.{}: {}",
+                            device_id, point_id, e
+                        )));
                     }
                 }
                 Err(_) => {
@@ -544,7 +546,11 @@ impl ScenarioExecutor {
                     warn!(device_id, point_id, "Write timeout");
 
                     if !config.continue_on_error {
-                        break;
+                        stop_flag.store(true, Ordering::SeqCst);
+                        return Err(ScenarioError::Player(format!(
+                            "Write timeout for {}.{}",
+                            device_id, point_id
+                        )));
                     }
                 }
             }
@@ -585,9 +591,16 @@ impl ExecutorBuilder {
         self
     }
 
+    /// Seed the builder with an existing runtime device registry.
+    pub fn runtime_devices(mut self, devices: DeviceRegistry) -> Self {
+        self.devices = devices;
+        self
+    }
+
     /// Register a device.
-    pub fn device(mut self, device_id: impl Into<String>, handle: DeviceHandle) -> Self {
-        self.devices.register(device_id, handle);
+    pub fn device(self, device_id: impl Into<String>, handle: DeviceHandle) -> Self {
+        self.devices
+            .register(device_id, CoreDevicePort::new(handle).into_shared());
         self
     }
 
@@ -597,10 +610,10 @@ impl ExecutorBuilder {
             .scenario
             .ok_or_else(|| ScenarioError::Player("Scenario is required".into()))?;
 
-        let executor = ScenarioExecutor::new(scenario, self.config);
+        let mut executor = ScenarioExecutor::new(scenario, self.config);
 
         // Transfer devices
-        *executor.devices.write() = self.devices;
+        executor.devices = self.devices;
 
         Ok(executor)
     }

@@ -5,8 +5,6 @@
 use crate::context::CliContext;
 use crate::error::{CliError, CliResult};
 use async_trait::async_trait;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -183,15 +181,9 @@ impl CommandRunner {
             });
         }
 
-        // Run command with shutdown support
-        tokio::select! {
-            result = self.run(cmd) => result,
-            _ = shutdown_signal.notified() => {
-                let ctx = self.ctx.read().await;
-                ctx.output().info("Shutting down...");
-                Err(CliError::Interrupted)
-            }
-        }
+        // The command owns graceful shutdown: the signal handler only flips the
+        // shared notify so long-running commands can stop their services cleanly.
+        self.run(cmd).await
     }
 
     /// Get the context.

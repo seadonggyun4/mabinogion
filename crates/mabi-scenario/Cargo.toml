@@ -15,6 +15,7 @@ categories = ["simulation", "development-tools::testing"]
 
 [dependencies]
 mabi-core = { workspace = true }
+mabi-runtime = { workspace = true }
 
 tokio = { workspace = true }
 async-trait = { workspace = true }

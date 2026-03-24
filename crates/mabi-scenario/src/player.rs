@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tracing::info;
 
-use mabi_core::tags::Tags;
 use mabi_core::types::DataPointId;
 use mabi_core::value::Value;
 
@@ -17,8 +16,7 @@ use crate::schema::Scenario;
 use crate::ScenarioResult;
 
 /// Player configuration.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct PlayerConfig {
     /// Time scale override (None = use scenario default).
     pub time_scale: Option<f64>,
@@ -26,7 +24,6 @@ pub struct PlayerConfig {
     /// Maximum duration override.
     pub max_duration: Option<Duration>,
 }
-
 
 /// Value update event.
 #[derive(Debug, Clone)]
@@ -98,6 +95,11 @@ impl ScenarioPlayer {
         self.update_tx.subscribe()
     }
 
+    /// Returns the shared stop signal used by controllers.
+    pub fn stop_signal(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop_flag)
+    }
+
     /// Get elapsed time.
     pub fn elapsed(&self) -> Duration {
         if let Some(start) = self.start_time {
@@ -117,6 +119,7 @@ impl ScenarioPlayer {
             self.start_time = Some(Instant::now());
             self.state = PlayerState::Running;
             self.pause_flag.store(false, Ordering::SeqCst);
+            self.stop_flag.store(false, Ordering::SeqCst);
             info!(scenario = %self.scenario.name, "Scenario started");
         }
     }
@@ -138,6 +141,7 @@ impl ScenarioPlayer {
         self.state = PlayerState::Stopped;
         self.start_time = None;
         self.elapsed_time = Duration::ZERO;
+        self.pause_flag.store(false, Ordering::SeqCst);
         self.stop_flag.store(true, Ordering::SeqCst);
 
         // Reset generators
@@ -153,17 +157,19 @@ impl ScenarioPlayer {
         self.start();
 
         let time_scale = self.config.time_scale.unwrap_or(self.scenario.time_scale);
-        let duration = if self.scenario.duration_secs > 0 {
+        let scenario_duration = if self.scenario.duration_secs > 0 {
             Some(Duration::from_secs_f64(
                 self.scenario.duration_secs as f64 / time_scale,
             ))
         } else {
-            self.config.max_duration
+            None
         };
+        let duration = self.config.max_duration.or(scenario_duration);
 
         while self.state == PlayerState::Running {
             // Check stop flag
             if self.stop_flag.load(Ordering::SeqCst) {
+                self.state = PlayerState::Stopped;
                 break;
             }
 
@@ -198,7 +204,12 @@ impl ScenarioPlayer {
             tokio::time::sleep(sleep_duration).await;
         }
 
+        if let Some(start) = self.start_time.take() {
+            self.elapsed_time += start.elapsed();
+        }
+
         if self.state == PlayerState::Completed {
+            self.stop_flag.store(true, Ordering::SeqCst);
             info!(scenario = %self.scenario.name, "Scenario completed");
         }
 
@@ -232,6 +243,7 @@ impl ScenarioPlayer {
 mod tests {
     use super::*;
     use crate::schema::{PatternConfig, ScenarioPoint};
+    use mabi_core::Tags;
 
     #[tokio::test]
     async fn test_scenario_player() {
