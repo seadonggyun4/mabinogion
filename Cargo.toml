@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/mabi-core",
+    "crates/mabi-runtime",
     "crates/mabi-modbus",
     "crates/mabi-opcua",
     "crates/mabi-bacnet",
@@ -26,6 +27,7 @@ categories = ["simulation", "network-programming", "development-tools::testing"]
 [workspace.dependencies]
 # Internal crates
 mabi-core = { version = "1.3.2", path = "crates/mabi-core" }
+mabi-runtime = { version = "1.3.2", path = "crates/mabi-runtime" }
 mabi-modbus = { version = "1.3.2", path = "crates/mabi-modbus" }
 mabi-opcua = { version = "1.3.2", path = "crates/mabi-opcua" }
 mabi-bacnet = { version = "1.3.2", path = "crates/mabi-bacnet" }
@@ -35,7 +37,7 @@ mabi-chaos = { version = "1.3.2", path = "crates/mabi-chaos" }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full", "tracing"] }
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio-util = { version = "0.7", features = ["codec", "rt"] }
 futures = "0.3"
 async-trait = "0.1"
 
