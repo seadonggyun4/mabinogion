@@ -192,6 +192,12 @@ impl ChaosDevicePort {
             operation, device_id, point_id
         ))
     }
+
+    async fn apply_delay(delay_ms: u64) {
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
+    }
 }
 
 #[async_trait]
@@ -211,7 +217,9 @@ impl DevicePort for ChaosDevicePort {
             .await
             .map_err(Self::middleware_error)?
         {
-            MiddlewareResult::Proceed(_) | MiddlewareResult::Delayed { .. } => {
+            MiddlewareResult::Proceed(_) => self.inner.start().await,
+            MiddlewareResult::Delayed { delay_ms, .. } => {
+                Self::apply_delay(delay_ms).await;
                 self.inner.start().await
             }
             MiddlewareResult::Skip => Ok(()),
@@ -230,7 +238,9 @@ impl DevicePort for ChaosDevicePort {
             .await
             .map_err(Self::middleware_error)?
         {
-            MiddlewareResult::Proceed(_) | MiddlewareResult::Delayed { .. } => {
+            MiddlewareResult::Proceed(_) => self.inner.stop().await,
+            MiddlewareResult::Delayed { delay_ms, .. } => {
+                Self::apply_delay(delay_ms).await;
                 self.inner.stop().await
             }
             MiddlewareResult::Skip => Ok(()),
@@ -250,7 +260,11 @@ impl DevicePort for ChaosDevicePort {
             .await
             .map_err(Self::middleware_error)?
         {
-            MiddlewareResult::Proceed(ctx) | MiddlewareResult::Delayed { result: ctx, .. } => ctx,
+            MiddlewareResult::Proceed(ctx) => ctx,
+            MiddlewareResult::Delayed { delay_ms, result: ctx } => {
+                Self::apply_delay(delay_ms).await;
+                ctx
+            }
             MiddlewareResult::Skip => {
                 return Err(Self::skipped_error("read", &info.id, point_id));
             }
@@ -266,15 +280,24 @@ impl DevicePort for ChaosDevicePort {
             .await
             .map_err(Self::middleware_error)?
         {
-            MiddlewareResult::Proceed(mut points)
-            | MiddlewareResult::Delayed {
-                result: mut points, ..
-            } => points.pop().ok_or_else(|| {
+            MiddlewareResult::Proceed(mut points) => points.pop().ok_or_else(|| {
                 CoreError::Protocol(format!(
                     "chaos middleware produced no point for {}.{}",
                     info.id, point_id
                 ))
             }),
+            MiddlewareResult::Delayed {
+                delay_ms,
+                result: mut points,
+            } => {
+                Self::apply_delay(delay_ms).await;
+                points.pop().ok_or_else(|| {
+                    CoreError::Protocol(format!(
+                        "chaos middleware produced no point for {}.{}",
+                        info.id, point_id
+                    ))
+                })
+            }
             MiddlewareResult::Skip => Err(Self::skipped_error("response", &info.id, point_id)),
             MiddlewareResult::Error { message, .. } => Err(CoreError::Protocol(message)),
         }
@@ -292,7 +315,11 @@ impl DevicePort for ChaosDevicePort {
             .await
             .map_err(Self::middleware_error)?
         {
-            MiddlewareResult::Proceed(ctx) | MiddlewareResult::Delayed { result: ctx, .. } => ctx,
+            MiddlewareResult::Proceed(ctx) => ctx,
+            MiddlewareResult::Delayed { delay_ms, result: ctx } => {
+                Self::apply_delay(delay_ms).await;
+                ctx
+            }
             MiddlewareResult::Skip => {
                 return Err(Self::skipped_error("write", &info.id, point_id));
             }
@@ -601,4 +628,93 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         return text.starts_with(pattern);
     }
     pattern == text
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use async_trait::async_trait;
+    use serde_json::json;
+
+    use mabi_core::device::{DeviceInfo, DeviceState};
+    use mabi_core::types::{DataPoint, DataPointId};
+    use mabi_core::{Protocol, Value};
+    use mabi_runtime::DevicePort;
+
+    use crate::runtime::ChaosRuntime;
+    use crate::ChaosConfig;
+
+    struct StubDevicePort {
+        info: DeviceInfo,
+    }
+
+    impl StubDevicePort {
+        fn new(device_id: &str) -> Self {
+            let mut info = DeviceInfo::new(device_id, "Stub Device", Protocol::ModbusTcp);
+            info.state = DeviceState::Online;
+            Self { info }
+        }
+    }
+
+    #[async_trait]
+    impl DevicePort for StubDevicePort {
+        fn info(&self) -> DeviceInfo {
+            self.info.clone()
+        }
+
+        async fn start(&self) -> mabi_core::Result<()> {
+            Ok(())
+        }
+
+        async fn stop(&self) -> mabi_core::Result<()> {
+            Ok(())
+        }
+
+        async fn read(&self, point_id: &str) -> mabi_core::Result<DataPoint> {
+            Ok(DataPoint::new(
+                DataPointId::new(&self.info.id, point_id),
+                Value::F64(42.0),
+            ))
+        }
+
+        async fn write(&self, _point_id: &str, _value: Value) -> mabi_core::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn device_layer_applies_configured_delay() {
+        let config: ChaosConfig = serde_json::from_value(json!({
+            "faults": {
+                "slow-read": {
+                    "type": "latency",
+                    "base_ms": 25,
+                    "enabled": true,
+                    "targets": ["modbus-1"]
+                }
+            }
+        }))
+        .unwrap();
+
+        let runtime = ChaosRuntime::new(config).unwrap();
+        runtime.start().await.unwrap();
+
+        let extensions = runtime.runtime_extensions();
+        let decorated = extensions.decorate_device_port(
+            Some(Protocol::ModbusTcp),
+            Arc::new(StubDevicePort::new("modbus-1")),
+        );
+
+        let started = Instant::now();
+        let point = decorated.read("holding_0").await.unwrap();
+        assert_eq!(point.value, Value::F64(42.0));
+        assert!(
+            started.elapsed() >= Duration::from_millis(20),
+            "expected the chaos layer to add observable delay"
+        );
+
+        runtime.stop().await.unwrap();
+    }
 }
