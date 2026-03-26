@@ -239,11 +239,7 @@ impl DiagnosticResult {
 
 impl fmt::Display for DiagnosticResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}] {}: {}",
-            self.severity, self.rule, self.message
-        )?;
+        write!(f, "[{}] {}: {}", self.severity, self.rule, self.message)?;
         if !self.recommendation.is_empty() {
             write!(f, " → {}", self.recommendation)?;
         }
@@ -323,19 +319,45 @@ pub struct DiagnosticConfig {
     pub min_frames_for_evaluation: u64,
 }
 
-fn default_cache_hit_rate_warning() -> f64 { 0.5 }
-fn default_cache_hit_rate_critical() -> f64 { 0.1 }
-fn default_min_cache_lookups() -> u64 { 10 }
-fn default_ack_retry_rate_warning() -> f64 { 0.1 }
-fn default_ack_retry_rate_critical() -> f64 { 0.3 }
-fn default_heartbeat_fault_rate_warning() -> f64 { 0.5 }
-fn default_filter_drop_rate_warning() -> f64 { 0.05 }
-fn default_filter_drop_rate_critical() -> f64 { 0.20 }
-fn default_connection_capacity_warning() -> f64 { 0.8 }
-fn default_connection_capacity_critical() -> f64 { 0.95 }
-fn default_queue_backpressure_warning() -> f64 { 0.2 }
-fn default_queue_backpressure_critical() -> f64 { 0.5 }
-fn default_min_frames_for_evaluation() -> u64 { 20 }
+fn default_cache_hit_rate_warning() -> f64 {
+    0.5
+}
+fn default_cache_hit_rate_critical() -> f64 {
+    0.1
+}
+fn default_min_cache_lookups() -> u64 {
+    10
+}
+fn default_ack_retry_rate_warning() -> f64 {
+    0.1
+}
+fn default_ack_retry_rate_critical() -> f64 {
+    0.3
+}
+fn default_heartbeat_fault_rate_warning() -> f64 {
+    0.5
+}
+fn default_filter_drop_rate_warning() -> f64 {
+    0.05
+}
+fn default_filter_drop_rate_critical() -> f64 {
+    0.20
+}
+fn default_connection_capacity_warning() -> f64 {
+    0.8
+}
+fn default_connection_capacity_critical() -> f64 {
+    0.95
+}
+fn default_queue_backpressure_warning() -> f64 {
+    0.2
+}
+fn default_queue_backpressure_critical() -> f64 {
+    0.5
+}
+fn default_min_frames_for_evaluation() -> u64 {
+    20
+}
 
 impl Default for DiagnosticConfig {
     fn default() -> Self {
@@ -386,10 +408,7 @@ impl KnxDiagnostics {
     }
 
     /// Analyze a metrics snapshot with custom diagnostic thresholds.
-    pub fn analyze_with_config(
-        snapshot: &KnxMetricsSnapshot,
-        config: &DiagnosticConfig,
-    ) -> Self {
+    pub fn analyze_with_config(snapshot: &KnxMetricsSnapshot, config: &DiagnosticConfig) -> Self {
         let mut results = Vec::with_capacity(9);
 
         // Rule 1: Cache Hit Rate
@@ -422,13 +441,16 @@ impl KnxDiagnostics {
         // Sort by severity (Critical → Warning → Info → Ok)
         results.sort_by(|a, b| b.severity.cmp(&a.severity));
 
-        let warning_count = results.iter()
+        let warning_count = results
+            .iter()
             .filter(|r| r.severity == DiagnosticSeverity::Warning)
             .count();
-        let critical_count = results.iter()
+        let critical_count = results
+            .iter()
             .filter(|r| r.severity == DiagnosticSeverity::Critical)
             .count();
-        let overall_severity = results.iter()
+        let overall_severity = results
+            .iter()
             .map(|r| r.severity)
             .max()
             .unwrap_or(DiagnosticSeverity::Ok);
@@ -444,7 +466,8 @@ impl KnxDiagnostics {
 
     /// Get only the results that indicate problems (Warning or Critical).
     pub fn problems(&self) -> Vec<&DiagnosticResult> {
-        self.results.iter()
+        self.results
+            .iter()
             .filter(|r| r.severity.is_problem())
             .collect()
     }
@@ -461,8 +484,7 @@ impl KnxDiagnostics {
         out.push_str("=== KNXnet/IP Diagnostic Report ===\n");
         out.push_str(&format!(
             "Overall: {}  ({} rules, {} warnings, {} critical)\n\n",
-            self.overall_severity, self.rules_evaluated,
-            self.warning_count, self.critical_count,
+            self.overall_severity, self.rules_evaluated, self.warning_count, self.critical_count,
         ));
 
         for result in &self.results {
@@ -476,7 +498,10 @@ impl KnxDiagnostics {
             out.push_str(&format!("{} {}: {}\n", icon, result.rule, result.message));
 
             if !result.recommendation.is_empty() {
-                out.push_str(&format!("         Recommendation: {}\n", result.recommendation));
+                out.push_str(&format!(
+                    "         Recommendation: {}\n",
+                    result.recommendation
+                ));
             }
         }
 
@@ -505,7 +530,10 @@ impl KnxDiagnostics {
         if lookups < config.min_cache_lookups {
             return DiagnosticResult::info(
                 DiagnosticRule::CacheHitRate,
-                format!("Insufficient data for cache analysis ({} lookups, min {} required)", lookups, config.min_cache_lookups),
+                format!(
+                    "Insufficient data for cache analysis ({} lookups, min {} required)",
+                    lookups, config.min_cache_lookups
+                ),
                 "Accumulate more cache lookups before evaluating",
                 hit_rate,
             );
@@ -685,7 +713,10 @@ impl KnxDiagnostics {
         if total < config.min_frames_for_evaluation {
             return DiagnosticResult::ok(
                 DiagnosticRule::FilterDropRate,
-                format!("Insufficient data ({} frames, min {} for evaluation)", total, config.min_frames_for_evaluation),
+                format!(
+                    "Insufficient data ({} frames, min {} for evaluation)",
+                    total, config.min_frames_for_evaluation
+                ),
                 0.0,
             );
         }
@@ -766,7 +797,10 @@ impl KnxDiagnostics {
             if error_rate > 0.0 {
                 return DiagnosticResult::info(
                     DiagnosticRule::ErrorTrackerThresholds,
-                    format!("Error rate at {:.1}% — below thresholds", error_rate * 100.0),
+                    format!(
+                        "Error rate at {:.1}% — below thresholds",
+                        error_rate * 100.0
+                    ),
                     "Errors are occurring but within tolerance. Monitor trends.",
                     error_rate,
                 );
@@ -841,7 +875,12 @@ impl KnxDiagnostics {
         } else {
             DiagnosticResult::ok(
                 DiagnosticRule::ConnectionCapacity,
-                format!("Connection pool at {:.1}% capacity ({}/{})", utilization * 100.0, snapshot.active_connections, snapshot.max_connections),
+                format!(
+                    "Connection pool at {:.1}% capacity ({}/{})",
+                    utilization * 100.0,
+                    snapshot.active_connections,
+                    snapshot.max_connections
+                ),
                 utilization,
             )
         }
@@ -907,8 +946,7 @@ mod tests {
     use super::*;
 
     fn make_snapshot() -> KnxMetricsSnapshot {
-        KnxMetricsSnapshot::zero()
-            .with_server(1000, 2, 3, 10)
+        KnxMetricsSnapshot::zero().with_server(1000, 2, 3, 10)
     }
 
     #[test]
@@ -945,7 +983,9 @@ mod tests {
         snapshot.cache_lookups_total = 100;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cache_result = diag.results.iter()
+        let cache_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::CacheHitRate)
             .unwrap();
 
@@ -963,7 +1003,9 @@ mod tests {
         snapshot.cache_lookups_total = 100;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cache_result = diag.results.iter()
+        let cache_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::CacheHitRate)
             .unwrap();
 
@@ -977,7 +1019,9 @@ mod tests {
         snapshot.cache_hit_rate = 0.0;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cache_result = diag.results.iter()
+        let cache_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::CacheHitRate)
             .unwrap();
 
@@ -990,7 +1034,9 @@ mod tests {
         snapshot.tunnel_fatal_desyncs_total = 2;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let seq_result = diag.results.iter()
+        let seq_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::SequenceErrors)
             .unwrap();
 
@@ -1004,7 +1050,9 @@ mod tests {
         snapshot.tunnel_out_of_order_total = 5;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let seq_result = diag.results.iter()
+        let seq_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::SequenceErrors)
             .unwrap();
 
@@ -1017,7 +1065,9 @@ mod tests {
         snapshot.tunnel_duplicates_total = 3;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let seq_result = diag.results.iter()
+        let seq_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::SequenceErrors)
             .unwrap();
 
@@ -1035,7 +1085,9 @@ mod tests {
         snapshot.heartbeat_fault_rate = 0.6;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let hb_result = diag.results.iter()
+        let hb_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::HeartbeatFaults)
             .unwrap();
 
@@ -1051,7 +1103,9 @@ mod tests {
         snapshot.heartbeat_fault_rate = 0.05;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let hb_result = diag.results.iter()
+        let hb_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::HeartbeatFaults)
             .unwrap();
 
@@ -1065,7 +1119,9 @@ mod tests {
         snapshot.filter_chain_frames_dropped = 8;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let filter_result = diag.results.iter()
+        let filter_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::FilterDropRate)
             .unwrap();
 
@@ -1079,7 +1135,9 @@ mod tests {
         snapshot.filter_chain_frames_dropped = 25;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let filter_result = diag.results.iter()
+        let filter_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::FilterDropRate)
             .unwrap();
 
@@ -1093,7 +1151,9 @@ mod tests {
         snapshot.retry_circuit_resets = 2; // 3 trips, 2 resets → still open
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cb_result = diag.results.iter()
+        let cb_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::CircuitBreakerTrips)
             .unwrap();
 
@@ -1108,7 +1168,9 @@ mod tests {
         snapshot.retry_circuit_resets = 2; // All recovered
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cb_result = diag.results.iter()
+        let cb_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::CircuitBreakerTrips)
             .unwrap();
 
@@ -1122,7 +1184,9 @@ mod tests {
         snapshot.error_tracker_rate_triggers = 2;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let et_result = diag.results.iter()
+        let et_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::ErrorTrackerThresholds)
             .unwrap();
 
@@ -1135,7 +1199,9 @@ mod tests {
         snapshot.error_tracker_consecutive_triggers = 2;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let et_result = diag.results.iter()
+        let et_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::ErrorTrackerThresholds)
             .unwrap();
 
@@ -1148,7 +1214,9 @@ mod tests {
         snapshot.error_tracker_rate_triggers = 1;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let et_result = diag.results.iter()
+        let et_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::ErrorTrackerThresholds)
             .unwrap();
 
@@ -1162,7 +1230,9 @@ mod tests {
         snapshot.max_connections = 10;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cap_result = diag.results.iter()
+        let cap_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::ConnectionCapacity)
             .unwrap();
 
@@ -1176,7 +1246,9 @@ mod tests {
         snapshot.max_connections = 10;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let cap_result = diag.results.iter()
+        let cap_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::ConnectionCapacity)
             .unwrap();
 
@@ -1190,7 +1262,9 @@ mod tests {
         snapshot.filter_chain_frames_queued = 25;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let qb_result = diag.results.iter()
+        let qb_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::QueueBackpressure)
             .unwrap();
 
@@ -1204,7 +1278,9 @@ mod tests {
         snapshot.filter_chain_frames_queued = 55;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let qb_result = diag.results.iter()
+        let qb_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::QueueBackpressure)
             .unwrap();
 
@@ -1239,7 +1315,9 @@ mod tests {
 
         // First result should be Critical
         if !diag.results.is_empty() {
-            let first_problem = diag.results.iter()
+            let first_problem = diag
+                .results
+                .iter()
                 .find(|r| r.severity.is_problem())
                 .unwrap();
             assert_eq!(first_problem.severity, DiagnosticSeverity::Critical);
@@ -1318,7 +1396,9 @@ mod tests {
         snapshot.cache_lookups_total = 100;
 
         let diag = KnxDiagnostics::analyze_with_config(&snapshot, &config);
-        let cache_result = diag.results.iter()
+        let cache_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::CacheHitRate)
             .unwrap();
 
@@ -1344,7 +1424,9 @@ mod tests {
         let snapshot = make_snapshot();
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let ack_result = diag.results.iter()
+        let ack_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::AckRetryRate)
             .unwrap();
 
@@ -1359,7 +1441,9 @@ mod tests {
         snapshot.retry_attempts = 15; // 15% retry rate
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let ack_result = diag.results.iter()
+        let ack_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::AckRetryRate)
             .unwrap();
 
@@ -1374,7 +1458,9 @@ mod tests {
         snapshot.retry_attempts = 35; // 35% retry rate
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let ack_result = diag.results.iter()
+        let ack_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::AckRetryRate)
             .unwrap();
 
@@ -1387,7 +1473,9 @@ mod tests {
         snapshot.error_tracker_error_rate = 0.05;
 
         let diag = KnxDiagnostics::analyze(&snapshot);
-        let et_result = diag.results.iter()
+        let et_result = diag
+            .results
+            .iter()
             .find(|r| r.rule == DiagnosticRule::ErrorTrackerThresholds)
             .unwrap();
 
@@ -1411,13 +1499,13 @@ mod tests {
         let mut snapshot = make_snapshot();
 
         // Create multiple issues
-        snapshot.tunnel_fatal_desyncs_total = 3;    // Critical
-        snapshot.retry_circuit_trips = 2;            // Warning (all recovered)
+        snapshot.tunnel_fatal_desyncs_total = 3; // Critical
+        snapshot.retry_circuit_trips = 2; // Warning (all recovered)
         snapshot.retry_circuit_resets = 2;
         snapshot.cache_lookups_total = 100;
         snapshot.cache_hits_total = 20;
         snapshot.cache_misses_total = 80;
-        snapshot.cache_hit_rate = 0.2;               // Warning
+        snapshot.cache_hit_rate = 0.2; // Warning
         snapshot.error_tracker_consecutive_triggers = 1; // Warning
 
         let diag = KnxDiagnostics::analyze(&snapshot);

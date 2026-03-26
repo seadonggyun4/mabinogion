@@ -14,16 +14,18 @@ pub mod session;
 pub mod subscription;
 
 pub use event::{
-    EventManager, EventData, EventFilter, EventFieldList, EventNotification,
-    SimpleAttributeOperand, ContentFilterElement, FilterOperator, FilterOperand,
+    ContentFilterElement, EventData, EventFieldList, EventFilter, EventManager, EventNotification,
+    FilterOperand, FilterOperator, SimpleAttributeOperand,
 };
-pub use history::{HistoryStore, HistoryStoreConfig, HistoricalDataPoint, AggregateType};
+pub use history::{AggregateType, HistoricalDataPoint, HistoryStore, HistoryStoreConfig};
 pub use monitored_item::{
-    MonitoredItem, MonitoredItemConfig, MonitoredItemNotification, MonitoringMode,
-    MonitoredItemKind, DataChangeFilter, DataChangeTrigger, DeadbandType,
+    DataChangeFilter, DataChangeTrigger, DeadbandType, MonitoredItem, MonitoredItemConfig,
+    MonitoredItemKind, MonitoredItemNotification, MonitoringMode,
 };
-pub use session::{SessionManager, SessionManagerConfig, Session, SessionInfo, SessionEvent, UserIdentity};
+pub use session::{
+    Session, SessionEvent, SessionInfo, SessionManager, SessionManagerConfig, UserIdentity,
+};
 pub use subscription::{
-    Subscription, SubscriptionConfig, SubscriptionManager, SubscriptionManagerConfig,
-    SubscriptionEvent, PublishResponse, NotificationMessage,
+    NotificationMessage, PublishResponse, Subscription, SubscriptionConfig, SubscriptionEvent,
+    SubscriptionManager, SubscriptionManagerConfig,
 };

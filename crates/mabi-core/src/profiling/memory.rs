@@ -444,9 +444,7 @@ impl MemoryReport {
 
     /// Get the largest region by current usage.
     pub fn largest_region(&self) -> Option<(&String, &RegionSnapshot)> {
-        self.regions
-            .iter()
-            .max_by_key(|(_, r)| r.current_bytes)
+        self.regions.iter().max_by_key(|(_, r)| r.current_bytes)
     }
 
     /// Calculate memory efficiency (deallocated / allocated).

@@ -17,10 +17,14 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 // Protocol-specific imports
-use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2, ModbusDevice, ModbusDeviceConfig};
+use mabi_bacnet::prelude::{
+    default_object_descriptors, BACnetServer, ObjectRegistry, ServerConfig as BacnetServerConfig,
+};
+use mabi_knx::{
+    DptId, GroupAddress, GroupObjectTable, IndividualAddress, KnxServer, KnxServerConfig,
+};
+use mabi_modbus::{tcp::ServerConfigV2, ModbusDevice, ModbusDeviceConfig, ModbusTcpServerV2};
 use mabi_opcua::{OpcUaServer, OpcUaServerConfig};
-use mabi_bacnet::prelude::{BACnetServer, ServerConfig as BacnetServerConfig, ObjectRegistry, default_object_descriptors};
-use mabi_knx::{KnxServer, KnxServerConfig, IndividualAddress, GroupAddress, DptId, GroupObjectTable};
 
 /// Checks if a port is already in use and provides diagnostics.
 ///
@@ -204,10 +208,7 @@ impl Command for ModbusCommand {
                 let output = ctx.output();
                 if self.rtu_mode {
                     output.header("Modbus RTU Simulator");
-                    output.kv(
-                        "Serial Port",
-                        self.serial_port.as_deref().unwrap_or("N/A"),
-                    );
+                    output.kv("Serial Port", self.serial_port.as_deref().unwrap_or("N/A"));
                 } else {
                     output.header("Modbus TCP Simulator");
                     output.kv("Bind Address", self.bind_addr);
@@ -220,15 +221,27 @@ impl Command for ModbusCommand {
 
         // Verbose: show extra configuration details
         if is_verbose {
-            ctx.vprintln(format!("  Protocol Mode: {}", if self.rtu_mode { "RTU" } else { "TCP" }));
-            ctx.vprintln(format!("  Points Distribution: {} per register type", self.points_per_device / 4));
+            ctx.vprintln(format!(
+                "  Protocol Mode: {}",
+                if self.rtu_mode { "RTU" } else { "TCP" }
+            ));
+            ctx.vprintln(format!(
+                "  Points Distribution: {} per register type",
+                self.points_per_device / 4
+            ));
         }
 
         // Debug: dump full configuration
         if is_debug {
             ctx.dprintln(format!("Bind address: {}", self.bind_addr));
-            ctx.dprintln(format!("RTU mode: {}, Serial: {:?}", self.rtu_mode, self.serial_port));
-            ctx.dprintln(format!("Devices: {}, Points/device: {}", self.devices, self.points_per_device));
+            ctx.dprintln(format!(
+                "RTU mode: {}, Serial: {:?}",
+                self.rtu_mode, self.serial_port
+            ));
+            ctx.dprintln(format!(
+                "Devices: {}, Points/device: {}",
+                self.devices, self.points_per_device
+            ));
         }
 
         self.start_server(ctx).await?;
@@ -239,15 +252,28 @@ impl Command for ModbusCommand {
             match format {
                 OutputFormat::Table => {
                     let colors_enabled = ctx.colors_enabled();
-                    let builder = TableBuilder::new(colors_enabled)
-                        .header(["Unit ID", "Holding Regs", "Input Regs", "Coils", "Discrete", "Status"]);
+                    let builder = TableBuilder::new(colors_enabled).header([
+                        "Unit ID",
+                        "Holding Regs",
+                        "Input Regs",
+                        "Coils",
+                        "Discrete",
+                        "Status",
+                    ]);
 
                     let devices = self.devices;
                     let pts = points_per_type.to_string();
                     let table = PaginatedTable::default().render(builder, devices, 6, |i| {
                         let unit_id = (i + 1).to_string();
                         (
-                            vec![unit_id, pts.clone(), pts.clone(), pts.clone(), pts.clone(), "Online".into()],
+                            vec![
+                                unit_id,
+                                pts.clone(),
+                                pts.clone(),
+                                pts.clone(),
+                                pts.clone(),
+                                "Online".into(),
+                            ],
                             StatusType::Success,
                         )
                     });
@@ -286,7 +312,11 @@ impl Command for ModbusCommand {
                         })
                         .collect();
                     let info = ModbusServerInfo {
-                        protocol: if self.rtu_mode { "Modbus RTU".into() } else { "Modbus TCP".into() },
+                        protocol: if self.rtu_mode {
+                            "Modbus RTU".into()
+                        } else {
+                            "Modbus TCP".into()
+                        },
                         bind_address: self.bind_addr.to_string(),
                         devices: self.devices,
                         points_per_device: self.points_per_device,
@@ -501,7 +531,10 @@ impl Command for OpcuaCommand {
             if matches!(format, OutputFormat::Table) {
                 let output = ctx.output();
                 output.header("OPC UA Simulator");
-                output.kv("Endpoint", format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path));
+                output.kv(
+                    "Endpoint",
+                    format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path),
+                );
                 output.kv("Nodes", self.nodes);
                 output.kv("Security Mode", &self.security_mode);
             }
@@ -517,7 +550,10 @@ impl Command for OpcuaCommand {
 
         // Debug: dump full configuration
         if is_debug {
-            ctx.dprintln(format!("Full endpoint URL: opc.tcp://{}{}", self.bind_addr, self.endpoint_path));
+            ctx.dprintln(format!(
+                "Full endpoint URL: opc.tcp://{}{}",
+                self.bind_addr, self.endpoint_path
+            ));
             ctx.dprintln(format!("Node count: {}", self.nodes));
             ctx.dprintln(format!("Security mode: {}", self.security_mode));
             ctx.dprintln(format!("Sample nodes created: {}", self.nodes.min(100)));
@@ -561,8 +597,18 @@ impl Command for OpcuaCommand {
                         nodes: self.nodes,
                         security_mode: self.security_mode.clone(),
                         namespaces: vec![
-                            NamespaceInfo { index: 0, nodes: "Standard".into(), subscriptions: 0, status: "Ready".into() },
-                            NamespaceInfo { index: 1, nodes: self.nodes.to_string(), subscriptions: 0, status: "Online".into() },
+                            NamespaceInfo {
+                                index: 0,
+                                nodes: "Standard".into(),
+                                subscriptions: 0,
+                                status: "Ready".into(),
+                            },
+                            NamespaceInfo {
+                                index: 1,
+                                nodes: self.nodes.to_string(),
+                                subscriptions: 0,
+                                status: "Online".into(),
+                            },
                         ],
                         status: "Online".into(),
                     };
@@ -609,7 +655,7 @@ impl ProtocolCommand for OpcuaCommand {
 
         let server = Arc::new(OpcUaServer::new(config).map_err(|e| {
             crate::error::CliError::ExecutionFailed {
-                message: format!("Failed to create OPC UA server: {}", e)
+                message: format!("Failed to create OPC UA server: {}", e),
             }
         })?);
 
@@ -758,14 +804,24 @@ impl Command for BacnetCommand {
                 output.kv("Bind Address", self.bind_addr);
                 output.kv("Device Instance", self.device_instance);
                 output.kv("Objects", self.objects);
-                output.kv("BBMD", if self.bbmd_enabled { "Enabled" } else { "Disabled" });
+                output.kv(
+                    "BBMD",
+                    if self.bbmd_enabled {
+                        "Enabled"
+                    } else {
+                        "Disabled"
+                    },
+                );
             }
         }
 
         // Verbose: show extra details
         if is_verbose {
             let per_type = self.objects / 4;
-            ctx.vprintln(format!("  Objects per Type: {} (AI: {}, AO: {}, BI: {}, BO: {})", per_type, per_type, per_type, per_type, per_type));
+            ctx.vprintln(format!(
+                "  Objects per Type: {} (AI: {}, AO: {}, BI: {}, BO: {})",
+                per_type, per_type, per_type, per_type, per_type
+            ));
             ctx.vprintln(format!("  Device Name: Mabinogion BACnet Simulator"));
         }
 
@@ -773,7 +829,10 @@ impl Command for BacnetCommand {
         if is_debug {
             ctx.dprintln(format!("Bind address: {}", self.bind_addr));
             ctx.dprintln(format!("Device instance: {}", self.device_instance));
-            ctx.dprintln(format!("Total objects: {}, BBMD: {}", self.objects, self.bbmd_enabled));
+            ctx.dprintln(format!(
+                "Total objects: {}, BBMD: {}",
+                self.objects, self.bbmd_enabled
+            ));
         }
 
         self.start_server(ctx).await?;
@@ -787,10 +846,22 @@ impl Command for BacnetCommand {
                     let table = TableBuilder::new(colors_enabled)
                         .header(["Object Type", "Count", "Status"])
                         .status_row(["Device", "1", "Online"], StatusType::Success)
-                        .status_row(["Analog Input", &per_type.to_string(), "Active"], StatusType::Success)
-                        .status_row(["Analog Output", &per_type.to_string(), "Active"], StatusType::Success)
-                        .status_row(["Binary Input", &per_type.to_string(), "Active"], StatusType::Success)
-                        .status_row(["Binary Output", &per_type.to_string(), "Active"], StatusType::Success);
+                        .status_row(
+                            ["Analog Input", &per_type.to_string(), "Active"],
+                            StatusType::Success,
+                        )
+                        .status_row(
+                            ["Analog Output", &per_type.to_string(), "Active"],
+                            StatusType::Success,
+                        )
+                        .status_row(
+                            ["Binary Input", &per_type.to_string(), "Active"],
+                            StatusType::Success,
+                        )
+                        .status_row(
+                            ["Binary Output", &per_type.to_string(), "Active"],
+                            StatusType::Success,
+                        );
                     table.print();
                 }
                 _ => {
@@ -817,11 +888,31 @@ impl Command for BacnetCommand {
                         objects: self.objects,
                         bbmd_enabled: self.bbmd_enabled,
                         object_types: vec![
-                            ObjectTypeInfo { object_type: "Device".into(), count: 1, status: "Online".into() },
-                            ObjectTypeInfo { object_type: "Analog Input".into(), count: per_type, status: "Active".into() },
-                            ObjectTypeInfo { object_type: "Analog Output".into(), count: per_type, status: "Active".into() },
-                            ObjectTypeInfo { object_type: "Binary Input".into(), count: per_type, status: "Active".into() },
-                            ObjectTypeInfo { object_type: "Binary Output".into(), count: per_type, status: "Active".into() },
+                            ObjectTypeInfo {
+                                object_type: "Device".into(),
+                                count: 1,
+                                status: "Online".into(),
+                            },
+                            ObjectTypeInfo {
+                                object_type: "Analog Input".into(),
+                                count: per_type,
+                                status: "Active".into(),
+                            },
+                            ObjectTypeInfo {
+                                object_type: "Analog Output".into(),
+                                count: per_type,
+                                status: "Active".into(),
+                            },
+                            ObjectTypeInfo {
+                                object_type: "Binary Input".into(),
+                                count: per_type,
+                                status: "Active".into(),
+                            },
+                            ObjectTypeInfo {
+                                object_type: "Binary Output".into(),
+                                count: per_type,
+                                status: "Active".into(),
+                            },
                         ],
                         status: "Online".into(),
                     };
@@ -1044,9 +1135,18 @@ impl Command for KnxCommand {
                         individual_address: self.individual_address.clone(),
                         group_objects: self.group_objects,
                         services: vec![
-                            ServiceInfo { service: "Core".into(), status: "Ready".into() },
-                            ServiceInfo { service: "Device Management".into(), status: "Ready".into() },
-                            ServiceInfo { service: "Tunneling".into(), status: "Ready".into() },
+                            ServiceInfo {
+                                service: "Core".into(),
+                                status: "Ready".into(),
+                            },
+                            ServiceInfo {
+                                service: "Device Management".into(),
+                                status: "Ready".into(),
+                            },
+                            ServiceInfo {
+                                service: "Tunneling".into(),
+                                status: "Ready".into(),
+                            },
                         ],
                         status: "Online".into(),
                     };
@@ -1084,9 +1184,11 @@ impl ProtocolCommand for KnxCommand {
         let spinner = output.spinner("Starting KNX server...");
 
         // Parse individual address
-        let individual_address: IndividualAddress = self.individual_address.parse()
-            .map_err(|_| crate::error::CliError::ExecutionFailed {
-                message: format!("Invalid individual address: {}", self.individual_address)
+        let individual_address: IndividualAddress =
+            self.individual_address.parse().map_err(|_| {
+                crate::error::CliError::ExecutionFailed {
+                    message: format!("Invalid individual address: {}", self.individual_address),
+                }
             })?;
 
         let config = KnxServerConfig {
@@ -1109,8 +1211,14 @@ impl ProtocolCommand for KnxCommand {
             DptId::new(14, 56), // Float (f32)
         ];
         let dpt_names = [
-            "Switch", "Scaling", "Temperature", "Lux",
-            "Humidity", "Counter", "SignedCounter", "Float",
+            "Switch",
+            "Scaling",
+            "Temperature",
+            "Lux",
+            "Humidity",
+            "Counter",
+            "SignedCounter",
+            "Float",
         ];
 
         for i in 0..self.group_objects {
@@ -1160,7 +1268,8 @@ impl ProtocolCommand for KnxCommand {
                 rt.block_on(async {
                     let _ = server.stop().await;
                 })
-            }).await;
+            })
+            .await;
         }
 
         if let Some(task) = self.server_task.lock().await.take() {

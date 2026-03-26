@@ -11,6 +11,11 @@ use mabi_cli::commands::{
 use mabi_cli::prelude::*;
 use mabi_cli::runtime_registry::{protocol_catalog, workspace_protocol_registry};
 use mabi_cli::validation::{parse_nonzero_count, parse_port};
+use mabi_modbus::{
+    CompiledModbusSession, FaultPresetPort, ModbusConfigSummary, ModbusControlSession,
+    ModbusSimulatorConfig, PointCatalogPort, PointCatalogQuery, PointTarget, RegisterControlPort,
+    SessionControlPort, TracePort,
+};
 use mabi_runtime::{ProtocolLaunchSpec, RuntimeSession};
 use mabi_scenario::prelude::ScenarioValidator;
 use mabi_scenario::{Scenario, ScenarioParser};
@@ -130,6 +135,17 @@ impl From<OutputFormatArg> for OutputFormat {
     }
 }
 
+impl From<ModbusRegisterTypeArg> for mabi_core::types::ModbusRegisterType {
+    fn from(arg: ModbusRegisterTypeArg) -> Self {
+        match arg {
+            ModbusRegisterTypeArg::Coil => Self::Coil,
+            ModbusRegisterTypeArg::DiscreteInput => Self::DiscreteInput,
+            ModbusRegisterTypeArg::HoldingRegister => Self::HoldingRegister,
+            ModbusRegisterTypeArg::InputRegister => Self::InputRegister,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Serve a protocol simulator through the shared runtime
@@ -146,6 +162,9 @@ enum Commands {
 
     /// Validate scenario or config files
     Validate(ValidateCommandArgs),
+
+    /// Runtime control commands for simulator sessions
+    Control(ControlCommandArgs),
 
     /// Show version information
     Version,
@@ -176,6 +195,10 @@ struct ServeArgs {
 struct ModbusServeArgs {
     #[command(flatten)]
     serve: ServeArgs,
+
+    /// Named session from a Modbus simulator config file
+    #[arg(long)]
+    session: Option<String>,
 
     /// Port to bind to
     #[arg(short, long, default_value = "502", value_parser = parse_port)]
@@ -337,8 +360,16 @@ enum InspectSubcommand {
     /// Show registered protocols
     Protocols,
 
-    /// Show supported schema surfaces
+    /// Show supported generic schema surfaces
     Schema(InspectSchemaArgs),
+
+    /// Show the typed Modbus simulator schema
+    #[command(name = "modbus-schema")]
+    ModbusSchema,
+
+    /// Inspect a Modbus simulator config file
+    #[command(name = "modbus-config")]
+    ModbusConfig(InspectModbusConfigArgs),
 
     /// Show current process runtime status
     Status,
@@ -372,6 +403,10 @@ enum ValidateSubcommand {
 
     /// Validate one or more generic config files
     Config(ValidateConfigArgs),
+
+    /// Validate a typed Modbus simulator config file
+    #[command(name = "modbus-config")]
+    ModbusConfig(ValidateModbusConfigArgs),
 }
 
 #[derive(Args)]
@@ -402,6 +437,172 @@ struct ValidateConfigArgs {
     /// Treat warnings as errors
     #[arg(long)]
     strict: bool,
+}
+
+#[derive(Args)]
+struct ValidateModbusConfigArgs {
+    /// Modbus config file to validate
+    #[arg(required = true)]
+    file: PathBuf,
+}
+
+#[derive(Args)]
+struct InspectModbusConfigArgs {
+    /// Modbus config file to inspect
+    #[arg(required = true)]
+    file: PathBuf,
+}
+
+#[derive(Args)]
+struct ControlCommandArgs {
+    #[command(subcommand)]
+    protocol: ControlProtocolCommand,
+}
+
+#[derive(Subcommand)]
+enum ControlProtocolCommand {
+    Modbus(ModbusControlArgs),
+}
+
+#[derive(Args)]
+struct ModbusControlArgs {
+    /// Named session from the shared Modbus simulator config file
+    #[arg(long)]
+    session: String,
+
+    #[command(subcommand)]
+    command: ModbusControlSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModbusControlSubcommand {
+    Session(ModbusSessionCommandArgs),
+    Point(ModbusPointCommandArgs),
+    Trace(ModbusTraceCommandArgs),
+    Faults(ModbusFaultCommandArgs),
+}
+
+#[derive(Args)]
+struct ModbusSessionCommandArgs {
+    #[command(subcommand)]
+    command: ModbusSessionSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModbusSessionSubcommand {
+    Status,
+    Reset,
+    Snapshot,
+}
+
+#[derive(Args)]
+struct ModbusPointCommandArgs {
+    #[command(subcommand)]
+    command: ModbusPointSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModbusPointSubcommand {
+    List(ModbusPointListArgs),
+    Read(ModbusPointReadArgs),
+    Write(ModbusPointWriteArgs),
+}
+
+#[derive(Args, Default)]
+struct ModbusPointSelectorArgs {
+    /// Explicit device id (defaults to inferred modbus-<unit> when --unit is supplied)
+    #[arg(long)]
+    device: Option<String>,
+
+    /// Stable point id
+    #[arg(long)]
+    point: Option<String>,
+
+    /// Modbus unit id for address-based selection
+    #[arg(long)]
+    unit: Option<u8>,
+
+    /// Register family for address-based selection
+    #[arg(long, value_enum)]
+    register_type: Option<ModbusRegisterTypeArg>,
+
+    /// 0-based Modbus address for address-based selection
+    #[arg(long)]
+    address: Option<u16>,
+}
+
+#[derive(Args)]
+struct ModbusPointListArgs {
+    /// Restrict output to a single device id
+    #[arg(long)]
+    device: Option<String>,
+
+    /// Filter by key=value tag pairs
+    #[arg(long = "tag")]
+    tags: Vec<String>,
+
+    /// Filter by label tags
+    #[arg(long = "label")]
+    labels: Vec<String>,
+}
+
+#[derive(Args)]
+struct ModbusPointReadArgs {
+    #[command(flatten)]
+    selector: ModbusPointSelectorArgs,
+}
+
+#[derive(Args)]
+struct ModbusPointWriteArgs {
+    #[command(flatten)]
+    selector: ModbusPointSelectorArgs,
+
+    /// JSON literal or raw string value to write
+    value: String,
+}
+
+#[derive(Args)]
+struct ModbusTraceCommandArgs {
+    #[command(subcommand)]
+    command: ModbusTraceSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModbusTraceSubcommand {
+    Tail(ModbusTraceTailArgs),
+    Clear,
+}
+
+#[derive(Args)]
+struct ModbusTraceTailArgs {
+    #[arg(long, default_value = "50")]
+    limit: usize,
+}
+
+#[derive(Args)]
+struct ModbusFaultCommandArgs {
+    #[command(subcommand)]
+    command: ModbusFaultSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModbusFaultSubcommand {
+    Apply(ModbusFaultApplyArgs),
+    Clear,
+}
+
+#[derive(Args)]
+struct ModbusFaultApplyArgs {
+    /// Named fault preset from the selected session
+    preset: String,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum ModbusRegisterTypeArg {
+    Coil,
+    DiscreteInput,
+    HoldingRegister,
+    InputRegister,
 }
 
 /// OPC UA security mode argument.
@@ -472,15 +673,23 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let global_config = cli.global.config.clone();
 
     let result = match cli.command {
-        Commands::Serve(args) => match into_launch_spec(args.protocol) {
-            Ok(launch) => {
-                let cmd = ServeRuntimeCommand::new(launch, readiness_timeout);
-                runner.run_with_shutdown(&cmd).await
+        Commands::Serve(args) => {
+            let serve_plan = {
+                let ctx_handle = runner.context();
+                let ctx = ctx_handle.read().await;
+                into_launch_spec(&ctx, global_config.as_deref(), args.protocol).await
+            };
+            match serve_plan {
+                Ok((launch, extensions)) => {
+                    let cmd = ServeRuntimeCommand::new(launch, readiness_timeout, extensions);
+                    runner.run_with_shutdown(&cmd).await
+                }
+                Err(error) => Err(error),
             }
-            Err(error) => Err(error),
-        },
+        }
         Commands::Scenario(args) => match args.command {
             ScenarioSubcommand::Run(args) => {
                 let mut cmd = RunCommand::new(args.scenario)
@@ -512,6 +721,10 @@ async fn main() -> ExitCode {
             match args.command {
                 InspectSubcommand::Protocols => inspect_protocols(&mut ctx).await,
                 InspectSubcommand::Schema(args) => inspect_schema(&mut ctx, args.kind).await,
+                InspectSubcommand::ModbusSchema => inspect_modbus_schema(&mut ctx).await,
+                InspectSubcommand::ModbusConfig(args) => {
+                    inspect_modbus_config(&mut ctx, args.file).await
+                }
                 InspectSubcommand::Status => inspect_status(&mut ctx).await,
             }
         }
@@ -527,7 +740,22 @@ async fn main() -> ExitCode {
                     .with_strict(args.strict);
                 runner.run(&cmd).await
             }
+            ValidateSubcommand::ModbusConfig(args) => {
+                let ctx_handle = runner.context();
+                let mut ctx = ctx_handle.write().await;
+                validate_modbus_config(&mut ctx, args.file).await
+            }
         },
+        Commands::Control(args) => {
+            let ctx_handle = runner.context();
+            let mut ctx = ctx_handle.write().await;
+            match args.protocol {
+                ControlProtocolCommand::Modbus(args) => {
+                    control_modbus(&mut ctx, global_config.as_deref(), args, readiness_timeout)
+                        .await
+                }
+            }
+        }
         Commands::Version => {
             println!("mabi {} (Mabinogion)", env!("CARGO_PKG_VERSION"));
             println!("Rust {}", rustc_version());
@@ -564,46 +792,84 @@ async fn main() -> ExitCode {
     }
 }
 
-fn into_launch_spec(command: ServeProtocolCommand) -> CliResult<ProtocolLaunchSpec> {
+async fn into_launch_spec(
+    ctx: &CliContext,
+    global_config: Option<&Path>,
+    command: ServeProtocolCommand,
+) -> CliResult<(ProtocolLaunchSpec, mabi_runtime::RuntimeExtensions)> {
     match command {
-        ServeProtocolCommand::Modbus(args) => Ok(ProtocolLaunchSpec {
-            protocol: "modbus".into(),
-            name: args.serve.name,
-            config: json!({
-                "bind_addr": parse_bind_addr(&args.bind, args.port)?,
-                "devices": args.devices,
-                "points_per_device": args.points,
-            }),
-        }),
-        ServeProtocolCommand::Opcua(args) => Ok(ProtocolLaunchSpec {
-            protocol: "opcua".into(),
-            name: args.serve.name,
-            config: json!({
-                "bind_addr": parse_bind_addr(&args.bind, args.port)?,
-                "endpoint_path": args.endpoint,
-                "nodes": args.nodes,
-                "security_mode": args.security.to_string(),
-            }),
-        }),
-        ServeProtocolCommand::Bacnet(args) => Ok(ProtocolLaunchSpec {
-            protocol: "bacnet".into(),
-            name: args.serve.name,
-            config: json!({
-                "bind_addr": parse_bind_addr(&args.bind, args.port)?,
-                "device_instance": args.instance,
-                "objects": args.objects,
-                "bbmd_enabled": args.bbmd,
-            }),
-        }),
-        ServeProtocolCommand::Knx(args) => Ok(ProtocolLaunchSpec {
-            protocol: "knx".into(),
-            name: args.serve.name,
-            config: json!({
-                "bind_addr": parse_bind_addr(&args.bind, args.port)?,
-                "individual_address": args.address,
-                "group_objects": args.groups,
-            }),
-        }),
+        ServeProtocolCommand::Modbus(args) => {
+            if let Some(path) = global_config {
+                let session_name =
+                    args.session
+                        .as_deref()
+                        .ok_or_else(|| CliError::InvalidConfig {
+                            message: "mabi serve modbus --config <file> requires --session <name>"
+                                .into(),
+                        })?;
+                let (_, compiled) = load_compiled_modbus_session(ctx, path, session_name)?;
+                let mut launch = compiled.launch.clone();
+                if args.serve.name.is_some() {
+                    launch.name = args.serve.name;
+                }
+                Ok((launch, compiled.runtime_extensions()))
+            } else {
+                Ok((
+                    ProtocolLaunchSpec {
+                        protocol: "modbus".into(),
+                        name: args.serve.name,
+                        config: json!({
+                            "transport": {
+                                "kind": "tcp",
+                                "bind_addr": parse_bind_addr(&args.bind, args.port)?,
+                                "performance_preset": "default",
+                            },
+                            "devices": args.devices,
+                            "points_per_device": args.points,
+                        }),
+                    },
+                    mabi_runtime::RuntimeExtensions::default(),
+                ))
+            }
+        }
+        ServeProtocolCommand::Opcua(args) => Ok((
+            ProtocolLaunchSpec {
+                protocol: "opcua".into(),
+                name: args.serve.name,
+                config: json!({
+                    "bind_addr": parse_bind_addr(&args.bind, args.port)?,
+                    "endpoint_path": args.endpoint,
+                    "nodes": args.nodes,
+                    "security_mode": args.security.to_string(),
+                }),
+            },
+            mabi_runtime::RuntimeExtensions::default(),
+        )),
+        ServeProtocolCommand::Bacnet(args) => Ok((
+            ProtocolLaunchSpec {
+                protocol: "bacnet".into(),
+                name: args.serve.name,
+                config: json!({
+                    "bind_addr": parse_bind_addr(&args.bind, args.port)?,
+                    "device_instance": args.instance,
+                    "objects": args.objects,
+                    "bbmd_enabled": args.bbmd,
+                }),
+            },
+            mabi_runtime::RuntimeExtensions::default(),
+        )),
+        ServeProtocolCommand::Knx(args) => Ok((
+            ProtocolLaunchSpec {
+                protocol: "knx".into(),
+                name: args.serve.name,
+                config: json!({
+                    "bind_addr": parse_bind_addr(&args.bind, args.port)?,
+                    "individual_address": args.address,
+                    "group_objects": args.groups,
+                }),
+            },
+            mabi_runtime::RuntimeExtensions::default(),
+        )),
     }
 }
 
@@ -613,6 +879,474 @@ fn parse_bind_addr(bind: &str, port: u16) -> CliResult<std::net::SocketAddr> {
         .map_err(|error| CliError::InvalidConfig {
             message: format!("invalid bind address {}:{} ({})", bind, port, error),
         })
+}
+
+fn load_modbus_config(
+    ctx: &CliContext,
+    path: &Path,
+) -> CliResult<(PathBuf, ModbusSimulatorConfig)> {
+    let resolved = ctx.resolve_path(path);
+    if !resolved.exists() {
+        return Err(CliError::ConfigNotFound { path: resolved });
+    }
+
+    let config =
+        ModbusSimulatorConfig::from_path(&resolved).map_err(|error| CliError::InvalidConfig {
+            message: error.to_string(),
+        })?;
+    Ok((resolved, config))
+}
+
+fn load_compiled_modbus_session(
+    ctx: &CliContext,
+    path: &Path,
+    session_name: &str,
+) -> CliResult<(PathBuf, CompiledModbusSession)> {
+    let (resolved, config) = load_modbus_config(ctx, path)?;
+    let compiled =
+        config
+            .compile_session(session_name)
+            .map_err(|error| CliError::InvalidConfig {
+                message: error.to_string(),
+            })?;
+    Ok((resolved, compiled))
+}
+
+fn parse_tag_filters(values: &[String]) -> CliResult<Vec<(String, String)>> {
+    values
+        .iter()
+        .map(|value| {
+            let (key, tag_value) =
+                value
+                    .split_once('=')
+                    .ok_or_else(|| CliError::InvalidConfig {
+                        message: format!("invalid tag filter '{}', expected key=value", value),
+                    })?;
+            Ok((key.to_string(), tag_value.to_string()))
+        })
+        .collect()
+}
+
+fn point_target_from_selector(selector: &ModbusPointSelectorArgs) -> CliResult<PointTarget> {
+    if selector.point.is_none()
+        && (selector.unit.is_none()
+            || selector.register_type.is_none()
+            || selector.address.is_none())
+    {
+        return Err(CliError::InvalidConfig {
+            message:
+                "point selection requires either --point, or --unit + --register-type + --address"
+                    .into(),
+        });
+    }
+
+    Ok(PointTarget {
+        device_id: selector.device.clone(),
+        point_id: selector.point.clone(),
+        unit_id: selector.unit,
+        register_type: selector.register_type.map(Into::into),
+        address: selector.address,
+    })
+}
+
+fn parse_modbus_value(raw: &str) -> CliResult<mabi_core::Value> {
+    if let Ok(value) = serde_json::from_str::<mabi_core::Value>(raw) {
+        return Ok(value);
+    }
+
+    if raw.eq_ignore_ascii_case("true") || raw.eq_ignore_ascii_case("false") {
+        return serde_json::from_str::<mabi_core::Value>(&raw.to_ascii_lowercase())
+            .map_err(Into::into);
+    }
+
+    Ok(mabi_core::Value::String(raw.to_string()))
+}
+
+async fn inspect_modbus_schema(ctx: &mut CliContext) -> CliResult<CommandOutput> {
+    let schema = mabi_modbus::schema_summary();
+
+    if matches!(
+        ctx.output().format(),
+        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+    ) {
+        ctx.output().write(&schema)?;
+        return Ok(CommandOutput::quiet_success());
+    }
+
+    ctx.output().header("Modbus Schema");
+    ctx.output().kv("Kind", schema.kind);
+    ctx.output().kv("Formats", schema.formats.join(", "));
+    for section in &schema.top_level_sections {
+        ctx.output().kv(
+            format!("Section {}", section.name),
+            format!(
+                "{} [{}]",
+                section.purpose,
+                if section.required {
+                    "required"
+                } else {
+                    "optional"
+                }
+            ),
+        );
+    }
+    ctx.output().kv("Commands", schema.commands.join(" | "));
+    ctx.output().kv("Notes", schema.notes.join("; "));
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn inspect_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<CommandOutput> {
+    #[derive(Serialize)]
+    struct CompiledSessionView {
+        name: String,
+        service_name: Option<String>,
+        transport: String,
+        units: usize,
+        points: usize,
+        trace_enabled: bool,
+        active_fault_preset: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    struct ModbusConfigInspectView {
+        path: String,
+        summary: ModbusConfigSummary,
+        sessions: Vec<CompiledSessionView>,
+    }
+
+    let (resolved, config) = load_modbus_config(ctx, &file)?;
+    let mut sessions = Vec::new();
+    for name in config.sessions.keys() {
+        let compiled = config
+            .compile_session(name)
+            .map_err(|error| CliError::InvalidConfig {
+                message: error.to_string(),
+            })?;
+        sessions.push(CompiledSessionView {
+            name: name.clone(),
+            service_name: compiled.launch.name.clone(),
+            transport: compiled.launch.config["transport"]["kind"]
+                .as_str()
+                .unwrap_or("unknown")
+                .to_string(),
+            units: compiled.profile.units.len(),
+            points: compiled
+                .profile
+                .units
+                .iter()
+                .map(|unit| unit.points.len())
+                .sum(),
+            trace_enabled: compiled.trace.enabled,
+            active_fault_preset: compiled.active_fault_preset.clone(),
+        });
+    }
+
+    let view = ModbusConfigInspectView {
+        path: resolved.display().to_string(),
+        summary: config.inspect_summary(),
+        sessions,
+    };
+
+    if matches!(
+        ctx.output().format(),
+        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+    ) {
+        ctx.output().write(&view)?;
+        return Ok(CommandOutput::quiet_success());
+    }
+
+    ctx.output().header("Modbus Config");
+    ctx.output().kv("Path", &view.path);
+    ctx.output()
+        .kv("Transports", view.summary.transports.join(", "));
+    ctx.output()
+        .kv("Datastores", view.summary.datastores.join(", "));
+    ctx.output().kv("Devices", view.summary.devices.join(", "));
+    ctx.output().kv("Presets", view.summary.presets.join(", "));
+    for session in &view.sessions {
+        ctx.output().kv(
+            format!("Session {}", session.name),
+            format!(
+                "service={}, transport={}, units={}, points={}, trace={}, fault={}",
+                session.service_name.as_deref().unwrap_or(&session.name),
+                session.transport,
+                session.units,
+                session.points,
+                session.trace_enabled,
+                session.active_fault_preset.as_deref().unwrap_or("none")
+            ),
+        );
+    }
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<CommandOutput> {
+    #[derive(Serialize)]
+    struct ModbusValidationView {
+        path: String,
+        transports: usize,
+        devices: usize,
+        sessions: usize,
+        presets: usize,
+    }
+
+    let (resolved, config) = load_modbus_config(ctx, &file)?;
+    let view = ModbusValidationView {
+        path: resolved.display().to_string(),
+        transports: config.transports.len(),
+        devices: config.devices.len(),
+        sessions: config.sessions.len(),
+        presets: config.presets.len(),
+    };
+
+    if matches!(
+        ctx.output().format(),
+        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+    ) {
+        ctx.output().write(&view)?;
+    } else {
+        ctx.output().header("Modbus Config Validation");
+        ctx.output().kv("Path", &view.path);
+        ctx.output().kv("Transports", view.transports);
+        ctx.output().kv("Devices", view.devices);
+        ctx.output().kv("Sessions", view.sessions);
+        ctx.output().kv("Presets", view.presets);
+    }
+
+    if !ctx.is_quiet() {
+        ctx.output().success("Modbus config validation passed");
+    }
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn control_modbus(
+    ctx: &mut CliContext,
+    global_config: Option<&Path>,
+    args: ModbusControlArgs,
+    readiness_timeout: Duration,
+) -> CliResult<CommandOutput> {
+    let config_path = global_config.ok_or_else(|| CliError::InvalidConfig {
+        message: "mabi control modbus requires --config <file>".into(),
+    })?;
+    let (_, compiled) = load_compiled_modbus_session(ctx, config_path, &args.session)?;
+    let registry = workspace_protocol_registry();
+    let mut session = ModbusControlSession::new(registry, compiled, readiness_timeout)
+        .await
+        .map_err(|error| CliError::ExecutionFailed {
+            message: error.to_string(),
+        })?;
+
+    let result: CliResult<CommandOutput> = match args.command {
+        ModbusControlSubcommand::Session(args) => match args.command {
+            ModbusSessionSubcommand::Status => {
+                let status = session
+                    .status()
+                    .await
+                    .map_err(|error| CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    })?;
+                if matches!(
+                    ctx.output().format(),
+                    OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+                ) {
+                    ctx.output().write(&status)?;
+                } else {
+                    ctx.output().header("Modbus Session Status");
+                    ctx.output().kv("Session", &status.session_name);
+                    ctx.output().kv("Services", status.services);
+                    ctx.output().kv("Devices", status.devices);
+                    ctx.output().kv("Trace Enabled", status.trace_enabled);
+                    ctx.output().kv("Trace Entries", status.trace_entries);
+                    ctx.output().kv(
+                        "Active Fault Preset",
+                        status.active_fault_preset.as_deref().unwrap_or("none"),
+                    );
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusSessionSubcommand::Reset => {
+                let snapshot =
+                    session
+                        .reset()
+                        .await
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+
+                if matches!(
+                    ctx.output().format(),
+                    OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+                ) {
+                    ctx.output().write(&snapshot)?;
+                } else {
+                    ctx.output().header("Modbus Session Reset");
+                    ctx.output().kv("Session", &snapshot.status.session_name);
+                    ctx.output().kv("Services", snapshot.status.services);
+                    ctx.output().kv("Devices", snapshot.status.devices);
+                    ctx.output()
+                        .kv("Trace Entries", snapshot.status.trace_entries);
+                    ctx.output().kv(
+                        "Active Fault Preset",
+                        snapshot
+                            .status
+                            .active_fault_preset
+                            .as_deref()
+                            .unwrap_or("none"),
+                    );
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusSessionSubcommand::Snapshot => {
+                let snapshot =
+                    session
+                        .snapshot()
+                        .await
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+
+                if matches!(
+                    ctx.output().format(),
+                    OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+                ) {
+                    ctx.output().write(&snapshot)?;
+                } else {
+                    ctx.output().header("Modbus Session Snapshot");
+                    ctx.output().kv("Session", &snapshot.status.session_name);
+                    ctx.output().kv("Services", snapshot.status.services);
+                    ctx.output().kv("Devices", snapshot.status.devices);
+                    ctx.output()
+                        .kv("Trace Entries", snapshot.status.trace_entries);
+                    ctx.output().kv(
+                        "Active Fault Preset",
+                        snapshot
+                            .status
+                            .active_fault_preset
+                            .as_deref()
+                            .unwrap_or("none"),
+                    );
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+        ModbusControlSubcommand::Point(args) => match args.command {
+            ModbusPointSubcommand::List(args) => {
+                let query = PointCatalogQuery {
+                    device_id: args.device,
+                    tag_filters: parse_tag_filters(&args.tags)?,
+                    labels: args.labels,
+                };
+                let points =
+                    session
+                        .list_points(&query)
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+                if matches!(
+                    ctx.output().format(),
+                    OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+                ) {
+                    ctx.output().write(&points)?;
+                } else {
+                    ctx.output().header("Modbus Points");
+                    let mut table = TableBuilder::new(ctx.colors_enabled())
+                        .header(["Device", "Unit", "Point", "Address", "Type", "Access"]);
+                    for point in &points {
+                        table = table.row([
+                            point.device_id.as_str(),
+                            &point
+                                .unit_id
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "-".into()),
+                            point.point_id.as_str(),
+                            &point
+                                .address
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "-".into()),
+                            &point
+                                .register_type
+                                .map(|value| format!("{:?}", value))
+                                .unwrap_or_else(|| "-".into()),
+                            point.access.as_str(),
+                        ]);
+                    }
+                    table.print();
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusPointSubcommand::Read(args) => {
+                let target = point_target_from_selector(&args.selector)?;
+                let point =
+                    session
+                        .read(&target)
+                        .await
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+                ctx.output().write(&point)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusPointSubcommand::Write(args) => {
+                let target = point_target_from_selector(&args.selector)?;
+                let value = parse_modbus_value(&args.value)?;
+                session
+                    .write(&target, value)
+                    .await
+                    .map_err(|error| CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    })?;
+                if !ctx.is_quiet() {
+                    ctx.output().success("Point write applied");
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+        ModbusControlSubcommand::Trace(args) => match args.command {
+            ModbusTraceSubcommand::Tail(args) => {
+                let traces = session.tail(args.limit);
+                ctx.output().write(&traces)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusTraceSubcommand::Clear => {
+                session.clear();
+                if !ctx.is_quiet() {
+                    ctx.output().success("Trace buffer cleared");
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+        ModbusControlSubcommand::Faults(args) => match args.command {
+            ModbusFaultSubcommand::Apply(args) => {
+                let snapshot = session
+                    .apply_fault_preset(&args.preset)
+                    .await
+                    .map_err(|error| CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    })?;
+                ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusFaultSubcommand::Clear => {
+                let snapshot = session.clear_fault_preset().await.map_err(|error| {
+                    CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    }
+                })?;
+                ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+    };
+
+    let stop_result = session
+        .stop()
+        .await
+        .map_err(|error| CliError::ExecutionFailed {
+            message: error.to_string(),
+        });
+    result?;
+    stop_result?;
+    Ok(CommandOutput::quiet_success())
 }
 
 async fn inspect_protocols(ctx: &mut CliContext) -> CliResult<CommandOutput> {
@@ -1038,20 +1772,29 @@ mod tests {
     use super::{
         into_launch_spec, ModbusServeArgs, SecurityModeArg, ServeArgs, ServeProtocolCommand,
     };
+    use crate::CliContext;
 
-    #[test]
-    fn serve_request_maps_to_runtime_request() {
-        let request = into_launch_spec(ServeProtocolCommand::Modbus(ModbusServeArgs {
-            serve: ServeArgs::default(),
-            port: 1502,
-            bind: "127.0.0.1".into(),
-            devices: 2,
-            points: 32,
-        }))
+    #[tokio::test]
+    async fn serve_request_maps_to_runtime_request() {
+        let ctx = CliContext::builder().build().unwrap();
+        let (request, _) = into_launch_spec(
+            &ctx,
+            None,
+            ServeProtocolCommand::Modbus(ModbusServeArgs {
+                serve: ServeArgs::default(),
+                session: None,
+                port: 1502,
+                bind: "127.0.0.1".into(),
+                devices: 2,
+                points: 32,
+            }),
+        )
+        .await
         .unwrap();
 
         assert_eq!(request.protocol, "modbus");
-        assert_eq!(request.config["bind_addr"], "127.0.0.1:1502");
+        assert_eq!(request.config["transport"]["kind"], "tcp");
+        assert_eq!(request.config["transport"]["bind_addr"], "127.0.0.1:1502");
         assert_eq!(request.config["devices"], 2);
         assert_eq!(request.config["points_per_device"], 32);
     }

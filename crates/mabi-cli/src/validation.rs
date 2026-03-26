@@ -133,9 +133,18 @@ mod tests {
     #[test]
     fn test_tags_from_entries() {
         let entries = vec![
-            TagEntry { key: "location".to_string(), value: Some("building-a".to_string()) },
-            TagEntry { key: "floor".to_string(), value: Some("3".to_string()) },
-            TagEntry { key: "critical".to_string(), value: None },
+            TagEntry {
+                key: "location".to_string(),
+                value: Some("building-a".to_string()),
+            },
+            TagEntry {
+                key: "floor".to_string(),
+                value: Some("3".to_string()),
+            },
+            TagEntry {
+                key: "critical".to_string(),
+                value: None,
+            },
         ];
 
         let tags = tags_from_entries(&entries);

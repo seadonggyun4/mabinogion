@@ -272,7 +272,9 @@ impl Fault for SlowResponseFault {
 
             tokio::time::sleep(delay).await;
 
-            return Ok(FaultBehavior::Delay { duration_ms: delay_ms });
+            return Ok(FaultBehavior::Delay {
+                duration_ms: delay_ms,
+            });
         }
 
         Ok(FaultBehavior::Continue)

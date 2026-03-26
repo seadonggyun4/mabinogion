@@ -122,12 +122,14 @@ impl ServerMetrics {
 
     /// Record a segmented request fully reassembled.
     pub fn record_segmented_request_reassembled(&self) {
-        self.segmented_requests_reassembled.fetch_add(1, Ordering::Relaxed);
+        self.segmented_requests_reassembled
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record a segmented response transmitted.
     pub fn record_segmented_response_transmitted(&self) {
-        self.segmented_responses_transmitted.fetch_add(1, Ordering::Relaxed);
+        self.segmented_responses_transmitted
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record individual segments sent.
@@ -157,7 +159,8 @@ impl ServerMetrics {
 
     /// Record a foreign device registration.
     pub fn record_bbmd_foreign_registration(&self) {
-        self.bbmd_foreign_registrations.fetch_add(1, Ordering::Relaxed);
+        self.bbmd_foreign_registrations
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record bytes received.
@@ -172,7 +175,8 @@ impl ServerMetrics {
 
     /// Record latency sample.
     fn record_latency(&self, latency_us: u64) {
-        self.total_latency_us.fetch_add(latency_us, Ordering::Relaxed);
+        self.total_latency_us
+            .fetch_add(latency_us, Ordering::Relaxed);
         self.latency_samples.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -209,8 +213,12 @@ impl ServerMetrics {
             write_property_requests: self.write_property_requests.load(Ordering::Relaxed),
             cov_subscriptions: self.cov_subscriptions.load(Ordering::Relaxed),
             cov_notifications_sent: self.cov_notifications_sent.load(Ordering::Relaxed),
-            segmented_requests_reassembled: self.segmented_requests_reassembled.load(Ordering::Relaxed),
-            segmented_responses_transmitted: self.segmented_responses_transmitted.load(Ordering::Relaxed),
+            segmented_requests_reassembled: self
+                .segmented_requests_reassembled
+                .load(Ordering::Relaxed),
+            segmented_responses_transmitted: self
+                .segmented_responses_transmitted
+                .load(Ordering::Relaxed),
             segments_sent: self.segments_sent.load(Ordering::Relaxed),
             segments_received: self.segments_received.load(Ordering::Relaxed),
             segment_acks_sent: self.segment_acks_sent.load(Ordering::Relaxed),

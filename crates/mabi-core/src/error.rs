@@ -476,9 +476,6 @@ mod tests {
     #[test]
     fn test_out_of_range_error() {
         let err = Error::out_of_range("temp", 150.0, 0.0, 100.0);
-        assert_eq!(
-            err.to_string(),
-            "Value 150 out of range [0, 100] for temp"
-        );
+        assert_eq!(err.to_string(), "Value 150 out of range [0, 100] for temp");
     }
 }

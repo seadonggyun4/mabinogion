@@ -179,11 +179,7 @@ pub fn validate_length(data: &[u8], expected: usize, dpt: &str) -> KnxResult<()>
     if data.len() < expected {
         Err(KnxError::DptDecoding {
             dpt: dpt.to_string(),
-            reason: format!(
-                "Expected at least {} bytes, got {}",
-                expected,
-                data.len()
-            ),
+            reason: format!("Expected at least {} bytes, got {}", expected, data.len()),
         })
     } else {
         Ok(())

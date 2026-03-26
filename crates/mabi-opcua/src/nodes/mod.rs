@@ -33,24 +33,29 @@ pub mod reference;
 pub mod store;
 pub mod variables;
 
-pub use base::{Node, NodeBase, NodeClass, QualifiedName, LocalizedText};
+pub use base::{LocalizedText, Node, NodeBase, NodeClass, QualifiedName};
 pub use batch::{
-    BatchNodeCreator, BatchConfig, BatchProgress, ProgressCallback,
-    VariableTemplate, ObjectTemplate, ValueGeneratorType,
+    BatchConfig, BatchNodeCreator, BatchProgress, ObjectTemplate, ProgressCallback,
+    ValueGeneratorType, VariableTemplate,
 };
-pub use builder::{NodeBuilder, VariableBuilder, ObjectBuilder, FolderBuilder, BatchVariableBuilder, AddToAddressSpace};
-pub use cache::{NodeCache, NodeCacheConfig, CacheStats};
+pub use builder::{
+    AddToAddressSpace, BatchVariableBuilder, FolderBuilder, NodeBuilder, ObjectBuilder,
+    VariableBuilder,
+};
+pub use cache::{CacheStats, NodeCache, NodeCacheConfig};
 pub use classes::{
-    ObjectNode, VariableNode, MethodNode,
-    ObjectTypeNode, VariableTypeNode, ReferenceTypeNode, DataTypeNode, ViewNode,
+    DataTypeNode, MethodNode, ObjectNode, ObjectTypeNode, ReferenceTypeNode, VariableNode,
+    VariableTypeNode, ViewNode,
 };
 pub use prefetch::{
-    NodePrefetcher, PrefetchConfig, PrefetchStats,
-    AsyncPrefetchWorker, PrefetchingAddressSpace,
+    AsyncPrefetchWorker, NodePrefetcher, PrefetchConfig, PrefetchStats, PrefetchingAddressSpace,
 };
 pub use reference::{
-    Reference, ReferenceDescription, ReferenceDirection, ReferenceTypeId,
-    BrowseDirection, BrowseResult,
+    BrowseDirection, BrowseResult, Reference, ReferenceDescription, ReferenceDirection,
+    ReferenceTypeId,
 };
-pub use store::{AddressSpace, AddressSpaceConfig, NodeStoreStats, RelativePathElement, BrowsePathResult, BrowsePathTarget};
-pub use variables::{VariableFactory, AnalogVariable, DiscreteVariable};
+pub use store::{
+    AddressSpace, AddressSpaceConfig, BrowsePathResult, BrowsePathTarget, NodeStoreStats,
+    RelativePathElement,
+};
+pub use variables::{AnalogVariable, DiscreteVariable, VariableFactory};

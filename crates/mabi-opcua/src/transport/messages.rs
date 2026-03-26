@@ -7,8 +7,8 @@
 
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
 use crate::error::{OpcUaError, OpcUaResult};
 
 /// Default protocol version.
@@ -98,7 +98,10 @@ impl ChunkType {
             b'F' => Ok(Self::Final),
             b'C' => Ok(Self::Intermediate),
             b'A' => Ok(Self::Abort),
-            _ => Err(OpcUaError::Codec(format!("Unknown chunk type: 0x{:02X}", b))),
+            _ => Err(OpcUaError::Codec(format!(
+                "Unknown chunk type: 0x{:02X}",
+                b
+            ))),
         }
     }
 }
@@ -118,7 +121,11 @@ impl MessageHeader {
     pub const SIZE: usize = 8;
 
     pub fn new(message_type: MessageType, chunk_type: ChunkType, message_size: u32) -> Self {
-        Self { message_type, chunk_type, message_size }
+        Self {
+            message_type,
+            chunk_type,
+            message_size,
+        }
     }
 
     pub fn encode(&self, buf: &mut BytesMut) {
@@ -129,12 +136,18 @@ impl MessageHeader {
 
     pub fn decode(buf: &[u8]) -> OpcUaResult<Self> {
         if buf.len() < Self::SIZE {
-            return Err(OpcUaError::Codec("Not enough bytes for message header".into()));
+            return Err(OpcUaError::Codec(
+                "Not enough bytes for message header".into(),
+            ));
         }
         let message_type = MessageType::from_bytes(&buf[..3])?;
         let chunk_type = ChunkType::from_byte(buf[3])?;
         let message_size = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
-        Ok(Self { message_type, chunk_type, message_size })
+        Ok(Self {
+            message_type,
+            chunk_type,
+            message_size,
+        })
     }
 }
 
@@ -238,7 +251,9 @@ impl BinaryEncodable for AcknowledgeMessage {
         self.max_chunk_count.encode(buf)?;
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 20 }
+    fn encoded_size(&self) -> usize {
+        20
+    }
 }
 
 impl BinaryDecodable for AcknowledgeMessage {
@@ -270,7 +285,9 @@ impl BinaryEncodable for ErrorMessage {
         self.reason.encode(buf)?;
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 + 4 + self.reason.len() }
+    fn encoded_size(&self) -> usize {
+        4 + 4 + self.reason.len()
+    }
 }
 
 impl BinaryDecodable for ErrorMessage {

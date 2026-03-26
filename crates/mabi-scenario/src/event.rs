@@ -57,10 +57,7 @@ impl ComparisonOperator {
 #[derive(Debug, Clone)]
 pub enum TriggerState {
     /// Time-based trigger.
-    Time {
-        at_secs: f64,
-        fired: bool,
-    },
+    Time { at_secs: f64, fired: bool },
     /// Periodic trigger.
     Periodic {
         interval_secs: f64,
@@ -131,7 +128,10 @@ pub enum ActionCommand {
     /// Set a point value.
     SetValue { point: String, value: f64 },
     /// Change a point's pattern.
-    ChangePattern { point: String, pattern: PatternConfig },
+    ChangePattern {
+        point: String,
+        pattern: PatternConfig,
+    },
     /// Log a message.
     Log { message: String, level: LogLevel },
     /// Pause the scenario.
@@ -217,7 +217,11 @@ impl EventInstance {
     }
 
     /// Check if trigger should fire.
-    pub fn check_trigger(&mut self, elapsed_secs: f64, point_values: &HashMap<String, f64>) -> bool {
+    pub fn check_trigger(
+        &mut self,
+        elapsed_secs: f64,
+        point_values: &HashMap<String, f64>,
+    ) -> bool {
         if !self.enabled {
             return false;
         }
@@ -409,14 +413,12 @@ impl EventManager {
                     context.change_pattern(point, pattern.clone());
                     debug!(event = %result.event_name, point = %point, "Changed pattern");
                 }
-                ActionCommand::Log { message, level } => {
-                    match level {
-                        LogLevel::Debug => debug!(event = %result.event_name, "{}", message),
-                        LogLevel::Info => info!(event = %result.event_name, "{}", message),
-                        LogLevel::Warn => warn!(event = %result.event_name, "{}", message),
-                        LogLevel::Error => error!(event = %result.event_name, "{}", message),
-                    }
-                }
+                ActionCommand::Log { message, level } => match level {
+                    LogLevel::Debug => debug!(event = %result.event_name, "{}", message),
+                    LogLevel::Info => info!(event = %result.event_name, "{}", message),
+                    LogLevel::Warn => warn!(event = %result.event_name, "{}", message),
+                    LogLevel::Error => error!(event = %result.event_name, "{}", message),
+                },
                 ActionCommand::Pause => {
                     context.pause();
                     info!(event = %result.event_name, "Scenario paused");

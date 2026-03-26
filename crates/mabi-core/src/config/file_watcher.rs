@@ -581,7 +581,9 @@ mod tests {
 
         assert_eq!(service.config().debounce_ms, 200);
         assert!(service.config().recursive);
-        assert!(service.watched_paths().contains(&PathBuf::from("config.yaml")));
+        assert!(service
+            .watched_paths()
+            .contains(&PathBuf::from("config.yaml")));
     }
 
     #[tokio::test]

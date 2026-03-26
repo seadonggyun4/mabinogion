@@ -35,20 +35,13 @@ pub enum TunnelState {
     },
 
     /// Waiting for L_Data.con from bus / confirmation processing (knxd mod=3).
-    WaitingForConfirmation {
-        sequence: u8,
-        sent_at: Instant,
-    },
+    WaitingForConfirmation { sequence: u8, sent_at: Instant },
 
     /// Connection lost, attempting reconnection (no knxd equivalent).
-    Reconnecting {
-        attempt: u32,
-    },
+    Reconnecting { attempt: u32 },
 
     /// Permanent error requiring manual intervention.
-    Error {
-        reason: TunnelErrorReason,
-    },
+    Error { reason: TunnelErrorReason },
 }
 
 impl TunnelState {
@@ -98,8 +91,16 @@ impl TunnelState {
 impl fmt::Display for TunnelState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::WaitingForAck { sequence, retry_count, .. } => {
-                write!(f, "WaitingForAck(seq={}, retries={})", sequence, retry_count)
+            Self::WaitingForAck {
+                sequence,
+                retry_count,
+                ..
+            } => {
+                write!(
+                    f,
+                    "WaitingForAck(seq={}, retries={})",
+                    sequence, retry_count
+                )
             }
             Self::WaitingForConfirmation { sequence, .. } => {
                 write!(f, "WaitingForConfirmation(seq={})", sequence)
@@ -327,13 +328,23 @@ mod tests {
         // Idle → WaitingForAck
         fsm.on_frame_sent(0);
         let state = fsm.state();
-        assert!(matches!(state, TunnelState::WaitingForAck { sequence: 0, retry_count: 0, .. }));
+        assert!(matches!(
+            state,
+            TunnelState::WaitingForAck {
+                sequence: 0,
+                retry_count: 0,
+                ..
+            }
+        ));
         assert!(!fsm.can_send());
         assert!(fsm.is_connected());
 
         // WaitingForAck → WaitingForConfirmation
         fsm.on_ack_received(0);
-        assert!(matches!(fsm.state(), TunnelState::WaitingForConfirmation { sequence: 0, .. }));
+        assert!(matches!(
+            fsm.state(),
+            TunnelState::WaitingForConfirmation { sequence: 0, .. }
+        ));
 
         // WaitingForConfirmation → Idle
         fsm.on_confirmation_received();
@@ -360,7 +371,14 @@ mod tests {
 
         fsm.on_retry(5, 1);
         let state = fsm.state();
-        assert!(matches!(state, TunnelState::WaitingForAck { sequence: 5, retry_count: 1, .. }));
+        assert!(matches!(
+            state,
+            TunnelState::WaitingForAck {
+                sequence: 5,
+                retry_count: 1,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -376,7 +394,10 @@ mod tests {
         let fsm = TunnelFsm::connecting();
         fsm.on_connected();
 
-        fsm.on_error(TunnelErrorReason::SequenceDesync { expected: 0, actual: 10 });
+        fsm.on_error(TunnelErrorReason::SequenceDesync {
+            expected: 0,
+            actual: 10,
+        });
         let state = fsm.state();
         assert!(state.is_error());
         assert!(!fsm.can_send());
@@ -387,11 +408,20 @@ mod tests {
         assert_eq!(TunnelState::Disconnected.knxd_mod(), 0);
         assert_eq!(TunnelState::Idle.knxd_mod(), 1);
         assert_eq!(
-            TunnelState::WaitingForAck { sequence: 0, sent_at: Instant::now(), retry_count: 0 }.knxd_mod(),
+            TunnelState::WaitingForAck {
+                sequence: 0,
+                sent_at: Instant::now(),
+                retry_count: 0
+            }
+            .knxd_mod(),
             2
         );
         assert_eq!(
-            TunnelState::WaitingForConfirmation { sequence: 0, sent_at: Instant::now() }.knxd_mod(),
+            TunnelState::WaitingForConfirmation {
+                sequence: 0,
+                sent_at: Instant::now()
+            }
+            .knxd_mod(),
             3
         );
     }
@@ -420,7 +450,10 @@ mod tests {
 
     #[test]
     fn test_error_reason_display() {
-        let reason = TunnelErrorReason::SendErrorThreshold { errors: 6, threshold: 5 };
+        let reason = TunnelErrorReason::SendErrorThreshold {
+            errors: 6,
+            threshold: 5,
+        };
         let s = reason.to_string();
         assert!(s.contains("6"));
         assert!(s.contains("5"));

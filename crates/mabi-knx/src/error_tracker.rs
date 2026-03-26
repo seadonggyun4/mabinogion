@@ -457,11 +457,7 @@ impl SendErrorTracker {
     /// Record a send failure for a channel.
     ///
     /// Returns a `TrackingResult` indicating whether any threshold was exceeded.
-    pub fn on_send_failure(
-        &self,
-        channel_id: u8,
-        category: ErrorCategory,
-    ) -> TrackingResult {
+    pub fn on_send_failure(&self, channel_id: u8, category: ErrorCategory) -> TrackingResult {
         if !self.config.enabled {
             return TrackingResult::Recorded;
         }
@@ -482,7 +478,9 @@ impl SendErrorTracker {
                 && !state.restart_triggered
             {
                 state.restart_triggered = true;
-                self.stats.consecutive_triggers.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .consecutive_triggers
+                    .fetch_add(1, Ordering::Relaxed);
                 return TrackingResult::ConsecutiveThresholdExceeded {
                     consecutive_errors: state.consecutive_errors,
                     threshold: self.config.consecutive_threshold,
@@ -592,7 +590,9 @@ impl SendErrorTracker {
                 total_failures: state.total_failures,
                 window_error_count: state.window_error_count(window),
                 restart_triggered: state.restart_triggered,
-                last_success_elapsed_ms: state.last_success_at.map(|t| t.elapsed().as_millis() as u64),
+                last_success_elapsed_ms: state
+                    .last_success_at
+                    .map(|t| t.elapsed().as_millis() as u64),
                 last_error_elapsed_ms: state.last_error_at.map(|t| t.elapsed().as_millis() as u64),
                 category_counts,
             }
@@ -644,7 +644,10 @@ mod tests {
         assert_eq!(ErrorCategory::AckError.name(), "AckError");
         assert_eq!(ErrorCategory::AckTimeout.name(), "AckTimeout");
         assert_eq!(ErrorCategory::ConfirmationNack.name(), "ConfirmationNack");
-        assert_eq!(ErrorCategory::ConfirmationTimeout.name(), "ConfirmationTimeout");
+        assert_eq!(
+            ErrorCategory::ConfirmationTimeout.name(),
+            "ConfirmationTimeout"
+        );
         assert_eq!(ErrorCategory::FlowControlDrop.name(), "FlowControlDrop");
     }
 
@@ -685,10 +688,13 @@ mod tests {
         assert_eq!(r2, TrackingResult::Recorded);
 
         let r3 = tracker.on_send_failure(1, ErrorCategory::AckTimeout);
-        assert!(matches!(r3, TrackingResult::ConsecutiveThresholdExceeded {
-            consecutive_errors: 3,
-            threshold: 3,
-        }));
+        assert!(matches!(
+            r3,
+            TrackingResult::ConsecutiveThresholdExceeded {
+                consecutive_errors: 3,
+                threshold: 3,
+            }
+        ));
 
         assert!(r3.requires_restart());
         assert!(!r3.is_warning());
@@ -706,12 +712,18 @@ mod tests {
         assert_eq!(r1, TrackingResult::Recorded);
 
         let r2 = tracker.on_send_failure(1, ErrorCategory::SendFailure);
-        assert!(matches!(r2, TrackingResult::ConsecutiveThresholdExceeded { .. }));
+        assert!(matches!(
+            r2,
+            TrackingResult::ConsecutiveThresholdExceeded { .. }
+        ));
 
         // Subsequent failures should NOT re-trigger (restart_triggered=true)
         let r3 = tracker.on_send_failure(1, ErrorCategory::SendFailure);
         // This may still be Recorded or RateThresholdExceeded, but not ConsecutiveThresholdExceeded
-        assert!(!matches!(r3, TrackingResult::ConsecutiveThresholdExceeded { .. }));
+        assert!(!matches!(
+            r3,
+            TrackingResult::ConsecutiveThresholdExceeded { .. }
+        ));
     }
 
     #[test]
@@ -732,7 +744,10 @@ mod tests {
         // Can trigger again
         tracker.on_send_failure(1, ErrorCategory::SendFailure);
         let r = tracker.on_send_failure(1, ErrorCategory::SendFailure);
-        assert!(matches!(r, TrackingResult::ConsecutiveThresholdExceeded { .. }));
+        assert!(matches!(
+            r,
+            TrackingResult::ConsecutiveThresholdExceeded { .. }
+        ));
     }
 
     #[test]
@@ -881,22 +896,30 @@ mod tests {
         assert!(SendErrorTrackerConfig {
             consecutive_threshold: 0,
             ..Default::default()
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
 
         assert!(SendErrorTrackerConfig {
             window_ms: 0,
             ..Default::default()
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
 
         assert!(SendErrorTrackerConfig {
             rate_threshold: 1.5,
             ..Default::default()
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
 
         assert!(SendErrorTrackerConfig {
             rate_threshold: -0.1,
             ..Default::default()
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]
@@ -951,14 +974,16 @@ mod tests {
         let summary = tracker.channel_summary(1).unwrap();
 
         // Find SendFailure count
-        let send_failures = summary.category_counts
+        let send_failures = summary
+            .category_counts
             .iter()
             .find(|(cat, _)| *cat == ErrorCategory::SendFailure)
             .map(|(_, count)| *count)
             .unwrap();
         assert_eq!(send_failures, 2);
 
-        let ack_errors = summary.category_counts
+        let ack_errors = summary
+            .category_counts
             .iter()
             .find(|(cat, _)| *cat == ErrorCategory::AckError)
             .map(|(_, count)| *count)

@@ -63,7 +63,10 @@ impl Tags {
         V: Into<String>,
     {
         Self {
-            tags: pairs.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
+            tags: pairs
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
             labels: HashSet::new(),
         }
     }
@@ -97,7 +100,8 @@ impl Tags {
         K: Into<String>,
         V: Into<String>,
     {
-        self.tags.extend(tags.into_iter().map(|(k, v)| (k.into(), v.into())));
+        self.tags
+            .extend(tags.into_iter().map(|(k, v)| (k.into(), v.into())));
         self
     }
 
@@ -355,9 +359,7 @@ mod tests {
 
     #[test]
     fn test_tags_merge() {
-        let mut tags1 = Tags::new()
-            .with_tag("a", "1")
-            .with_label("x");
+        let mut tags1 = Tags::new().with_tag("a", "1").with_label("x");
 
         let tags2 = Tags::new()
             .with_tag("b", "2")
@@ -418,7 +420,8 @@ mod tests {
 
     #[test]
     fn test_parse_tags() {
-        let tags = parse_tags(&["location=building-a", "floor=3", "critical", "production"]).unwrap();
+        let tags =
+            parse_tags(&["location=building-a", "floor=3", "critical", "production"]).unwrap();
 
         assert_eq!(tags.get("location"), Some("building-a"));
         assert_eq!(tags.get("floor"), Some("3"));

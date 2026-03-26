@@ -47,8 +47,8 @@ impl PropertyService {
             return Err(ServiceError::InvalidRequest);
         }
         let prop_id_value = decoder.decode_unsigned(len)?;
-        let property_identifier =
-            PropertyId::from_u32(prop_id_value).ok_or(ServiceError::UnknownProperty(prop_id_value))?;
+        let property_identifier = PropertyId::from_u32(prop_id_value)
+            .ok_or(ServiceError::UnknownProperty(prop_id_value))?;
 
         // Optional context tag 2: Property Array Index
         let property_array_index = if !decoder.is_empty() {
@@ -114,8 +114,8 @@ impl PropertyService {
             return Err(ServiceError::InvalidRequest);
         }
         let prop_id_value = decoder.decode_unsigned(len)?;
-        let property_identifier =
-            PropertyId::from_u32(prop_id_value).ok_or(ServiceError::UnknownProperty(prop_id_value))?;
+        let property_identifier = PropertyId::from_u32(prop_id_value)
+            .ok_or(ServiceError::UnknownProperty(prop_id_value))?;
 
         // Optional context tag 2: Property Array Index
         let mut property_array_index = None;
@@ -365,7 +365,10 @@ mod tests {
         ];
 
         let request = PropertyService::decode_read_property(&data).unwrap();
-        assert_eq!(request.object_identifier.object_type, ObjectType::AnalogInput);
+        assert_eq!(
+            request.object_identifier.object_type,
+            ObjectType::AnalogInput
+        );
         assert_eq!(request.object_identifier.instance, 1);
         assert_eq!(request.property_identifier, PropertyId::PresentValue);
     }
@@ -375,8 +378,12 @@ mod tests {
         let object_id = ObjectId::new(ObjectType::AnalogInput, 1);
         let value = BACnetValue::Real(25.5);
 
-        let encoded =
-            PropertyService::encode_read_property_ack(object_id, PropertyId::PresentValue, None, &value);
+        let encoded = PropertyService::encode_read_property_ack(
+            object_id,
+            PropertyId::PresentValue,
+            None,
+            &value,
+        );
 
         // Should start with context tag 0 for object ID (tag=0, context=1, len=4 → 0x0C)
         assert_eq!(encoded[0], 0x0C);

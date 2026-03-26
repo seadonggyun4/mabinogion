@@ -1,8 +1,8 @@
 //! OPC UA TCP Listener — accepts connections and spawns per-connection handlers.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, Semaphore};
@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::service::registry::ServiceRegistry;
-use crate::transport::connection::{ConnectionConfig, ServiceContextTemplate, handle_connection};
+use crate::transport::connection::{handle_connection, ConnectionConfig, ServiceContextTemplate};
 use crate::transport::metrics::TransportMetrics;
 
 /// Configuration for the OPC UA TCP listener.
@@ -79,7 +79,8 @@ impl OpcUaTcpListener {
     ///
     /// This is a blocking call that runs until shutdown is signaled.
     pub async fn run(&self) -> OpcUaResult<()> {
-        let listener = TcpListener::bind(self.config.bind_address).await
+        let listener = TcpListener::bind(self.config.bind_address)
+            .await
             .map_err(|e| OpcUaError::Bind {
                 address: self.config.bind_address,
                 reason: e.to_string(),

@@ -81,7 +81,9 @@ pub enum SegmentationFaultType {
 
 impl Default for SegmentationFaultType {
     fn default() -> Self {
-        Self::DropSegment { segment_index: None }
+        Self::DropSegment {
+            segment_index: None,
+        }
     }
 }
 
@@ -104,7 +106,9 @@ pub struct SegmentationFaultConfig {
 impl Default for SegmentationFaultConfig {
     fn default() -> Self {
         Self {
-            fault_type: SegmentationFaultType::DropSegment { segment_index: None },
+            fault_type: SegmentationFaultType::DropSegment {
+                segment_index: None,
+            },
             min_segment_count: 0,
         }
     }
@@ -439,7 +443,9 @@ impl SegmentationFaultBuilder {
     }
 
     pub fn drop_segment(mut self, index: Option<usize>) -> Self {
-        self.config.fault_type = SegmentationFaultType::DropSegment { segment_index: index };
+        self.config.fault_type = SegmentationFaultType::DropSegment {
+            segment_index: index,
+        };
         self
     }
 
@@ -449,7 +455,9 @@ impl SegmentationFaultBuilder {
     }
 
     pub fn duplicate_segment(mut self, index: Option<usize>) -> Self {
-        self.config.fault_type = SegmentationFaultType::DuplicateSegment { segment_index: index };
+        self.config.fault_type = SegmentationFaultType::DuplicateSegment {
+            segment_index: index,
+        };
         self
     }
 
@@ -602,7 +610,9 @@ mod tests {
     #[test]
     fn test_wrong_segment_ack_invoke_id() {
         let config = SegmentationFaultConfig {
-            fault_type: SegmentationFaultType::WrongSegmentAckInvokeId { wrong_invoke_id: 99 },
+            fault_type: SegmentationFaultType::WrongSegmentAckInvokeId {
+                wrong_invoke_id: 99,
+            },
             ..Default::default()
         };
         let mut fault = SegmentationFault::new("test", config);
@@ -623,7 +633,11 @@ mod tests {
             .build();
 
         assert_eq!(fault.id(), "seg-001");
-        assert!(fault.base.metadata.tags.contains(&"segmentation".to_string()));
+        assert!(fault
+            .base
+            .metadata
+            .tags
+            .contains(&"segmentation".to_string()));
         assert_eq!(fault.config.min_segment_count, 3);
     }
 }

@@ -374,8 +374,7 @@ impl QueueFilter {
                     return FilterResult::Dropped {
                         reason: format!(
                             "QueueFilter: {} queue full ({} frames), no lower priority to evict",
-                            priority,
-                            self.config.max_queue_depth,
+                            priority, self.config.max_queue_depth,
                         ),
                     };
                 }
@@ -385,8 +384,7 @@ impl QueueFilter {
                 return FilterResult::Dropped {
                     reason: format!(
                         "QueueFilter: {} queue full ({} frames)",
-                        priority,
-                        self.config.max_queue_depth,
+                        priority, self.config.max_queue_depth,
                     ),
                 };
             }
@@ -832,8 +830,8 @@ mod tests {
         filter.set_waiting_for_ack(1, true);
 
         // Queue frames of different types
-        let mut env1 = make_busmon_envelope(1);    // Low
-        let mut env2 = make_envelope(1);           // Normal
+        let mut env1 = make_busmon_envelope(1); // Low
+        let mut env2 = make_envelope(1); // Normal
         let mut env3 = make_confirmation_envelope(1); // High
 
         filter.process_send(&mut env1);

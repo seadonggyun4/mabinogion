@@ -450,7 +450,12 @@ impl StatusFlags {
 
     /// Convert to bit vector (for encoding).
     pub fn to_bits(&self) -> Vec<bool> {
-        vec![self.in_alarm, self.fault, self.overridden, self.out_of_service]
+        vec![
+            self.in_alarm,
+            self.fault,
+            self.overridden,
+            self.out_of_service,
+        ]
     }
 
     /// Create from bit vector.
@@ -736,7 +741,10 @@ mod tests {
     fn test_property_store() {
         let store = PropertyStore::new();
 
-        store.set(PropertyId::ObjectName, BACnetValue::CharacterString("Test".to_string()));
+        store.set(
+            PropertyId::ObjectName,
+            BACnetValue::CharacterString("Test".to_string()),
+        );
         store.set(PropertyId::PresentValue, BACnetValue::Real(25.5));
 
         assert!(store.contains(PropertyId::ObjectName));

@@ -44,33 +44,57 @@ impl AcknowledgeAlarmRequest {
         let mut decoder = ApduDecoder::new(data);
 
         // Context tag [0]: acknowledging process identifier (unsigned)
-        let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
-        let process_id = decoder.decode_unsigned(len).map_err(|_| "Failed to decode process_id")?;
+        let (_, _, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
+        let process_id = decoder
+            .decode_unsigned(len)
+            .map_err(|_| "Failed to decode process_id")?;
 
         // Context tag [1]: event object identifier
-        let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
+        let (_, _, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
         if len != 4 {
             return Err("Invalid object identifier length");
         }
-        let event_object_id = decoder.decode_object_identifier().map_err(|_| "Failed to decode object_id")?;
+        let event_object_id = decoder
+            .decode_object_identifier()
+            .map_err(|_| "Failed to decode object_id")?;
 
         // Context tag [2]: event state acknowledged (enumerated)
-        let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
-        let state_val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode state")?;
+        let (_, _, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
+        let state_val = decoder
+            .decode_unsigned(len)
+            .map_err(|_| "Failed to decode state")?;
         let event_state = event_state_from_u32(state_val);
 
         // Context tag [3]: timestamp (unsigned for simplicity)
-        let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
-        let time_stamp = decoder.decode_unsigned(len).map_err(|_| "Failed to decode timestamp")? as u64;
+        let (_, _, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
+        let time_stamp = decoder
+            .decode_unsigned(len)
+            .map_err(|_| "Failed to decode timestamp")? as u64;
 
         // Context tag [4]: acknowledgment source (character string)
-        let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
-        let ack_source = decoder.decode_character_string(len).map_err(|_| "Failed to decode source")?;
+        let (_, _, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
+        let ack_source = decoder
+            .decode_character_string(len)
+            .map_err(|_| "Failed to decode source")?;
 
         // Context tag [5]: time of acknowledgment (unsigned)
         let time_of_ack = if !decoder.is_empty() {
-            let (_, _, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
-            decoder.decode_unsigned(len).map_err(|_| "Failed to decode ack_time")? as u64
+            let (_, _, len) = decoder
+                .decode_tag_info()
+                .map_err(|_| "Failed to decode tag")?;
+            decoder
+                .decode_unsigned(len)
+                .map_err(|_| "Failed to decode ack_time")? as u64
         } else {
             0
         };
@@ -401,9 +425,7 @@ impl ConfirmedServiceHandler for GetEventInformationHandler {
 
             // EventTimeStamps (simplified)
             encoder.encode_opening_tag(3);
-            if let Ok(BACnetValue::Array(ts)) =
-                obj.read_property(PropertyId::EventTimeStamps)
-            {
+            if let Ok(BACnetValue::Array(ts)) = obj.read_property(PropertyId::EventTimeStamps) {
                 for t in &ts {
                     if let Some(v) = t.as_unsigned() {
                         encoder.encode_unsigned(v);
@@ -550,9 +572,9 @@ pub fn encode_event_notification(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::object::event_enrollment::{EventEnrollment, EventType};
     use crate::object::registry::ObjectRegistry;
+    use std::sync::Arc;
 
     fn make_ctx(registry: &Arc<ObjectRegistry>) -> ServiceContext {
         ServiceContext {

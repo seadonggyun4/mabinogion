@@ -107,7 +107,10 @@ impl MalformedConfig {
     /// Create truncation config.
     pub fn truncation(min_bytes: usize, max_bytes: usize) -> Self {
         Self {
-            malformation_type: MalformationType::Truncation { min_bytes, max_bytes },
+            malformation_type: MalformationType::Truncation {
+                min_bytes,
+                max_bytes,
+            },
             ..Default::default()
         }
     }
@@ -204,7 +207,10 @@ impl MalformedPacketFault {
                 }
             }
 
-            MalformationType::Truncation { min_bytes, max_bytes } => {
+            MalformationType::Truncation {
+                min_bytes,
+                max_bytes,
+            } => {
                 let truncate_by = self.rng.gen_range(*min_bytes..=*max_bytes);
                 let new_len = data.len().saturating_sub(truncate_by);
                 data.truncate(new_len.max(1));
@@ -234,7 +240,10 @@ impl MalformedPacketFault {
                 }
             }
 
-            MalformationType::ExtraData { min_bytes, max_bytes } => {
+            MalformationType::ExtraData {
+                min_bytes,
+                max_bytes,
+            } => {
                 let extra = self.rng.gen_range(*min_bytes..=*max_bytes);
                 for _ in 0..extra {
                     data.push(self.rng.gen());
@@ -316,7 +325,10 @@ impl Fault for MalformedPacketFault {
         }
 
         // Mark for modification in after_operation
-        ctx.set_metadata("malform_type", &format!("{:?}", self.config.malformation_type));
+        ctx.set_metadata(
+            "malform_type",
+            &format!("{:?}", self.config.malformation_type),
+        );
         ctx.record_applied_fault(self.id(), "malform");
 
         tracing::debug!(
@@ -411,7 +423,10 @@ impl MalformedFaultBuilder {
 
     /// Set truncation.
     pub fn truncation(mut self, min_bytes: usize, max_bytes: usize) -> Self {
-        self.config.malformation_type = MalformationType::Truncation { min_bytes, max_bytes };
+        self.config.malformation_type = MalformationType::Truncation {
+            min_bytes,
+            max_bytes,
+        };
         self
     }
 
@@ -429,7 +444,10 @@ impl MalformedFaultBuilder {
 
     /// Set extra data.
     pub fn extra_data(mut self, min_bytes: usize, max_bytes: usize) -> Self {
-        self.config.malformation_type = MalformationType::ExtraData { min_bytes, max_bytes };
+        self.config.malformation_type = MalformationType::ExtraData {
+            min_bytes,
+            max_bytes,
+        };
         self
     }
 
@@ -526,7 +544,10 @@ mod tests {
     #[test]
     fn test_extra_data() {
         let config = MalformedConfig {
-            malformation_type: MalformationType::ExtraData { min_bytes: 5, max_bytes: 10 },
+            malformation_type: MalformationType::ExtraData {
+                min_bytes: 5,
+                max_bytes: 10,
+            },
             ..Default::default()
         };
         let mut fault = MalformedPacketFault::new("test", config);

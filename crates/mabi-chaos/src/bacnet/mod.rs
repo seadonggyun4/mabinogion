@@ -17,7 +17,9 @@ mod service_fault;
 
 pub use apdu_fault::{ApduFault, ApduFaultBuilder, ApduFaultConfig, ApduFaultType};
 pub use cov_fault::{CovFault, CovFaultBuilder, CovFaultConfig, CovFaultType};
-pub use property_fault::{PropertyFault, PropertyFaultBuilder, PropertyFaultConfig, PropertyFaultType};
+pub use property_fault::{
+    PropertyFault, PropertyFaultBuilder, PropertyFaultConfig, PropertyFaultType,
+};
 pub use segmentation_fault::{
     SegmentationFault, SegmentationFaultBuilder, SegmentationFaultConfig, SegmentationFaultType,
 };

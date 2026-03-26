@@ -418,7 +418,9 @@ impl Schedule {
 
     /// Add an object property reference.
     pub fn add_output_reference(&self, reference: ObjectPropertyReference) {
-        self.list_of_object_property_references.write().push(reference);
+        self.list_of_object_property_references
+            .write()
+            .push(reference);
     }
 
     /// Get the list of output references.
@@ -525,22 +527,20 @@ impl BACnetObject for Schedule {
             }
             PropertyId::EventState => Ok(BACnetValue::Enumerated(0)), // normal
             PropertyId::Reliability => Ok(BACnetValue::Enumerated(*self.reliability.read())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::ScheduleDefault => Ok(self.schedule_default.read().clone()),
-            PropertyId::PriorityForWriting => {
-                Ok(BACnetValue::Unsigned(*self.priority_for_writing.read() as u32))
-            }
-            PropertyId::EffectivePeriod => {
-                match &*self.effective_period.read() {
-                    Some(range) => Ok(BACnetValue::Array(vec![
-                        BACnetValue::Date(range.start.clone()),
-                        BACnetValue::Date(range.end.clone()),
-                    ])),
-                    None => Ok(BACnetValue::Null),
-                }
-            }
+            PropertyId::PriorityForWriting => Ok(BACnetValue::Unsigned(
+                *self.priority_for_writing.read() as u32,
+            )),
+            PropertyId::EffectivePeriod => match &*self.effective_period.read() {
+                Some(range) => Ok(BACnetValue::Array(vec![
+                    BACnetValue::Date(range.start.clone()),
+                    BACnetValue::Date(range.end.clone()),
+                ])),
+                None => Ok(BACnetValue::Null),
+            },
             PropertyId::WeeklySchedule => {
                 let weekly = self.weekly_schedule.read();
                 let days: Vec<BACnetValue> = weekly
@@ -800,9 +800,7 @@ impl BACnetObject for Calendar {
             PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::Calendar as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Boolean(*self.present_value.read())),
-            PropertyId::StatusFlags => {
-                Ok(BACnetValue::BitString(vec![false, false, false, false]))
-            }
+            PropertyId::StatusFlags => Ok(BACnetValue::BitString(vec![false, false, false, false])),
             PropertyId::DateList => {
                 let entries = self.date_list.read();
                 let encoded: Vec<BACnetValue> = entries
@@ -1043,21 +1041,27 @@ mod tests {
     #[test]
     fn test_schedule_creation() {
         let schedule = Schedule::new(1, "Test Schedule");
-        assert_eq!(schedule.object_identifier(), ObjectId::new(ObjectType::Schedule, 1));
+        assert_eq!(
+            schedule.object_identifier(),
+            ObjectId::new(ObjectType::Schedule, 1)
+        );
         assert_eq!(schedule.object_name(), "Test Schedule");
         assert_eq!(schedule.get_present_value(), BACnetValue::Null);
     }
 
     #[test]
     fn test_schedule_weekly_evaluation() {
-        let schedule = Schedule::new(1, "HVAC Schedule")
-            .with_schedule_default(BACnetValue::Real(60.0));
+        let schedule =
+            Schedule::new(1, "HVAC Schedule").with_schedule_default(BACnetValue::Real(60.0));
 
         // Set Monday schedule
-        schedule.set_daily_schedule(0, vec![
-            TimeValue::new(8, 0, BACnetValue::Real(72.0)),
-            TimeValue::new(18, 0, BACnetValue::Real(65.0)),
-        ]);
+        schedule.set_daily_schedule(
+            0,
+            vec![
+                TimeValue::new(8, 0, BACnetValue::Real(72.0)),
+                TimeValue::new(18, 0, BACnetValue::Real(65.0)),
+            ],
+        );
 
         // Evaluate Monday 10:00 → should be 72.0
         let monday = make_date(2025, 3, 10, 1); // Monday
@@ -1076,19 +1080,17 @@ mod tests {
 
     #[test]
     fn test_schedule_exception_overrides_weekly() {
-        let schedule = Schedule::new(1, "Holiday Schedule")
-            .with_schedule_default(BACnetValue::Real(60.0));
+        let schedule =
+            Schedule::new(1, "Holiday Schedule").with_schedule_default(BACnetValue::Real(60.0));
 
         // Normal Monday
-        schedule.set_daily_schedule(0, vec![
-            TimeValue::new(8, 0, BACnetValue::Real(72.0)),
-        ]);
+        schedule.set_daily_schedule(0, vec![TimeValue::new(8, 0, BACnetValue::Real(72.0))]);
 
         // Exception for holiday: run at 55.0 all day
         schedule.add_exception(SpecialEvent {
-            period: SpecialEventPeriod::CalendarEntry(CalendarEntry::Date(
-                make_date(2025, 12, 25, 4),
-            )),
+            period: SpecialEventPeriod::CalendarEntry(CalendarEntry::Date(make_date(
+                2025, 12, 25, 4,
+            ))),
             schedule: vec![TimeValue::new(0, 0, BACnetValue::Real(55.0))],
             priority: 1,
         });
@@ -1114,9 +1116,7 @@ mod tests {
             ));
 
         // Set Monday schedule
-        schedule.set_daily_schedule(0, vec![
-            TimeValue::new(8, 0, BACnetValue::Real(72.0)),
-        ]);
+        schedule.set_daily_schedule(0, vec![TimeValue::new(8, 0, BACnetValue::Real(72.0))]);
 
         // Within effective period → normal evaluation
         let july_monday = make_date(2025, 7, 7, 1);
@@ -1131,23 +1131,23 @@ mod tests {
 
     #[test]
     fn test_schedule_exception_priority() {
-        let schedule = Schedule::new(1, "Priority Test")
-            .with_schedule_default(BACnetValue::Real(60.0));
+        let schedule =
+            Schedule::new(1, "Priority Test").with_schedule_default(BACnetValue::Real(60.0));
 
         // Low priority exception (runs at 65.0)
         schedule.add_exception(SpecialEvent {
-            period: SpecialEventPeriod::CalendarEntry(CalendarEntry::Date(
-                make_date(2025, 12, 25, 4),
-            )),
+            period: SpecialEventPeriod::CalendarEntry(CalendarEntry::Date(make_date(
+                2025, 12, 25, 4,
+            ))),
             schedule: vec![TimeValue::new(0, 0, BACnetValue::Real(65.0))],
             priority: 10,
         });
 
         // High priority exception (runs at 55.0) — this should win
         schedule.add_exception(SpecialEvent {
-            period: SpecialEventPeriod::CalendarEntry(CalendarEntry::Date(
-                make_date(2025, 12, 25, 4),
-            )),
+            period: SpecialEventPeriod::CalendarEntry(CalendarEntry::Date(make_date(
+                2025, 12, 25, 4,
+            ))),
             schedule: vec![TimeValue::new(0, 0, BACnetValue::Real(55.0))],
             priority: 1,
         });
@@ -1164,8 +1164,13 @@ mod tests {
             .with_schedule_default(BACnetValue::Real(68.0))
             .with_priority(8);
 
-        let id = schedule.read_property(PropertyId::ObjectIdentifier).unwrap();
-        assert_eq!(id, BACnetValue::ObjectIdentifier(ObjectId::new(ObjectType::Schedule, 1)));
+        let id = schedule
+            .read_property(PropertyId::ObjectIdentifier)
+            .unwrap();
+        assert_eq!(
+            id,
+            BACnetValue::ObjectIdentifier(ObjectId::new(ObjectType::Schedule, 1))
+        );
 
         let name = schedule.read_property(PropertyId::ObjectName).unwrap();
         assert_eq!(name, BACnetValue::CharacterString("Prop Test".into()));
@@ -1176,7 +1181,9 @@ mod tests {
         let default = schedule.read_property(PropertyId::ScheduleDefault).unwrap();
         assert_eq!(default, BACnetValue::Real(68.0));
 
-        let priority = schedule.read_property(PropertyId::PriorityForWriting).unwrap();
+        let priority = schedule
+            .read_property(PropertyId::PriorityForWriting)
+            .unwrap();
         assert_eq!(priority, BACnetValue::Unsigned(8));
     }
 
@@ -1203,10 +1210,8 @@ mod tests {
         assert!(schedule.is_out_of_service());
 
         // Read-only rejection
-        let result = schedule.write_property(
-            PropertyId::ObjectIdentifier,
-            BACnetValue::Unsigned(0),
-        );
+        let result =
+            schedule.write_property(PropertyId::ObjectIdentifier, BACnetValue::Unsigned(0));
         assert!(result.is_err());
     }
 
@@ -1240,7 +1245,10 @@ mod tests {
     #[test]
     fn test_calendar_creation() {
         let calendar = Calendar::new(1, "Holidays");
-        assert_eq!(calendar.object_identifier(), ObjectId::new(ObjectType::Calendar, 1));
+        assert_eq!(
+            calendar.object_identifier(),
+            ObjectId::new(ObjectType::Calendar, 1)
+        );
         assert_eq!(calendar.object_name(), "Holidays");
         assert!(!calendar.get_present_value());
     }
@@ -1256,11 +1264,9 @@ mod tests {
 
     #[test]
     fn test_calendar_date_range_match() {
-        let calendar = Calendar::new(1, "Summer Holidays")
-            .with_entry(CalendarEntry::DateRange(DateRange::new(
-                make_date(2025, 7, 1, 255),
-                make_date(2025, 7, 31, 255),
-            )));
+        let calendar = Calendar::new(1, "Summer Holidays").with_entry(CalendarEntry::DateRange(
+            DateRange::new(make_date(2025, 7, 1, 255), make_date(2025, 7, 31, 255)),
+        ));
 
         assert!(calendar.evaluate(&make_date(2025, 7, 15, 2)));
         assert!(!calendar.evaluate(&make_date(2025, 8, 1, 5)));
@@ -1295,8 +1301,13 @@ mod tests {
             .with_description("Test")
             .with_entry(CalendarEntry::Date(make_date(2025, 1, 1, 3)));
 
-        let id = calendar.read_property(PropertyId::ObjectIdentifier).unwrap();
-        assert_eq!(id, BACnetValue::ObjectIdentifier(ObjectId::new(ObjectType::Calendar, 1)));
+        let id = calendar
+            .read_property(PropertyId::ObjectIdentifier)
+            .unwrap();
+        assert_eq!(
+            id,
+            BACnetValue::ObjectIdentifier(ObjectId::new(ObjectType::Calendar, 1))
+        );
 
         let name = calendar.read_property(PropertyId::ObjectName).unwrap();
         assert_eq!(name, BACnetValue::CharacterString("Prop Calendar".into()));
@@ -1325,10 +1336,8 @@ mod tests {
         assert!(calendar.get_present_value());
 
         // Read-only rejection
-        let result = calendar.write_property(
-            PropertyId::ObjectIdentifier,
-            BACnetValue::Unsigned(0),
-        );
+        let result =
+            calendar.write_property(PropertyId::ObjectIdentifier, BACnetValue::Unsigned(0));
         assert!(result.is_err());
     }
 
@@ -1367,10 +1376,7 @@ mod tests {
 
     #[test]
     fn test_date_range_contains() {
-        let range = DateRange::new(
-            make_date(2025, 6, 1, 255),
-            make_date(2025, 8, 31, 255),
-        );
+        let range = DateRange::new(make_date(2025, 6, 1, 255), make_date(2025, 8, 31, 255));
 
         assert!(range.contains(&make_date(2025, 7, 15, 2)));
         assert!(range.contains(&make_date(2025, 6, 1, 255)));

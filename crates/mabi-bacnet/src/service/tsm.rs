@@ -169,7 +169,9 @@ impl ServerTsm {
                 // Try to evict expired entries first
                 let expired_keys: Vec<TransactionKey> = txns
                     .iter()
-                    .filter(|(_, e)| now.duration_since(e.created_at) > self.config.duplicate_window)
+                    .filter(|(_, e)| {
+                        now.duration_since(e.created_at) > self.config.duplicate_window
+                    })
                     .map(|(k, _)| *k)
                     .collect();
 
@@ -206,11 +208,7 @@ impl ServerTsm {
     /// Returns `true` if the response should actually be sent (not dropped
     /// by chaos configuration). Returns `false` if the response should be
     /// intentionally dropped for testing.
-    pub fn complete_transaction(
-        &self,
-        key: &TransactionKey,
-        response: Vec<u8>,
-    ) -> bool {
+    pub fn complete_transaction(&self, key: &TransactionKey, response: Vec<u8>) -> bool {
         let mut txns = self.transactions.write();
 
         if let Some(entry) = txns.get_mut(key) {
@@ -258,7 +256,8 @@ impl ServerTsm {
 
         let removed = before - txns.len();
         if removed > 0 {
-            self.timeout_count.fetch_add(removed as u64, Ordering::Relaxed);
+            self.timeout_count
+                .fetch_add(removed as u64, Ordering::Relaxed);
         }
         removed
     }

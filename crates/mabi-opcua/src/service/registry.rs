@@ -10,16 +10,16 @@ use bytes::{Bytes, BytesMut};
 use parking_lot::RwLock;
 use tracing::{debug, warn};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::error::{OpcUaError, OpcUaResult};
-use crate::types::NodeId;
-use crate::nodes::AddressSpace;
-use crate::services::{SessionManager, SubscriptionManager, HistoryStore};
-use crate::security::SecurityManager;
-use crate::config::OpcUaServerConfig;
 use crate::channel::secure_channel::SecureChannel;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::config::OpcUaServerConfig;
+use crate::error::{OpcUaError, OpcUaResult};
+use crate::nodes::AddressSpace;
+use crate::security::SecurityManager;
 use crate::service::method_call::MethodRegistry;
+use crate::services::{HistoryStore, SessionManager, SubscriptionManager};
+use crate::types::NodeId;
 
 /// Context passed to every service handler invocation.
 ///
@@ -110,7 +110,9 @@ pub struct ServiceRegistry {
 impl ServiceRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
-        Self { handlers: HashMap::new() }
+        Self {
+            handlers: HashMap::new(),
+        }
     }
 
     /// Register a service handler.
@@ -124,11 +126,7 @@ impl ServiceRegistry {
     ///
     /// The `payload` is the raw bytes after the sequence header, containing
     /// an ExtensionObject-encoded service request.
-    pub async fn dispatch(
-        &self,
-        payload: &[u8],
-        context: &ServiceContext,
-    ) -> OpcUaResult<Vec<u8>> {
+    pub async fn dispatch(&self, payload: &[u8], context: &ServiceContext) -> OpcUaResult<Vec<u8>> {
         // OPC UA binary protocol: service messages are encoded as
         // NodeId (type_id) + body (NOT wrapped in ExtensionObject).
         let mut buf = Bytes::copy_from_slice(payload);

@@ -6,12 +6,14 @@
 //! - [`TimeoutFault`]: Protocol-level timeouts
 //! - [`ReorderFault`]: Out-of-order responses
 
-mod malformed;
 mod checksum;
-mod timeout;
+mod malformed;
 mod reorder;
+mod timeout;
 
-pub use malformed::{MalformedPacketFault, MalformedConfig, MalformationType, MalformedFaultBuilder};
-pub use checksum::{ChecksumFault, ChecksumConfig, ChecksumFaultBuilder};
-pub use timeout::{TimeoutFault, TimeoutConfig, TimeoutPattern, TimeoutFaultBuilder};
-pub use reorder::{ReorderFault, ReorderConfig, ReorderFaultBuilder};
+pub use checksum::{ChecksumConfig, ChecksumFault, ChecksumFaultBuilder};
+pub use malformed::{
+    MalformationType, MalformedConfig, MalformedFaultBuilder, MalformedPacketFault,
+};
+pub use reorder::{ReorderConfig, ReorderFault, ReorderFaultBuilder};
+pub use timeout::{TimeoutConfig, TimeoutFault, TimeoutFaultBuilder, TimeoutPattern};

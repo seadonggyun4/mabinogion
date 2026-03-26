@@ -74,7 +74,11 @@ impl MessageCode {
     pub fn is_request(&self) -> bool {
         matches!(
             self,
-            Self::LDataReq | Self::LRawReq | Self::MPropReadReq | Self::MPropWriteReq | Self::MResetReq
+            Self::LDataReq
+                | Self::LRawReq
+                | Self::MPropReadReq
+                | Self::MPropWriteReq
+                | Self::MResetReq
         )
     }
 
@@ -505,11 +509,7 @@ impl CemiFrame {
     /// - 0x03: Bus Monitor Status (error flags)
     /// - 0x04: Timestamp Relative (2 bytes, ms since last frame)
     /// - 0x06: Extended Timestamp (4 bytes, microseconds)
-    pub fn bus_monitor_indication(
-        raw_frame: &[u8],
-        status: u8,
-        timestamp_ms: u16,
-    ) -> Self {
+    pub fn bus_monitor_indication(raw_frame: &[u8], status: u8, timestamp_ms: u16) -> Self {
         let mut additional_info = Vec::new();
 
         // Bus Monitor Info (type 0x03): 1 byte status
@@ -883,7 +883,11 @@ impl CemiFrame {
         let frame_data = if npdu_len <= 1 {
             // Small data embedded in low 6 bits of first byte
             let small = apci_byte1 & 0x3F;
-            if small != 0 { vec![small] } else { Vec::new() }
+            if small != 0 {
+                vec![small]
+            } else {
+                Vec::new()
+            }
         } else {
             // Remaining npdu_len-1 bytes are data
             buf[..npdu_len - 1].to_vec()
@@ -986,11 +990,26 @@ mod tests {
 
     #[test]
     fn test_message_code_confirmation_mapping() {
-        assert_eq!(MessageCode::LDataReq.to_confirmation(), Some(MessageCode::LDataCon));
-        assert_eq!(MessageCode::LRawReq.to_confirmation(), Some(MessageCode::LRawCon));
-        assert_eq!(MessageCode::MPropReadReq.to_confirmation(), Some(MessageCode::MPropReadCon));
-        assert_eq!(MessageCode::MPropWriteReq.to_confirmation(), Some(MessageCode::MPropWriteCon));
-        assert_eq!(MessageCode::MResetReq.to_confirmation(), Some(MessageCode::MResetInd));
+        assert_eq!(
+            MessageCode::LDataReq.to_confirmation(),
+            Some(MessageCode::LDataCon)
+        );
+        assert_eq!(
+            MessageCode::LRawReq.to_confirmation(),
+            Some(MessageCode::LRawCon)
+        );
+        assert_eq!(
+            MessageCode::MPropReadReq.to_confirmation(),
+            Some(MessageCode::MPropReadCon)
+        );
+        assert_eq!(
+            MessageCode::MPropWriteReq.to_confirmation(),
+            Some(MessageCode::MPropWriteCon)
+        );
+        assert_eq!(
+            MessageCode::MResetReq.to_confirmation(),
+            Some(MessageCode::MResetInd)
+        );
         assert_eq!(MessageCode::LDataCon.to_confirmation(), None);
         assert_eq!(MessageCode::LDataInd.to_confirmation(), None);
     }
@@ -1021,11 +1040,17 @@ mod tests {
         assert_eq!(frame.additional_info.len(), 2);
 
         // Bus Monitor Info (type 0x03)
-        assert_eq!(frame.additional_info[0].info_type, AdditionalInfoType::BusMonitorInfo as u8);
+        assert_eq!(
+            frame.additional_info[0].info_type,
+            AdditionalInfoType::BusMonitorInfo as u8
+        );
         assert_eq!(frame.additional_info[0].data, vec![0x00]);
 
         // Timestamp Relative (type 0x04)
-        assert_eq!(frame.additional_info[1].info_type, AdditionalInfoType::TimestampRelative as u8);
+        assert_eq!(
+            frame.additional_info[1].info_type,
+            AdditionalInfoType::TimestampRelative as u8
+        );
         assert_eq!(frame.additional_info[1].data, vec![0x00, 0x96]); // 150 in BE
 
         // Raw frame data
@@ -1046,7 +1071,10 @@ mod tests {
 
         assert_eq!(frame.additional_info.len(), 3);
         // Extended Timestamp (type 0x06)
-        assert_eq!(frame.additional_info[2].info_type, AdditionalInfoType::ExtendedTimestamp as u8);
+        assert_eq!(
+            frame.additional_info[2].info_type,
+            AdditionalInfoType::ExtendedTimestamp as u8
+        );
         let ts_bytes = &frame.additional_info[2].data;
         let ts = u32::from_be_bytes([ts_bytes[0], ts_bytes[1], ts_bytes[2], ts_bytes[3]]);
         assert_eq!(ts, 123456);
@@ -1059,10 +1087,10 @@ mod tests {
 
         // Parse the property request back
         let parsed = frame.parse_property_request().unwrap();
-        assert_eq!(parsed.0, 0);  // object_index
+        assert_eq!(parsed.0, 0); // object_index
         assert_eq!(parsed.1, 11); // property_id (serial number)
-        assert_eq!(parsed.2, 1);  // count
-        assert_eq!(parsed.3, 1);  // start_index
+        assert_eq!(parsed.2, 1); // count
+        assert_eq!(parsed.3, 1); // start_index
         assert_eq!(parsed.4, &[0x00, 0x00, 0x00, 0x00, 0x00, 0x01]); // value
 
         // Verify encode/decode roundtrip

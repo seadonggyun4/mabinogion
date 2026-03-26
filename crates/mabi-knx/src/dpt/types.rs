@@ -20,7 +20,10 @@ impl Dpt1Switch {
         match value {
             DptValue::Bool(v) => Ok(vec![if *v { 1 } else { 0 }]),
             DptValue::U8(v) => Ok(vec![if *v != 0 { 1 } else { 0 }]),
-            _ => Err(KnxError::dpt_encoding("DPT 1.001", "Expected boolean value")),
+            _ => Err(KnxError::dpt_encoding(
+                "DPT 1.001",
+                "Expected boolean value",
+            )),
         }
     }
 
@@ -305,7 +308,10 @@ impl DptCodec for Dpt5Scaling {
                 let scaled = ((*v).clamp(0.0, 100.0) * 2.55) as u8;
                 Ok(vec![scaled])
             }
-            _ => Err(KnxError::dpt_encoding("DPT 5.001", "Expected numeric value")),
+            _ => Err(KnxError::dpt_encoding(
+                "DPT 5.001",
+                "Expected numeric value",
+            )),
         }
     }
 
@@ -358,7 +364,10 @@ impl DptCodec for Dpt5Angle {
                 let scaled = ((*v).clamp(0.0, 360.0) * (255.0 / 360.0)) as u8;
                 Ok(vec![scaled])
             }
-            _ => Err(KnxError::dpt_encoding("DPT 5.003", "Expected numeric value")),
+            _ => Err(KnxError::dpt_encoding(
+                "DPT 5.003",
+                "Expected numeric value",
+            )),
         }
     }
 
@@ -822,7 +831,10 @@ impl DptCodec for Dpt16String {
                 bytes[..len].copy_from_slice(&s_bytes[..len]);
                 Ok(bytes)
             }
-            _ => Err(KnxError::dpt_encoding("DPT 16.001", "Expected string value")),
+            _ => Err(KnxError::dpt_encoding(
+                "DPT 16.001",
+                "Expected string value",
+            )),
         }
     }
 
@@ -933,10 +945,7 @@ impl DptCodec for Dpt18SceneControl {
                 let byte = (if *learn { 0x80 } else { 0 }) | (*number & 0x3F);
                 Ok(vec![byte])
             }
-            _ => Err(KnxError::dpt_encoding(
-                "DPT 18.001",
-                "Expected Scene value",
-            )),
+            _ => Err(KnxError::dpt_encoding("DPT 18.001", "Expected Scene value")),
         }
     }
 

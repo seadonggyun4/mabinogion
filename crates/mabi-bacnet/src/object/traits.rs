@@ -242,18 +242,10 @@ mod tests {
 
         fn read_property(&self, property_id: PropertyId) -> Result<BACnetValue, PropertyError> {
             match property_id {
-                PropertyId::ObjectIdentifier => {
-                    Ok(BACnetValue::ObjectIdentifier(self.id))
-                }
-                PropertyId::ObjectName => {
-                    Ok(BACnetValue::CharacterString(self.name.clone()))
-                }
-                PropertyId::ObjectType => {
-                    Ok(BACnetValue::Enumerated(self.id.object_type as u32))
-                }
-                PropertyId::PresentValue => {
-                    Ok(BACnetValue::Real(0.0))
-                }
+                PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
+                PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
+                PropertyId::ObjectType => Ok(BACnetValue::Enumerated(self.id.object_type as u32)),
+                PropertyId::PresentValue => Ok(BACnetValue::Real(0.0)),
                 _ => Err(PropertyError::NotFound(property_id)),
             }
         }

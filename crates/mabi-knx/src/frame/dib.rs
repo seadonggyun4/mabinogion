@@ -6,9 +6,9 @@ use std::net::Ipv4Addr;
 
 use bytes::{Buf, BufMut, BytesMut};
 
+use super::ServiceFamily;
 use crate::address::IndividualAddress;
 use crate::error::{KnxError, KnxResult};
-use super::ServiceFamily;
 
 /// DIB type codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,9 +108,7 @@ impl Dib {
         }
 
         match DibType::from_u8(dib_type) {
-            Some(DibType::DeviceInfo) => {
-                Ok(Self::DeviceInfo(DeviceInfo::decode(&data[..length])?))
-            }
+            Some(DibType::DeviceInfo) => Ok(Self::DeviceInfo(DeviceInfo::decode(&data[..length])?)),
             Some(DibType::SupportedServiceFamilies) => Ok(Self::SupportedServiceFamilies(
                 SupportedServiceFamilies::decode(&data[..length])?,
             )),

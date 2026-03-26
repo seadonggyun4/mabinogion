@@ -356,12 +356,10 @@ impl BACnetObject for FileObject {
                 .properties
                 .get(PropertyId::Reliability)
                 .ok_or(PropertyError::NotFound(PropertyId::Reliability)),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
-            PropertyId::FileType => {
-                Ok(BACnetValue::CharacterString(self.file_type.read().clone()))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
+            PropertyId::FileType => Ok(BACnetValue::CharacterString(self.file_type.read().clone())),
             PropertyId::FileSize => {
                 let size = match self.access_method {
                     FileAccessMethod::StreamAccess => self.file_data.read().len() as u32,
@@ -372,15 +370,11 @@ impl BACnetObject for FileObject {
                 };
                 Ok(BACnetValue::Unsigned(size))
             }
-            PropertyId::FileAccessMethod => {
-                Ok(BACnetValue::Enumerated(self.access_method as u32))
-            }
+            PropertyId::FileAccessMethod => Ok(BACnetValue::Enumerated(self.access_method as u32)),
             PropertyId::ReadOnly => {
                 Ok(BACnetValue::Boolean(self.read_only.load(Ordering::Acquire)))
             }
-            PropertyId::RecordCount => {
-                Ok(BACnetValue::Unsigned(self.records.read().len() as u32))
-            }
+            PropertyId::RecordCount => Ok(BACnetValue::Unsigned(self.records.read().len() as u32)),
             PropertyId::ModificationDate => {
                 // Return modification count as an unsigned value
                 // (a real implementation would track actual dates)
@@ -412,7 +406,8 @@ impl BACnetObject for FileObject {
                 if let Some(s) = value.as_string() {
                     // Description is stored on the struct but we can't mutate it
                     // through &self, so store in the property store as an override
-                    self.properties.set(property_id, BACnetValue::CharacterString(s.to_string()));
+                    self.properties
+                        .set(property_id, BACnetValue::CharacterString(s.to_string()));
                     Ok(())
                 } else {
                     Err(PropertyError::InvalidDataType(property_id))
@@ -727,10 +722,7 @@ mod tests {
             .write_property(PropertyId::FileSize, BACnetValue::Unsigned(100))
             .is_err());
         assert!(file
-            .write_property(
-                PropertyId::FileAccessMethod,
-                BACnetValue::Enumerated(0)
-            )
+            .write_property(PropertyId::FileAccessMethod, BACnetValue::Enumerated(0))
             .is_err());
     }
 
@@ -747,8 +739,7 @@ mod tests {
 
     #[test]
     fn test_list_properties_record() {
-        let file =
-            FileObject::with_access_method(1, "RecFile", FileAccessMethod::RecordAccess);
+        let file = FileObject::with_access_method(1, "RecFile", FileAccessMethod::RecordAccess);
         let props = file.list_properties();
         assert!(props.contains(&PropertyId::RecordCount));
     }

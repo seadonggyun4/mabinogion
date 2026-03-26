@@ -56,8 +56,8 @@ const KNX_TP1_BITS_PER_BYTE: u32 = 11;
 
 /// Time to transmit one byte on KNX TP1 in microseconds.
 /// = (1_000_000 * 11) / 9600 = 1145.83... ≈ 1146 us
-const KNX_TP1_BYTE_TIME_US: u64 = 1_000_000 * KNX_TP1_BITS_PER_BYTE as u64
-    / KNX_TP1_BAUD_RATE as u64;
+const KNX_TP1_BYTE_TIME_US: u64 =
+    1_000_000 * KNX_TP1_BITS_PER_BYTE as u64 / KNX_TP1_BAUD_RATE as u64;
 
 // ============================================================================
 // PaceFilter State

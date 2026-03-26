@@ -118,7 +118,11 @@ impl<T: PartialOrd + fmt::Display + Copy> RangeRule<T> {
             (None, Some(max)) => format!("Value must be at most {}", max),
             (None, None) => "No range constraint".to_string(),
         };
-        Self { min, max, description }
+        Self {
+            min,
+            max,
+            description,
+        }
     }
 
     /// Create a minimum-only rule.
@@ -173,7 +177,11 @@ impl StringLengthRule {
             (None, Some(max)) => format!("Length must be at most {}", max),
             (None, None) => "No length constraint".to_string(),
         };
-        Self { min, max, description }
+        Self {
+            min,
+            max,
+            description,
+        }
     }
 
     /// Create a non-empty rule.
@@ -397,7 +405,11 @@ impl Validator {
     }
 
     /// Validate a numeric value is positive.
-    pub fn require_positive<T: PartialOrd + Default + fmt::Display>(&mut self, field: &str, value: T) {
+    pub fn require_positive<T: PartialOrd + Default + fmt::Display>(
+        &mut self,
+        field: &str,
+        value: T,
+    ) {
         if value <= T::default() {
             self.add_error(field, format!("Value must be positive, got {}", value));
         }

@@ -555,9 +555,7 @@ impl WritePropertyMultipleHandler {
                     .ok_or(ServiceError::UnknownProperty(prop_id_value))?;
 
                 // Optional context tag 1: Array Index
-                let array_index = if !decoder.is_empty()
-                    && decoder.peek() == Some(0x19)
-                {
+                let array_index = if !decoder.is_empty() && decoder.peek() == Some(0x19) {
                     let (_, _, len) = decoder.decode_tag_info()?;
                     Some(decoder.decode_unsigned(len)?)
                 } else {
@@ -568,9 +566,7 @@ impl WritePropertyMultipleHandler {
                 let value = decode_property_value_from_context(&mut decoder, 2)?;
 
                 // Optional context tag 3: Priority
-                let priority = if !decoder.is_empty()
-                    && decoder.peek() == Some(0x39)
-                {
+                let priority = if !decoder.is_empty() && decoder.peek() == Some(0x39) {
                     let (_, _, len) = decoder.decode_tag_info()?;
                     Some(decoder.decode_unsigned(len)? as u8)
                 } else {
@@ -944,7 +940,10 @@ mod tests {
                 object_id: ObjectId::new(ObjectType::AnalogInput, 1),
                 property_values: vec![PropertyValueWrite {
                     property_ref: PropertyReference::new(PropertyId::ObjectIdentifier),
-                    value: BACnetValue::ObjectIdentifier(ObjectId::new(ObjectType::AnalogInput, 999)),
+                    value: BACnetValue::ObjectIdentifier(ObjectId::new(
+                        ObjectType::AnalogInput,
+                        999,
+                    )),
                     priority: None,
                 }],
             }],

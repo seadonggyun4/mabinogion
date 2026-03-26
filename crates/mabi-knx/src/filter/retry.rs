@@ -347,7 +347,9 @@ impl RetryFilter {
             }
             CircuitBreakerState::Open { .. } => {
                 // Circuit is open — drop frame
-                self.stats.circuit_open_drops.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .circuit_open_drops
+                    .fetch_add(1, Ordering::Relaxed);
 
                 debug!(
                     channel_id = envelope.channel_id,
@@ -467,9 +469,7 @@ impl RetryFilter {
                 self.stats.state_transitions.fetch_add(1, Ordering::Relaxed);
                 self.stats.circuit_trips.fetch_add(1, Ordering::Relaxed);
 
-                warn!(
-                    "CircuitBreaker: HalfOpen → Open (probe failed)"
-                );
+                warn!("CircuitBreaker: HalfOpen → Open (probe failed)");
             }
             CircuitBreakerState::Open { .. } => {
                 // Already open — just update failure count for stats
@@ -483,8 +483,7 @@ impl RetryFilter {
         if !self.config.enabled {
             return false;
         }
-        envelope.retry_count < self.config.max_retries
-            && self.circuit_state().allows_traffic()
+        envelope.retry_count < self.config.max_retries && self.circuit_state().allows_traffic()
     }
 
     /// Get the retry delay for the current retry attempt.
@@ -727,9 +726,15 @@ mod tests {
 
         // Record failures
         filter.on_failure();
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::Closed));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::Closed
+        ));
         filter.on_failure();
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::Closed));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::Closed
+        ));
         filter.on_failure();
         // 3 failures = threshold — circuit should be Open
         assert!(matches!(
@@ -794,7 +799,10 @@ mod tests {
 
         // Success should close the circuit
         filter.on_success();
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::Closed));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::Closed
+        ));
         assert_eq!(filter.stats_snapshot().circuit_resets, 1);
     }
 
@@ -808,7 +816,10 @@ mod tests {
         // Trip and wait for HalfOpen
         filter.on_failure();
         std::thread::sleep(Duration::from_millis(5));
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::HalfOpen));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::HalfOpen
+        ));
 
         // Probe failure → back to Open
         filter.on_failure();
@@ -867,10 +878,16 @@ mod tests {
         let filter = RetryFilter::new(config);
 
         filter.force_state(CircuitBreakerState::HalfOpen);
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::HalfOpen));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::HalfOpen
+        ));
 
         filter.force_state(CircuitBreakerState::Closed);
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::Closed));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::Closed
+        ));
     }
 
     #[test]
@@ -886,7 +903,10 @@ mod tests {
         ));
 
         filter.reset();
-        assert!(matches!(filter.circuit_state(), CircuitBreakerState::Closed));
+        assert!(matches!(
+            filter.circuit_state(),
+            CircuitBreakerState::Closed
+        ));
         assert_eq!(filter.failure_count(), 0);
         assert_eq!(filter.success_count(), 0);
     }

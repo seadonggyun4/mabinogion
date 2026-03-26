@@ -7,8 +7,8 @@
 //!    - Handles in-band OPN renewals (requestType=Renew)
 //! 4. CloseSecureChannel / disconnect
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use futures::{SinkExt, StreamExt};
@@ -16,17 +16,17 @@ use tokio::net::TcpStream;
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info, warn};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
 use crate::channel::message::{
-    OpenSecureChannelBody, SecureMessageBody,
-    SequenceHeader, build_msg_response_body, build_opn_response_body,
+    build_msg_response_body, build_opn_response_body, OpenSecureChannelBody, SecureMessageBody,
+    SequenceHeader,
 };
 use crate::channel::secure_channel::SecureChannel;
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::service::registry::{ServiceContext, ServiceRegistry};
-use crate::transport::codec::{OpcUaTransportCodec, build_response};
+use crate::transport::codec::{build_response, OpcUaTransportCodec};
 use crate::transport::messages::*;
 use crate::transport::metrics::TransportMetrics;
 use crate::types::{NodeId, StatusCode};
@@ -66,8 +66,13 @@ pub async fn handle_connection(
     let hello = match tokio::time::timeout(config.connection_timeout, framed.next()).await {
         Ok(Some(Ok(msg))) => {
             if msg.header.message_type != MessageType::Hello {
-                let err_body = encode_error(StatusCode::BAD_UNEXPECTED_ERROR.raw(), "Expected HEL message");
-                let _ = framed.send(build_response(MessageType::Error, err_body)).await;
+                let err_body = encode_error(
+                    StatusCode::BAD_UNEXPECTED_ERROR.raw(),
+                    "Expected HEL message",
+                );
+                let _ = framed
+                    .send(build_response(MessageType::Error, err_body))
+                    .await;
                 return Err(OpcUaError::ProtocolError("Expected HEL".into()));
             }
             metrics.record_message_received(msg.body.len() + MessageHeader::SIZE);
@@ -84,12 +89,19 @@ pub async fn handle_connection(
     let ack = AcknowledgeMessage::from_hello(&hello, config.server_buffer_size);
 
     // Update codec with negotiated sizes
-    framed.codec_mut().set_limits(ack.receive_buffer_size, ack.max_message_size);
+    framed
+        .codec_mut()
+        .set_limits(ack.receive_buffer_size, ack.max_message_size);
 
     let mut ack_body = BytesMut::new();
     ack.encode(&mut ack_body)?;
     let ack_msg = build_response(MessageType::Acknowledge, ack_body.to_vec());
-    framed.send(ack_msg).await.map_err(|e| OpcUaError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+    framed.send(ack_msg).await.map_err(|e| {
+        OpcUaError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
     metrics.record_message_sent(20 + MessageHeader::SIZE);
 
     debug!(peer = %peer, "Sent Acknowledge");
@@ -100,8 +112,13 @@ pub async fn handle_connection(
     let channel = match tokio::time::timeout(config.connection_timeout, framed.next()).await {
         Ok(Some(Ok(msg))) => {
             if msg.header.message_type != MessageType::OpenSecureChannel {
-                let err_body = encode_error(StatusCode::BAD_UNEXPECTED_ERROR.raw(), "Expected OPN message");
-                let _ = framed.send(build_response(MessageType::Error, err_body)).await;
+                let err_body = encode_error(
+                    StatusCode::BAD_UNEXPECTED_ERROR.raw(),
+                    "Expected OPN message",
+                );
+                let _ = framed
+                    .send(build_response(MessageType::Error, err_body))
+                    .await;
                 return Err(OpcUaError::ProtocolError("Expected OPN".into()));
             }
             metrics.record_message_received(msg.body.len() + MessageHeader::SIZE);
@@ -111,11 +128,7 @@ pub async fn handle_connection(
             let (request_handle, requested_lifetime) = decode_opn_request_fields(&opn.payload)?;
 
             // Build OpenSecureChannelResponse
-            let response_body = build_opn_response(
-                &channel,
-                request_handle,
-                requested_lifetime,
-            )?;
+            let response_body = build_opn_response(&channel, request_handle, requested_lifetime)?;
 
             let opn_response = build_opn_response_body(
                 channel.channel_id(),
@@ -127,8 +140,12 @@ pub async fn handle_connection(
             );
 
             let response_msg = build_response(MessageType::OpenSecureChannel, opn_response);
-            framed.send(response_msg).await
-                .map_err(|e| OpcUaError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            framed.send(response_msg).await.map_err(|e| {
+                OpcUaError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?;
             metrics.record_message_sent(0);
 
             debug!(peer = %peer, channel_id = channel.channel_id(), "Secure channel opened");
@@ -208,7 +225,11 @@ pub async fn handle_connection(
 
                 // Renew the token on the existing channel (same channel_id,
                 // new token_id) per OPC UA Part 6 §6.7.4.
-                let lifetime = if requested_lifetime == 0 { 3_600_000 } else { requested_lifetime };
+                let lifetime = if requested_lifetime == 0 {
+                    3_600_000
+                } else {
+                    requested_lifetime
+                };
                 channel.renew_token(lifetime);
 
                 debug!(
@@ -219,11 +240,7 @@ pub async fn handle_connection(
                     "Secure channel token renewed"
                 );
 
-                let response_body = build_opn_response(
-                    &channel,
-                    request_handle,
-                    lifetime,
-                )?;
+                let response_body = build_opn_response(&channel, request_handle, lifetime)?;
 
                 let opn_response = build_opn_response_body(
                     channel.channel_id(),
@@ -255,7 +272,10 @@ pub async fn handle_connection(
                 };
 
                 // Dispatch to service handler
-                match service_registry.dispatch(&secure_msg.payload, &context).await {
+                match service_registry
+                    .dispatch(&secure_msg.payload, &context)
+                    .await
+                {
                     Ok(response_payload) => {
                         let response_body = build_msg_response_body(
                             channel.channel_id(),
@@ -289,7 +309,9 @@ pub async fn handle_connection(
                             },
                             &fault_payload,
                         );
-                        let _ = framed.send(build_response(MessageType::Message, response_body)).await;
+                        let _ = framed
+                            .send(build_response(MessageType::Message, response_body))
+                            .await;
                         metrics.record_error();
                     }
                 }
@@ -402,7 +424,11 @@ fn build_opn_response(
     // CreatedAt
     chrono::Utc::now().encode(&mut buf)?;
     // RevisedLifetime
-    let lifetime = if requested_lifetime == 0 { 3_600_000u32 } else { requested_lifetime };
+    let lifetime = if requested_lifetime == 0 {
+        3_600_000u32
+    } else {
+        requested_lifetime
+    };
     buf.extend_from_slice(&lifetime.to_le_bytes());
     // ServerNonce (empty)
     buf.extend_from_slice(&0i32.to_le_bytes());
@@ -420,7 +446,8 @@ fn build_service_fault(request_id: u32, status: StatusCode) -> OpcUaResult<Vec<u
         timestamp: chrono::Utc::now(),
         request_handle: request_id,
         service_result: status,
-    }.encode(&mut buf)?;
+    }
+    .encode(&mut buf)?;
     Ok(buf.to_vec())
 }
 

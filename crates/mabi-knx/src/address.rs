@@ -148,12 +148,12 @@ impl FromStr for IndividualAddress {
             )));
         }
 
-        let area: u8 = parts[0]
-            .parse()
-            .map_err(|_| KnxError::InvalidIndividualAddress(format!("Invalid area: {}", parts[0])))?;
-        let line: u8 = parts[1]
-            .parse()
-            .map_err(|_| KnxError::InvalidIndividualAddress(format!("Invalid line: {}", parts[1])))?;
+        let area: u8 = parts[0].parse().map_err(|_| {
+            KnxError::InvalidIndividualAddress(format!("Invalid area: {}", parts[0]))
+        })?;
+        let line: u8 = parts[1].parse().map_err(|_| {
+            KnxError::InvalidIndividualAddress(format!("Invalid line: {}", parts[1]))
+        })?;
         let device: u8 = parts[2].parse().map_err(|_| {
             KnxError::InvalidIndividualAddress(format!("Invalid device: {}", parts[2]))
         })?;

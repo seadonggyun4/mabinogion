@@ -31,12 +31,12 @@
 //! let report = profiler.generate_report();
 //! ```
 
-pub mod memory;
 pub mod leak_detector;
+pub mod memory;
 pub mod report;
 
-pub use memory::*;
 pub use leak_detector::*;
+pub use memory::*;
 pub use report::*;
 
 use std::sync::Arc;
@@ -293,7 +293,14 @@ impl ProfileReport {
             "Generated: {}\n",
             self.generated_at.format("%Y-%m-%d %H:%M:%S UTC")
         ));
-        summary.push_str(&format!("Status: {}\n", if self.is_running { "Running" } else { "Stopped" }));
+        summary.push_str(&format!(
+            "Status: {}\n",
+            if self.is_running {
+                "Running"
+            } else {
+                "Stopped"
+            }
+        ));
 
         summary.push_str("\n--- Memory Usage ---\n");
         summary.push_str(&format!(

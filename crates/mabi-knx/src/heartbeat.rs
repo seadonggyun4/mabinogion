@@ -147,15 +147,11 @@ pub enum HeartbeatSchedule {
     Normal,
 
     /// Static override — always return the specified action.
-    Override {
-        action: HeartbeatAction,
-    },
+    Override { action: HeartbeatAction },
 
     /// Ordered sequence of actions — advances through the list, repeating
     /// the last action when exhausted.
-    Sequence {
-        actions: Vec<HeartbeatAction>,
-    },
+    Sequence { actions: Vec<HeartbeatAction> },
 
     /// Inject a fault action every N heartbeats.
     /// Normal heartbeats return Continue, every `interval`th returns the fault action.
@@ -286,7 +282,8 @@ impl HeartbeatStats {
                 self.continue_count.fetch_add(1, Ordering::Relaxed);
             }
             HeartbeatAction::ImmediateReconnect => {
-                self.immediate_reconnect_count.fetch_add(1, Ordering::Relaxed);
+                self.immediate_reconnect_count
+                    .fetch_add(1, Ordering::Relaxed);
             }
             HeartbeatAction::AbandonTunnel => {
                 self.abandon_tunnel_count.fetch_add(1, Ordering::Relaxed);
@@ -415,7 +412,10 @@ impl HeartbeatScheduler {
                 }
             }
 
-            HeartbeatSchedule::Probabilistic { action, probability } => {
+            HeartbeatSchedule::Probabilistic {
+                action,
+                probability,
+            } => {
                 let random = heartbeat_rand();
                 if random < *probability {
                     *action
@@ -443,7 +443,10 @@ impl fmt::Debug for HeartbeatScheduler {
         f.debug_struct("HeartbeatScheduler")
             .field("schedule", &*self.schedule.read())
             .field("counter", &self.counter.load(Ordering::Relaxed))
-            .field("sequence_index", &self.sequence_index.load(Ordering::Relaxed))
+            .field(
+                "sequence_index",
+                &self.sequence_index.load(Ordering::Relaxed),
+            )
             .finish()
     }
 }
@@ -523,7 +526,10 @@ mod tests {
     #[test]
     fn test_heartbeat_action_status_codes() {
         assert_eq!(HeartbeatAction::Continue.status_code(), Some(0x00));
-        assert_eq!(HeartbeatAction::ImmediateReconnect.status_code(), Some(0x21));
+        assert_eq!(
+            HeartbeatAction::ImmediateReconnect.status_code(),
+            Some(0x21)
+        );
         assert_eq!(HeartbeatAction::AbandonTunnel.status_code(), Some(0x27));
         assert_eq!(HeartbeatAction::DelayedReconnect.status_code(), Some(0x29));
         assert_eq!(HeartbeatAction::NoResponse.status_code(), None);
@@ -531,11 +537,26 @@ mod tests {
 
     #[test]
     fn test_heartbeat_action_from_status_code() {
-        assert_eq!(HeartbeatAction::from_status_code(0x00), HeartbeatAction::Continue);
-        assert_eq!(HeartbeatAction::from_status_code(0x21), HeartbeatAction::ImmediateReconnect);
-        assert_eq!(HeartbeatAction::from_status_code(0x27), HeartbeatAction::AbandonTunnel);
-        assert_eq!(HeartbeatAction::from_status_code(0x29), HeartbeatAction::DelayedReconnect);
-        assert_eq!(HeartbeatAction::from_status_code(0xFF), HeartbeatAction::Continue);
+        assert_eq!(
+            HeartbeatAction::from_status_code(0x00),
+            HeartbeatAction::Continue
+        );
+        assert_eq!(
+            HeartbeatAction::from_status_code(0x21),
+            HeartbeatAction::ImmediateReconnect
+        );
+        assert_eq!(
+            HeartbeatAction::from_status_code(0x27),
+            HeartbeatAction::AbandonTunnel
+        );
+        assert_eq!(
+            HeartbeatAction::from_status_code(0x29),
+            HeartbeatAction::DelayedReconnect
+        );
+        assert_eq!(
+            HeartbeatAction::from_status_code(0xFF),
+            HeartbeatAction::Continue
+        );
     }
 
     #[test]
@@ -564,9 +585,18 @@ mod tests {
     #[test]
     fn test_heartbeat_action_display() {
         assert_eq!(format!("{}", HeartbeatAction::Continue), "Continue");
-        assert_eq!(format!("{}", HeartbeatAction::ImmediateReconnect), "ImmediateReconnect");
-        assert_eq!(format!("{}", HeartbeatAction::AbandonTunnel), "AbandonTunnel");
-        assert_eq!(format!("{}", HeartbeatAction::DelayedReconnect), "DelayedReconnect");
+        assert_eq!(
+            format!("{}", HeartbeatAction::ImmediateReconnect),
+            "ImmediateReconnect"
+        );
+        assert_eq!(
+            format!("{}", HeartbeatAction::AbandonTunnel),
+            "AbandonTunnel"
+        );
+        assert_eq!(
+            format!("{}", HeartbeatAction::DelayedReconnect),
+            "DelayedReconnect"
+        );
         assert_eq!(format!("{}", HeartbeatAction::NoResponse), "NoResponse");
     }
 
@@ -584,9 +614,18 @@ mod tests {
             action: HeartbeatAction::ImmediateReconnect,
         });
 
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect);
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect);
-        assert_eq!(scheduler.next_action(2), HeartbeatAction::ImmediateReconnect);
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        );
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        );
+        assert_eq!(
+            scheduler.next_action(2),
+            HeartbeatAction::ImmediateReconnect
+        );
     }
 
     #[test]
@@ -600,7 +639,10 @@ mod tests {
         });
 
         assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect);
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        );
         assert_eq!(scheduler.next_action(1), HeartbeatAction::AbandonTunnel);
         // Beyond sequence — repeats last
         assert_eq!(scheduler.next_action(1), HeartbeatAction::AbandonTunnel);
@@ -615,11 +657,11 @@ mod tests {
         });
 
         // Heartbeats: 1=Continue, 2=Continue, 3=Fault, 4=Continue, 5=Continue, 6=Fault
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);     // count=0, 1-based=1
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);     // count=1, 1-based=2
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // count=0, 1-based=1
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // count=1, 1-based=2
         assert_eq!(scheduler.next_action(1), HeartbeatAction::AbandonTunnel); // count=2, 1-based=3
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);     // count=3, 1-based=4
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);     // count=4, 1-based=5
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // count=3, 1-based=4
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // count=4, 1-based=5
         assert_eq!(scheduler.next_action(1), HeartbeatAction::AbandonTunnel); // count=5, 1-based=6
     }
 
@@ -630,11 +672,17 @@ mod tests {
             countdown: 3,
         });
 
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);           // 0 < 3
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);           // 1 < 3
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);           // 2 < 3
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect); // 3 >= 3
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect); // 4 >= 3
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // 0 < 3
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // 1 < 3
+        assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue); // 2 < 3
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        ); // 3 >= 3
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        ); // 4 >= 3
     }
 
     #[test]
@@ -675,17 +723,26 @@ mod tests {
     #[test]
     fn test_scheduler_reset() {
         let scheduler = HeartbeatScheduler::new(HeartbeatSchedule::Sequence {
-            actions: vec![HeartbeatAction::Continue, HeartbeatAction::ImmediateReconnect],
+            actions: vec![
+                HeartbeatAction::Continue,
+                HeartbeatAction::ImmediateReconnect,
+            ],
         });
 
         assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect);
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        );
 
         scheduler.reset();
 
         // After reset, sequence starts over
         assert_eq!(scheduler.next_action(1), HeartbeatAction::Continue);
-        assert_eq!(scheduler.next_action(1), HeartbeatAction::ImmediateReconnect);
+        assert_eq!(
+            scheduler.next_action(1),
+            HeartbeatAction::ImmediateReconnect
+        );
     }
 
     #[test]
@@ -750,45 +807,63 @@ mod tests {
         assert!(HeartbeatSchedule::Normal.validate().is_ok());
         assert!(HeartbeatSchedule::Override {
             action: HeartbeatAction::Continue,
-        }.validate().is_ok());
+        }
+        .validate()
+        .is_ok());
 
         assert!(HeartbeatSchedule::Sequence {
             actions: vec![HeartbeatAction::Continue],
-        }.validate().is_ok());
-        assert!(HeartbeatSchedule::Sequence {
-            actions: vec![],
-        }.validate().is_err());
+        }
+        .validate()
+        .is_ok());
+        assert!(HeartbeatSchedule::Sequence { actions: vec![] }
+            .validate()
+            .is_err());
 
         assert!(HeartbeatSchedule::Periodic {
             action: HeartbeatAction::Continue,
             interval: 1,
-        }.validate().is_ok());
+        }
+        .validate()
+        .is_ok());
         assert!(HeartbeatSchedule::Periodic {
             action: HeartbeatAction::Continue,
             interval: 0,
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
 
         assert!(HeartbeatSchedule::Probabilistic {
             action: HeartbeatAction::Continue,
             probability: 0.5,
-        }.validate().is_ok());
+        }
+        .validate()
+        .is_ok());
         assert!(HeartbeatSchedule::Probabilistic {
             action: HeartbeatAction::Continue,
             probability: -0.1,
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
         assert!(HeartbeatSchedule::Probabilistic {
             action: HeartbeatAction::Continue,
             probability: 1.1,
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
 
         assert!(HeartbeatSchedule::CountdownToFailure {
             action: HeartbeatAction::Continue,
             countdown: 5,
-        }.validate().is_ok());
+        }
+        .validate()
+        .is_ok());
         assert!(HeartbeatSchedule::CountdownToFailure {
             action: HeartbeatAction::Continue,
             countdown: 0,
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]

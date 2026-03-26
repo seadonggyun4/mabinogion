@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use parking_lot::RwLock;
 
-use crate::config::{SecurityPolicy, MessageSecurityMode};
+use crate::config::{MessageSecurityMode, SecurityPolicy};
 
 /// Secure channel state for a single client connection.
 ///
@@ -100,11 +100,21 @@ impl SecureChannel {
         }
     }
 
-    pub fn channel_id(&self) -> u32 { self.channel_id }
-    pub fn token_id(&self) -> u32 { self.token_id.load(Ordering::SeqCst) }
-    pub fn security_policy(&self) -> &SecurityPolicy { &self.security_policy }
-    pub fn security_mode(&self) -> &MessageSecurityMode { &self.security_mode }
-    pub fn token_lifetime_ms(&self) -> u32 { self.token_lifetime_ms.load(Ordering::Relaxed) }
+    pub fn channel_id(&self) -> u32 {
+        self.channel_id
+    }
+    pub fn token_id(&self) -> u32 {
+        self.token_id.load(Ordering::SeqCst)
+    }
+    pub fn security_policy(&self) -> &SecurityPolicy {
+        &self.security_policy
+    }
+    pub fn security_mode(&self) -> &MessageSecurityMode {
+        &self.security_mode
+    }
+    pub fn token_lifetime_ms(&self) -> u32 {
+        self.token_lifetime_ms.load(Ordering::Relaxed)
+    }
 
     /// Get the next server sequence number (atomically increments).
     pub fn next_server_sequence_number(&self) -> u32 {
@@ -115,7 +125,8 @@ impl SecureChannel {
     pub fn validate_sequence_number(&self, received: u32) -> bool {
         // OPC UA spec: sequence numbers should be monotonically increasing
         // For simplicity, just track the latest
-        self.client_sequence_number.store(received, Ordering::SeqCst);
+        self.client_sequence_number
+            .store(received, Ordering::SeqCst);
         true
     }
 

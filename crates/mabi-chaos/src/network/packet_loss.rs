@@ -466,7 +466,11 @@ mod tests {
         }
 
         // Should have at least one burst of 3+
-        assert!(max_consecutive >= 3, "max consecutive was {}", max_consecutive);
+        assert!(
+            max_consecutive >= 3,
+            "max consecutive was {}",
+            max_consecutive
+        );
     }
 
     #[test]

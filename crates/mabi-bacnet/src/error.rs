@@ -1,7 +1,7 @@
 //! BACnet error types.
 
-use thiserror::Error;
 use mabi_core::Error as CoreError;
+use thiserror::Error;
 
 /// BACnet result type.
 pub type BacnetResult<T> = Result<T, BacnetError>;

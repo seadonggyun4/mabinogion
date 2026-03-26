@@ -5,8 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use super::base::{LocalizedText, NodeClass, QualifiedName};
 use crate::types::NodeId;
-use super::base::{NodeClass, QualifiedName, LocalizedText};
 
 /// Standard OPC UA reference type IDs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -266,7 +266,11 @@ impl Reference {
 
     /// Create a HasTypeDefinition reference.
     pub fn has_type_definition(instance: NodeId, type_definition: NodeId) -> Self {
-        Self::forward(instance, ReferenceTypeId::HasTypeDefinition, type_definition)
+        Self::forward(
+            instance,
+            ReferenceTypeId::HasTypeDefinition,
+            type_definition,
+        )
     }
 
     /// Create a HasSubtype reference.

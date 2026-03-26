@@ -3,18 +3,18 @@
 //! This module provides structures and utilities for encoding/decoding
 //! KNXnet/IP protocol frames.
 
+mod dib;
 mod header;
 mod hpai;
 mod service;
-mod dib;
 
+pub use dib::{DeviceInfo as DibDeviceInfo, Dib, DibType, SupportedServiceFamilies};
 pub use header::{KnxNetIpHeader, HEADER_SIZE, PROTOCOL_VERSION};
-pub use hpai::{Hpai, HostProtocol};
-pub use service::{ServiceType, ServiceFamily};
-pub use dib::{Dib, DibType, DeviceInfo as DibDeviceInfo, SupportedServiceFamilies};
+pub use hpai::{HostProtocol, Hpai};
+pub use service::{ServiceFamily, ServiceType};
 
-use bytes::{Buf, BufMut, BytesMut};
 use crate::error::{KnxError, KnxResult};
+use bytes::{Buf, BufMut, BytesMut};
 
 /// Complete KNXnet/IP frame.
 #[derive(Debug, Clone)]

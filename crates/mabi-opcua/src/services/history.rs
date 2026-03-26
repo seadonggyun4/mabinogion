@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::types::{DataValue, data_value::DataValueBuilder, NodeId, StatusCode, Variant};
+use crate::types::{data_value::DataValueBuilder, DataValue, NodeId, StatusCode, Variant};
 
 /// Aggregate type for processed history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -517,11 +517,14 @@ impl HistoryStore {
         let max_values = if details.num_values_per_node == 0 {
             Some(self.config.max_batch_size as u32)
         } else {
-            Some(details.num_values_per_node.min(self.config.max_batch_size as u32))
+            Some(
+                details
+                    .num_values_per_node
+                    .min(self.config.max_batch_size as u32),
+            )
         };
 
-        let mut data_values =
-            history.read_range(details.start_time, details.end_time, max_values);
+        let mut data_values = history.read_range(details.start_time, details.end_time, max_values);
 
         // Filter for modified values if requested
         if details.is_read_modified {
@@ -571,7 +574,9 @@ impl HistoryStore {
 
         // Check expiry (5 minutes)
         if Utc::now() - cp.created_at > Duration::minutes(5) {
-            self.continuation_points.write().remove(&continuation_point_id);
+            self.continuation_points
+                .write()
+                .remove(&continuation_point_id);
             return HistoryReadResult::error(StatusCode::BAD_CONTINUATION_POINT_INVALID);
         }
 
@@ -584,7 +589,9 @@ impl HistoryStore {
         };
 
         // Remove old continuation point
-        self.continuation_points.write().remove(&continuation_point_id);
+        self.continuation_points
+            .write()
+            .remove(&continuation_point_id);
 
         self.read_raw(&cp.node_id, &details)
     }
@@ -740,8 +747,14 @@ impl HistoryStore {
             AggregateType::End => values.last().map(|v| v.value.value().cloned()).flatten(),
 
             AggregateType::Delta => {
-                let start = values.first().and_then(|v| v.value.value()).and_then(|v| v.as_f64());
-                let end = values.last().and_then(|v| v.value.value()).and_then(|v| v.as_f64());
+                let start = values
+                    .first()
+                    .and_then(|v| v.value.value())
+                    .and_then(|v| v.as_f64());
+                let end = values
+                    .last()
+                    .and_then(|v| v.value.value())
+                    .and_then(|v| v.as_f64());
                 match (start, end) {
                     (Some(s), Some(e)) => Some(Variant::Double(e - s)),
                     _ => None,
@@ -782,8 +795,12 @@ impl HistoryStore {
         // Remove empty histories
         histories.retain(|_, h| !h.values.is_empty());
 
-        self.stats.values_cleaned.fetch_add(cleaned, Ordering::Relaxed);
-        self.stats.active_nodes.store(histories.len() as u64, Ordering::Relaxed);
+        self.stats
+            .values_cleaned
+            .fetch_add(cleaned, Ordering::Relaxed);
+        self.stats
+            .active_nodes
+            .store(histories.len() as u64, Ordering::Relaxed);
     }
 
     /// Get statistics.
@@ -966,10 +983,10 @@ mod tests {
             .value(Variant::Double(100.0))
             .source_timestamp(Utc::now() - Duration::seconds(10))
             .build();
-        store.record_point(&node_id, HistoricalDataPoint::new(
-            Utc::now() - Duration::seconds(10),
-            old_value,
-        ));
+        store.record_point(
+            &node_id,
+            HistoricalDataPoint::new(Utc::now() - Duration::seconds(10), old_value),
+        );
 
         // Record new value
         let new_value = DataValueBuilder::new()

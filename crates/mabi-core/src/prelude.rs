@@ -15,7 +15,9 @@
 // =============================================================================
 // Error Types
 // =============================================================================
-pub use crate::error::{Error, ErrorSeverity, Result, ResultExt, ValidationErrors, ValidationErrorsBuilder};
+pub use crate::error::{
+    Error, ErrorSeverity, Result, ResultExt, ValidationErrors, ValidationErrorsBuilder,
+};
 
 // =============================================================================
 // Protocol Types
@@ -38,9 +40,7 @@ pub use crate::types::{
 // =============================================================================
 // Device Types
 // =============================================================================
-pub use crate::device::{
-    BoxedDevice, Device, DeviceInfo, DeviceState, DeviceStatistics,
-};
+pub use crate::device::{BoxedDevice, Device, DeviceInfo, DeviceState, DeviceStatistics};
 
 // =============================================================================
 // Configuration Types
@@ -54,21 +54,23 @@ pub use crate::config::{
 // Config Watcher Types
 // =============================================================================
 pub use crate::config::{
-    ConfigEvent, ConfigEventHandler, ConfigSource, ConfigWatcher, SharedConfigWatcher,
-    WatcherState, create_config_watcher,
+    create_config_watcher, ConfigEvent, ConfigEventHandler, ConfigSource, ConfigWatcher,
+    SharedConfigWatcher, WatcherState,
 };
 
 // =============================================================================
 // Engine Types
 // =============================================================================
-pub use crate::engine::{engine, EngineEvent, EnginePreset, EngineState, SimulatorEngine, SimulatorEngineBuilder};
+pub use crate::engine::{
+    engine, EngineEvent, EnginePreset, EngineState, SimulatorEngine, SimulatorEngineBuilder,
+};
 
 // =============================================================================
 // Factory Types
 // =============================================================================
 pub use crate::factory::{
-    BoxedFactory, BoxedPlugin, DeviceFactory, FactoryMetadata, FactoryRegistry, Plugin,
-    PluginInfo, PluginManager,
+    BoxedFactory, BoxedPlugin, DeviceFactory, FactoryMetadata, FactoryRegistry, Plugin, PluginInfo,
+    PluginManager,
 };
 
 // =============================================================================
@@ -81,37 +83,49 @@ pub use crate::metrics::{LatencyStats, MetricsCollector, MetricsSnapshot, Timer}
 // =============================================================================
 pub use crate::logging::{
     // Initialization
-    init_logging, init_test_logging, is_logging_initialized,
+    init_logging,
+    init_test_logging,
+    is_logging_initialized,
+    shared_context,
+    DeviceContext,
     // Configuration
-    LogConfig, LogConfigBuilder, LogFormat, LogLevel, LogTarget,
-    // Rotation
-    RotationConfig, RotationStrategy, RetentionPolicy, LogFileStats,
+    LogConfig,
+    LogConfigBuilder,
+    LogFileStats,
+    LogFormat,
+    LogLevel,
     // Dynamic level control
     LogLevelController,
+    LogTarget,
+    RequestContext,
+    RetentionPolicy,
+    // Rotation
+    RotationConfig,
+    RotationStrategy,
     // Context propagation
-    TraceContext, RequestContext, DeviceContext, shared_context,
+    TraceContext,
 };
 
 // =============================================================================
 // Utility Types
 // =============================================================================
 pub use crate::utils::{
+    // Time Utilities
+    current_timestamp_ms,
+    current_timestamp_ns,
+    current_timestamp_us,
+    // String Utilities
+    format_bytes,
+    format_duration,
     // ID Generation
     generate_sequential_id,
     generate_short_uuid,
     generate_timestamp_id,
     generate_uuid,
-    // Time Utilities
-    current_timestamp_ms,
-    current_timestamp_ns,
-    current_timestamp_us,
-    format_duration,
-    // String Utilities
-    format_bytes,
-    sanitize_identifier,
-    truncate_string,
     // Retry
     retry_async,
+    sanitize_identifier,
+    truncate_string,
     RateLimiter,
     RetryConfig,
     Stopwatch,

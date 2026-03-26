@@ -12,16 +12,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::types::{NodeId, StatusCode};
-use crate::services::history::{
-    ReadRawModifiedDetails, ReadProcessedDetails, AggregateType, AggregateConfig,
-};
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::services::history::{
+    AggregateConfig, AggregateType, ReadProcessedDetails, ReadRawModifiedDetails,
+};
+use crate::types::{NodeId, StatusCode};
 
 const HISTORY_READ_REQUEST_ID: u32 = 662;
 const HISTORY_READ_RESPONSE_ID: u32 = 665;
@@ -227,10 +227,7 @@ fn aggregate_type_from_node_id(node_id: &NodeId) -> AggregateType {
 }
 
 /// Encode a HistoryReadResult into the output buffer.
-fn encode_history_result(
-    out: &mut BytesMut,
-    result: &crate::services::history::HistoryReadResult,
-) {
+fn encode_history_result(out: &mut BytesMut, result: &crate::services::history::HistoryReadResult) {
     result.status.encode(out).ok();
 
     // ContinuationPoint (ByteString)
@@ -247,7 +244,9 @@ fn encode_history_result(
 
     // HistoryData ExtensionObject (encoding_id i=658)
     // TypeId
-    NodeId::numeric(0, HISTORY_DATA_ENCODING_ID).encode(out).ok();
+    NodeId::numeric(0, HISTORY_DATA_ENCODING_ID)
+        .encode(out)
+        .ok();
     // Encoding byte: 0x01 = has binary body
     out.put_u8(0x01);
 
@@ -274,8 +273,7 @@ fn encode_null_extension_object(out: &mut BytesMut) {
 fn decode_cp_id(cp: &[u8]) -> Option<u64> {
     if cp.len() == 8 {
         Some(u64::from_le_bytes([
-            cp[0], cp[1], cp[2], cp[3],
-            cp[4], cp[5], cp[6], cp[7],
+            cp[0], cp[1], cp[2], cp[3], cp[4], cp[5], cp[6], cp[7],
         ]))
     } else {
         None

@@ -12,13 +12,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::types::NodeId;
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::types::NodeId;
 
 const REGISTER_NODES_REQUEST_ID: u32 = 560;
 const REGISTER_NODES_RESPONSE_ID: u32 = 563;

@@ -10,16 +10,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mabi_core::config::{DeviceConfig, EngineConfig};
-use mabi_core::device::{
-    BoxedDevice, Device, DeviceInfo, DeviceState, DeviceStatistics,
-};
+use mabi_core::device::{BoxedDevice, Device, DeviceInfo, DeviceState, DeviceStatistics};
 use mabi_core::engine::{EngineState, SimulatorEngine};
 use mabi_core::error::Result;
 use mabi_core::factory::{DeviceFactory, FactoryRegistry};
 use mabi_core::protocol::Protocol;
-use mabi_core::types::{
-    AccessMode, DataPoint, DataPointDef, DataPointId, DataType, Quality,
-};
+use mabi_core::types::{AccessMode, DataPoint, DataPointDef, DataPointId, DataType, Quality};
 use mabi_core::value::Value;
 
 use async_trait::async_trait;
@@ -51,8 +47,7 @@ impl MockDevice {
             DataPointDef::new("humidity", "Humidity", DataType::Float64)
                 .with_units("%")
                 .with_range(0.0, 100.0),
-            DataPointDef::new("status", "Status", DataType::Bool)
-                .with_access(AccessMode::ReadOnly),
+            DataPointDef::new("status", "Status", DataType::Bool).with_access(AccessMode::ReadOnly),
         ];
 
         let mut values = std::collections::HashMap::new();
@@ -116,22 +111,20 @@ impl Device for MockDevice {
 
     async fn read(&self, point_id: &str) -> Result<DataPoint> {
         let values = self.values.read();
-        let value = values
-            .get(point_id)
-            .cloned()
-            .unwrap_or(Value::Null);
+        let value = values.get(point_id).cloned().unwrap_or(Value::Null);
 
         self.statistics.write().record_read();
 
-        Ok(DataPoint::new(
-            DataPointId::new(&self.info.id, point_id),
-            value,
+        Ok(
+            DataPoint::new(DataPointId::new(&self.info.id, point_id), value)
+                .with_quality(Quality::GOOD),
         )
-        .with_quality(Quality::GOOD))
     }
 
     async fn write(&mut self, point_id: &str, value: Value) -> Result<()> {
-        self.values.write().insert(point_id.to_string(), value.clone());
+        self.values
+            .write()
+            .insert(point_id.to_string(), value.clone());
         self.statistics.write().record_write();
 
         let dp = DataPoint::new(DataPointId::new(&self.info.id, point_id), value);
@@ -408,7 +401,10 @@ async fn test_engine_events() {
         .expect("Channel closed");
 
     match event {
-        mabi_core::engine::EngineEvent::DeviceAdded { device_id, protocol } => {
+        mabi_core::engine::EngineEvent::DeviceAdded {
+            device_id,
+            protocol,
+        } => {
             assert_eq!(device_id, "dev-001");
             assert_eq!(protocol, Protocol::ModbusTcp);
         }

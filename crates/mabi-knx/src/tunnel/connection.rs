@@ -9,13 +9,13 @@ use std::time::{Duration, Instant};
 use bytes::{Buf, BufMut, BytesMut};
 use tokio::sync::mpsc;
 
+use super::ack_waiter::AckMessage;
+use super::fsm::TunnelFsm;
+use super::sequence::{ReceivedValidation, SequenceTracker};
 use crate::address::IndividualAddress;
 use crate::cemi::CemiFrame;
 use crate::error::{KnxError, KnxResult};
 use crate::frame::Hpai;
-use super::sequence::{SequenceTracker, ReceivedValidation};
-use super::ack_waiter::AckMessage;
-use super::fsm::TunnelFsm;
 
 // ============================================================================
 // Connection Types
@@ -137,8 +137,7 @@ impl ConnectionRequestInfo {
 
         let connection_type = ConnectionType::from_u8(buf.get_u8())
             .ok_or_else(|| KnxError::InvalidHeader("Unknown connection type".to_string()))?;
-        let knx_layer =
-            KnxLayer::from_u8(buf.get_u8()).unwrap_or(KnxLayer::LinkLayer);
+        let knx_layer = KnxLayer::from_u8(buf.get_u8()).unwrap_or(KnxLayer::LinkLayer);
         let _ = buf.get_u8(); // Reserved
 
         Ok(Self {
@@ -834,10 +833,7 @@ mod tests {
         let encoded = req.encode();
         let decoded = ConnectRequest::decode(&encoded).unwrap();
 
-        assert_eq!(
-            decoded.control_endpoint.port,
-            req.control_endpoint.port
-        );
+        assert_eq!(decoded.control_endpoint.port, req.control_endpoint.port);
         assert_eq!(decoded.cri.connection_type, ConnectionType::Tunnel);
     }
 

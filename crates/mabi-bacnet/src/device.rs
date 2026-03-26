@@ -18,7 +18,9 @@ use mabi_core::{
 use crate::config::BacnetServerConfig;
 use crate::object::property::{BACnetValue, PropertyId};
 use crate::object::registry::ObjectRegistry;
-use crate::object::standard::{AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue};
+use crate::object::standard::{
+    AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
+};
 use crate::object::traits::{ArcObject, BACnetObject};
 use crate::object::types::{ObjectId, ObjectType};
 
@@ -88,17 +90,26 @@ impl BacnetDevice {
 
         // Determine data type based on object type
         let data_type = match object_id.object_type {
-            ObjectType::AnalogInput | ObjectType::AnalogOutput | ObjectType::AnalogValue => DataType::Float32,
-            ObjectType::BinaryInput | ObjectType::BinaryOutput | ObjectType::BinaryValue => DataType::Bool,
-            ObjectType::MultiStateInput | ObjectType::MultiStateOutput | ObjectType::MultiStateValue => DataType::UInt32,
+            ObjectType::AnalogInput | ObjectType::AnalogOutput | ObjectType::AnalogValue => {
+                DataType::Float32
+            }
+            ObjectType::BinaryInput | ObjectType::BinaryOutput | ObjectType::BinaryValue => {
+                DataType::Bool
+            }
+            ObjectType::MultiStateInput
+            | ObjectType::MultiStateOutput
+            | ObjectType::MultiStateValue => DataType::UInt32,
             _ => DataType::String,
         };
 
         // Determine access mode
         let access = match object_id.object_type {
-            ObjectType::AnalogOutput | ObjectType::AnalogValue |
-            ObjectType::BinaryOutput | ObjectType::BinaryValue |
-            ObjectType::MultiStateOutput | ObjectType::MultiStateValue => AccessMode::ReadWrite,
+            ObjectType::AnalogOutput
+            | ObjectType::AnalogValue
+            | ObjectType::BinaryOutput
+            | ObjectType::BinaryValue
+            | ObjectType::MultiStateOutput
+            | ObjectType::MultiStateValue => AccessMode::ReadWrite,
             _ => AccessMode::ReadOnly,
         };
 
@@ -108,7 +119,9 @@ impl BacnetDevice {
         self.objects.register(object);
 
         // Add point definition
-        self.object_to_point.write().insert(object_id, point_id.clone());
+        self.object_to_point
+            .write()
+            .insert(object_id, point_id.clone());
         self.point_defs.write().insert(point_id, def);
     }
 
@@ -168,22 +181,33 @@ impl BacnetDevice {
             let point_id = format!("{}:{}", object_id.object_type as u16, object_id.instance);
 
             let data_type = match object_id.object_type {
-                ObjectType::AnalogInput | ObjectType::AnalogOutput | ObjectType::AnalogValue => DataType::Float32,
-                ObjectType::BinaryInput | ObjectType::BinaryOutput | ObjectType::BinaryValue => DataType::Bool,
-                ObjectType::MultiStateInput | ObjectType::MultiStateOutput | ObjectType::MultiStateValue => DataType::UInt32,
+                ObjectType::AnalogInput | ObjectType::AnalogOutput | ObjectType::AnalogValue => {
+                    DataType::Float32
+                }
+                ObjectType::BinaryInput | ObjectType::BinaryOutput | ObjectType::BinaryValue => {
+                    DataType::Bool
+                }
+                ObjectType::MultiStateInput
+                | ObjectType::MultiStateOutput
+                | ObjectType::MultiStateValue => DataType::UInt32,
                 _ => DataType::String,
             };
 
             let access = match object_id.object_type {
-                ObjectType::AnalogOutput | ObjectType::AnalogValue |
-                ObjectType::BinaryOutput | ObjectType::BinaryValue |
-                ObjectType::MultiStateOutput | ObjectType::MultiStateValue => AccessMode::ReadWrite,
+                ObjectType::AnalogOutput
+                | ObjectType::AnalogValue
+                | ObjectType::BinaryOutput
+                | ObjectType::BinaryValue
+                | ObjectType::MultiStateOutput
+                | ObjectType::MultiStateValue => AccessMode::ReadWrite,
                 _ => AccessMode::ReadOnly,
             };
 
             let def = DataPointDef::new(&point_id, &object_name, data_type).with_access(access);
 
-            self.object_to_point.write().insert(object_id, point_id.clone());
+            self.object_to_point
+                .write()
+                .insert(object_id, point_id.clone());
             self.point_defs.write().insert(point_id, def);
         }
     }
@@ -280,7 +304,8 @@ impl Device for BacnetDevice {
             .point_id_to_object_id(point_id)
             .ok_or_else(|| Error::point_not_found(&self.info.id, point_id))?;
 
-        let bacnet_value = self.objects
+        let bacnet_value = self
+            .objects
             .read_property(&object_id, PropertyId::PresentValue)
             .map_err(|e| Error::point_not_found(&self.info.id, &e.to_string()))?;
 
@@ -300,9 +325,12 @@ impl Device for BacnetDevice {
         // Check if writable
         let is_writable = matches!(
             object_id.object_type,
-            ObjectType::AnalogOutput | ObjectType::AnalogValue |
-            ObjectType::BinaryOutput | ObjectType::BinaryValue |
-            ObjectType::MultiStateOutput | ObjectType::MultiStateValue
+            ObjectType::AnalogOutput
+                | ObjectType::AnalogValue
+                | ObjectType::BinaryOutput
+                | ObjectType::BinaryValue
+                | ObjectType::MultiStateOutput
+                | ObjectType::MultiStateValue
         );
 
         if !is_writable {

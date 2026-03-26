@@ -11,17 +11,23 @@ use crate::runner::{Command, CommandOutput};
 use crate::runtime_registry::workspace_protocol_registry;
 
 /// Runtime-backed serve command for protocol services.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServeRuntimeCommand {
     launch: ProtocolLaunchSpec,
     readiness_timeout: Duration,
+    extensions: RuntimeExtensions,
 }
 
 impl ServeRuntimeCommand {
-    pub fn new(launch: ProtocolLaunchSpec, readiness_timeout: Duration) -> Self {
+    pub fn new(
+        launch: ProtocolLaunchSpec,
+        readiness_timeout: Duration,
+        extensions: RuntimeExtensions,
+    ) -> Self {
         Self {
             launch,
             readiness_timeout,
+            extensions,
         }
     }
 
@@ -74,7 +80,7 @@ impl Command for ServeRuntimeCommand {
                 readiness_timeout: Some(self.readiness_timeout.as_millis() as u64),
             },
             &registry,
-            RuntimeExtensions::default(),
+            self.extensions.clone(),
         )
         .await?;
 

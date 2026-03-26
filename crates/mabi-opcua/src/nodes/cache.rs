@@ -3,17 +3,17 @@
 //! This module provides LRU caching for frequently accessed nodes,
 //! improving performance when dealing with 100,000+ node address spaces.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use lru::LruCache;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
-use crate::types::{NodeId, DataValue};
-use super::base::{NodeClass, QualifiedName, LocalizedText};
+use super::base::{LocalizedText, NodeClass, QualifiedName};
 use super::reference::ReferenceDescription;
+use crate::types::{DataValue, NodeId};
 
 /// Node cache configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,9 +302,12 @@ impl CacheWarmer {
 
     /// Warm the cache with a list of nodes.
     pub fn warm(&self, nodes: impl IntoIterator<Item = CachedNode>) {
-        let count = nodes.into_iter().map(|node| {
-            self.cache.put(node);
-        }).count();
+        let count = nodes
+            .into_iter()
+            .map(|node| {
+                self.cache.put(node);
+            })
+            .count();
 
         debug!(count, "Cache warmed");
     }

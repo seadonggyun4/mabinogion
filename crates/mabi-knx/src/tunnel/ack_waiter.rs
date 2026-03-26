@@ -19,20 +19,11 @@ use tracing::{debug, warn};
 #[derive(Debug, Clone)]
 pub enum AckResult {
     /// ACK received successfully.
-    Success {
-        latency: Duration,
-        attempt: u8,
-    },
+    Success { latency: Duration, attempt: u8 },
     /// ACK received with error status.
-    AckError {
-        status: u8,
-        attempt: u8,
-    },
+    AckError { status: u8, attempt: u8 },
     /// Socket send failed.
-    SendFailed {
-        reason: String,
-        attempt: u8,
-    },
+    SendFailed { reason: String, attempt: u8 },
     /// All retries exhausted without ACK.
     MaxRetriesExceeded {
         attempts: u8,
@@ -289,7 +280,9 @@ mod tests {
                 channel_id: 1,
                 sequence: 0,
                 status: 0,
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
 
         let result = waiter.wait_for_ack(&mut rx, 0, 1).await;
@@ -317,11 +310,19 @@ mod tests {
                 channel_id: 1,
                 sequence: 0,
                 status: 0x21,
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
 
         let result = waiter.wait_for_ack(&mut rx, 0, 1).await;
-        assert!(matches!(result, AckResult::AckError { status: 0x21, attempt: 0 }));
+        assert!(matches!(
+            result,
+            AckResult::AckError {
+                status: 0x21,
+                attempt: 0
+            }
+        ));
     }
 
     #[tokio::test]
@@ -334,7 +335,10 @@ mod tests {
         let (_tx, mut rx) = mpsc::channel::<AckMessage>(8);
 
         let result = waiter.wait_for_ack(&mut rx, 0, 1).await;
-        assert!(matches!(result, AckResult::MaxRetriesExceeded { attempts: 1, .. }));
+        assert!(matches!(
+            result,
+            AckResult::MaxRetriesExceeded { attempts: 1, .. }
+        ));
         assert_eq!(waiter.consecutive_errors(), 1);
     }
 
@@ -355,10 +359,22 @@ mod tests {
 
         tokio::spawn(async move {
             // Send wrong sequence first
-            tx.send(AckMessage { channel_id: 1, sequence: 99, status: 0 }).await.unwrap();
+            tx.send(AckMessage {
+                channel_id: 1,
+                sequence: 99,
+                status: 0,
+            })
+            .await
+            .unwrap();
             tokio::time::sleep(Duration::from_millis(5)).await;
             // Then send correct one
-            tx.send(AckMessage { channel_id: 1, sequence: 5, status: 0 }).await.unwrap();
+            tx.send(AckMessage {
+                channel_id: 1,
+                sequence: 5,
+                status: 0,
+            })
+            .await
+            .unwrap();
         });
 
         let result = waiter.wait_for_ack(&mut rx, 5, 1).await;
@@ -380,7 +396,13 @@ mod tests {
         }
 
         let result = waiter.wait_for_ack(&mut rx, 0, 1).await;
-        assert!(matches!(result, AckResult::TunnelRestart { consecutive_errors: 3, threshold: 3 }));
+        assert!(matches!(
+            result,
+            AckResult::TunnelRestart {
+                consecutive_errors: 3,
+                threshold: 3
+            }
+        ));
     }
 
     #[test]

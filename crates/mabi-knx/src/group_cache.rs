@@ -384,7 +384,8 @@ impl GroupValueCache {
         } else {
             // Check capacity and evict if needed
             self.evict_if_needed();
-            self.entries.insert(address, CacheEntry::new(address, value, source));
+            self.entries
+                .insert(address, CacheEntry::new(address, value, source));
         }
 
         // Update stats
@@ -394,7 +395,9 @@ impl GroupValueCache {
                 self.stats.write_updates.fetch_add(1, Ordering::Relaxed);
             }
             UpdateSource::Indication => {
-                self.stats.indication_updates.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .indication_updates
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -403,24 +406,14 @@ impl GroupValueCache {
     ///
     /// Updates the cache entry for the target group address if the cache
     /// is enabled and auto_update_on_indication is true.
-    pub fn on_indication(
-        &self,
-        address: GroupAddress,
-        value: Vec<u8>,
-        source: Option<String>,
-    ) {
+    pub fn on_indication(&self, address: GroupAddress, value: Vec<u8>, source: Option<String>) {
         self.update(address, value, source, UpdateSource::Indication);
     }
 
     /// Called when a GroupValueWrite is processed.
     ///
     /// Updates the cache entry for the written group address.
-    pub fn on_write(
-        &self,
-        address: GroupAddress,
-        value: Vec<u8>,
-        source: Option<String>,
-    ) {
+    pub fn on_write(&self, address: GroupAddress, value: Vec<u8>, source: Option<String>) {
         self.update(address, value, source, UpdateSource::Write);
     }
 
@@ -443,7 +436,8 @@ impl GroupValueCache {
             return 0; // No TTL configured
         }
 
-        let expired: Vec<GroupAddress> = self.entries
+        let expired: Vec<GroupAddress> = self
+            .entries
             .iter()
             .filter(|r| r.value().is_expired(ttl))
             .map(|r| *r.key())
@@ -454,7 +448,9 @@ impl GroupValueCache {
             self.entries.remove(&addr);
         }
 
-        self.stats.expirations.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats
+            .expirations
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
@@ -485,7 +481,8 @@ impl GroupValueCache {
         }
 
         // Find the entry with the oldest accessed_at (LRU)
-        let lru_addr = self.entries
+        let lru_addr = self
+            .entries
             .iter()
             .min_by_key(|r| r.value().accessed_at)
             .map(|r| *r.key());
@@ -702,7 +699,7 @@ mod tests {
 
         assert_eq!(cache.len(), 3);
         assert_eq!(cache.get(&addr1), Some(vec![0x01])); // Still present (recently accessed)
-        assert_eq!(cache.get(&addr2), None);              // Evicted (LRU)
+        assert_eq!(cache.get(&addr2), None); // Evicted (LRU)
         assert_eq!(cache.get(&addr3), Some(vec![0x03])); // Still present
         assert_eq!(cache.get(&addr4), Some(vec![0x04])); // Newly inserted
 
@@ -857,7 +854,9 @@ mod tests {
         assert!(GroupValueCacheConfig {
             max_entries: 0,
             ..Default::default()
-        }.validate().is_err());
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]
@@ -894,11 +893,7 @@ mod tests {
 
     #[test]
     fn test_cache_entry_expired() {
-        let entry = CacheEntry::new(
-            make_addr(1, 0, 1),
-            vec![0x01],
-            None,
-        );
+        let entry = CacheEntry::new(make_addr(1, 0, 1), vec![0x01], None);
 
         // Not expired with 1 hour TTL
         assert!(!entry.is_expired(Duration::from_secs(3600)));

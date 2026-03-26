@@ -97,8 +97,8 @@ impl ReadRangeRequest {
         let prop_raw = decoder
             .decode_unsigned(len1)
             .map_err(|_| ServiceResult::missing_required_parameter())?;
-        let property_id = PropertyId::from_u32(prop_raw)
-            .ok_or_else(ServiceResult::missing_required_parameter)?;
+        let property_id =
+            PropertyId::from_u32(prop_raw).ok_or_else(ServiceResult::missing_required_parameter)?;
 
         // [2] Optional array index
         let mut array_index = None;
@@ -160,7 +160,9 @@ impl ReadRangeRequest {
                 }
                 _ => {
                     // Skip unknown tags
-                    decoder.skip(len).map_err(|_| ServiceResult::missing_required_parameter())?;
+                    decoder
+                        .skip(len)
+                        .map_err(|_| ServiceResult::missing_required_parameter())?;
                 }
             }
         }
@@ -574,9 +576,8 @@ mod tests {
 
     #[test]
     fn test_apply_range_none() {
-        let records: Vec<BACnetValue> = (0..5)
-            .map(|i| make_record_value(10, i, i as f32))
-            .collect();
+        let records: Vec<BACnetValue> =
+            (0..5).map(|i| make_record_value(10, i, i as f32)).collect();
 
         let (items, count, more) = apply_range(&records, &RangeType::None);
         assert_eq!(count, 5);
@@ -654,9 +655,8 @@ mod tests {
     fn test_encode_read_range_ack() {
         let object_id = ObjectId::new(ObjectType::TrendLog, 1);
         let property_id = PropertyId::LogBuffer;
-        let records: Vec<BACnetValue> = (0..3)
-            .map(|i| make_record_value(10, i, i as f32))
-            .collect();
+        let records: Vec<BACnetValue> =
+            (0..3).map(|i| make_record_value(10, i, i as f32)).collect();
         let refs: Vec<&BACnetValue> = records.iter().collect();
 
         let encoded = encode_read_range_ack(&object_id, &property_id, &refs, 3, false);

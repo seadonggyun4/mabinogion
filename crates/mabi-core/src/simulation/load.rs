@@ -121,7 +121,8 @@ impl LoadPattern {
                 amplitude,
                 period,
             } => {
-                let phase = (elapsed.as_secs_f64() / period.as_secs_f64()) * 2.0 * std::f64::consts::PI;
+                let phase =
+                    (elapsed.as_secs_f64() / period.as_secs_f64()) * 2.0 * std::f64::consts::PI;
                 let wave = phase.sin();
                 (*baseline as f64 + *amplitude as f64 * wave) as u64
             }
@@ -200,16 +201,17 @@ impl LoadPattern {
                 start_ops, end_ops, duration
             ),
             Self::Step { initial, steps } => {
-                format!("Step pattern starting at {} with {} steps", initial, steps.len())
+                format!(
+                    "Step pattern starting at {} with {} steps",
+                    initial,
+                    steps.len()
+                )
             }
             Self::Wave {
                 baseline,
                 amplitude,
                 period,
-            } => format!(
-                "Wave {}±{} ops/s, period {:?}",
-                baseline, amplitude, period
-            ),
+            } => format!("Wave {}±{} ops/s, period {:?}", baseline, amplitude, period),
             Self::Spike {
                 baseline,
                 peak,
@@ -384,12 +386,8 @@ mod tests {
 
     #[test]
     fn test_burst_pattern() {
-        let pattern = LoadPattern::burst(
-            100,
-            5000,
-            Duration::from_secs(2),
-            Duration::from_secs(10),
-        );
+        let pattern =
+            LoadPattern::burst(100, 5000, Duration::from_secs(2), Duration::from_secs(10));
 
         // During burst (0-2s in each 10s cycle)
         assert_eq!(pattern.ops_for_elapsed(Duration::from_secs(0)), 5000);

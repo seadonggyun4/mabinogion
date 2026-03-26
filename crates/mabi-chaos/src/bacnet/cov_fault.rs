@@ -184,7 +184,9 @@ impl CovFaultConfig {
 
     pub fn incomplete(omit: OmittedCovProperty) -> Self {
         Self {
-            fault_type: CovFaultType::IncompleteNotification { omit_property: omit },
+            fault_type: CovFaultType::IncompleteNotification {
+                omit_property: omit,
+            },
             ..Default::default()
         }
     }
@@ -246,12 +248,11 @@ pub struct CovFault {
 impl CovFault {
     pub fn new(id: impl Into<String>, config: CovFaultConfig) -> Self {
         let id = id.into();
-        let metadata =
-            FaultMetadata::new(&id, "BACnet COV Fault", FaultCategory::Protocol)
-                .with_description("Injects BACnet COV notification failures")
-                .with_severity(FaultSeverity::High)
-                .with_tag("bacnet")
-                .with_tag("cov");
+        let metadata = FaultMetadata::new(&id, "BACnet COV Fault", FaultCategory::Protocol)
+            .with_description("Injects BACnet COV notification failures")
+            .with_severity(FaultSeverity::High)
+            .with_tag("bacnet")
+            .with_tag("cov");
 
         Self {
             base: BaseFault::new(metadata),
@@ -560,7 +561,9 @@ impl CovFaultBuilder {
     }
 
     pub fn incomplete(mut self, omit: OmittedCovProperty) -> Self {
-        self.config.fault_type = CovFaultType::IncompleteNotification { omit_property: omit };
+        self.config.fault_type = CovFaultType::IncompleteNotification {
+            omit_property: omit,
+        };
         self
     }
 

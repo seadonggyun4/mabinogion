@@ -236,7 +236,10 @@ impl TraceContext {
     pub fn from_headers(headers: &HashMap<String, String>) -> Self {
         let mut ctx = Self::new();
 
-        if let Some(request_id) = headers.get("x-request-id").or(headers.get("x-correlation-id")) {
+        if let Some(request_id) = headers
+            .get("x-request-id")
+            .or(headers.get("x-correlation-id"))
+        {
             ctx.request_id = request_id.clone();
         }
         if let Some(trace_id) = headers.get("x-trace-id").or(headers.get("traceparent")) {
@@ -348,9 +351,7 @@ impl RequestContext {
 
     /// Check if the request has timed out.
     pub fn is_timed_out(&self) -> bool {
-        self.timeout
-            .map(|t| self.elapsed() > t)
-            .unwrap_or(false)
+        self.timeout.map(|t| self.elapsed() > t).unwrap_or(false)
     }
 
     /// Get remaining time before timeout.

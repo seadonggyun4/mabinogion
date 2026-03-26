@@ -106,10 +106,7 @@ impl ReportExporter {
         ));
 
         if let Some(rate) = report.memory.growth_rate_bytes_per_sec {
-            md.push_str(&format!(
-                "| Growth Rate | {:.2} KB/s |\n",
-                rate / 1024.0
-            ));
+            md.push_str(&format!("| Growth Rate | {:.2} KB/s |\n", rate / 1024.0));
         }
 
         if !report.memory.regions.is_empty() {
@@ -304,24 +301,17 @@ pub struct ReportComparison {
 impl ReportComparison {
     /// Compare two profile reports.
     pub fn compare(first: &ProfileReport, second: &ProfileReport) -> Self {
-        let memory_diff =
-            second.memory.current_bytes as i64 - first.memory.current_bytes as i64;
+        let memory_diff = second.memory.current_bytes as i64 - first.memory.current_bytes as i64;
         let memory_change_percent = if first.memory.current_bytes > 0 {
             (memory_diff as f64 / first.memory.current_bytes as f64) * 100.0
         } else {
             0.0
         };
 
-        let first_warnings: std::collections::HashSet<_> = first
-            .leak_warnings
-            .iter()
-            .map(|w| &w.region)
-            .collect();
-        let second_warnings: std::collections::HashSet<_> = second
-            .leak_warnings
-            .iter()
-            .map(|w| &w.region)
-            .collect();
+        let first_warnings: std::collections::HashSet<_> =
+            first.leak_warnings.iter().map(|w| &w.region).collect();
+        let second_warnings: std::collections::HashSet<_> =
+            second.leak_warnings.iter().map(|w| &w.region).collect();
 
         let new_warnings = second_warnings.difference(&first_warnings).count();
         let resolved_warnings = first_warnings.difference(&second_warnings).count();

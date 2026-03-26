@@ -232,7 +232,8 @@ impl ConnectionFault {
         }
 
         // Check max disruptions
-        if self.config.max_disconnections > 0 && self.disruption_count >= self.config.max_disconnections
+        if self.config.max_disconnections > 0
+            && self.disruption_count >= self.config.max_disconnections
         {
             return None;
         }
@@ -512,7 +513,9 @@ mod tests {
 
     #[test]
     fn test_max_disruptions() {
-        let config = ConnectionConfig::immediate(1.0).with_cooldown(0).with_max(3);
+        let config = ConnectionConfig::immediate(1.0)
+            .with_cooldown(0)
+            .with_max(3);
         let mut fault = ConnectionFault::new("test", config);
 
         for _ in 0..3 {

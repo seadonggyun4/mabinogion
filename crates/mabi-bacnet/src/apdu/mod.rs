@@ -15,9 +15,8 @@ pub mod types;
 
 pub use encoding::{ApduDecoder, ApduEncoder, TagNumber};
 pub use segmentation::{
-    Segment, SegmentAssembler, SegmentHeader, SegmentTransmitter,
-    SegmentationError, SegmentationSupport, AssemblyResult,
-    decode_max_segments, encode_max_segments,
+    decode_max_segments, encode_max_segments, AssemblyResult, Segment, SegmentAssembler,
+    SegmentHeader, SegmentTransmitter, SegmentationError, SegmentationSupport,
 };
 pub use types::{
     ApduError, ApduType, ConfirmedService, ErrorClass, ErrorCode, RejectReason, UnconfirmedService,

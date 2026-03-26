@@ -323,38 +323,36 @@ impl EventEnrollment {
         let db = *self.deadband.read();
 
         match self.event_type {
-            EventType::OutOfRange => {
-                match current {
-                    EventState::Normal => {
-                        if value > high {
-                            Some(EventState::HighLimit)
-                        } else if value < low {
-                            Some(EventState::LowLimit)
-                        } else {
-                            None
-                        }
+            EventType::OutOfRange => match current {
+                EventState::Normal => {
+                    if value > high {
+                        Some(EventState::HighLimit)
+                    } else if value < low {
+                        Some(EventState::LowLimit)
+                    } else {
+                        None
                     }
-                    EventState::HighLimit => {
-                        if value < (high - db) && value >= low {
-                            Some(EventState::Normal)
-                        } else if value < low {
-                            Some(EventState::LowLimit)
-                        } else {
-                            None
-                        }
-                    }
-                    EventState::LowLimit => {
-                        if value > (low + db) && value <= high {
-                            Some(EventState::Normal)
-                        } else if value > high {
-                            Some(EventState::HighLimit)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
                 }
-            }
+                EventState::HighLimit => {
+                    if value < (high - db) && value >= low {
+                        Some(EventState::Normal)
+                    } else if value < low {
+                        Some(EventState::LowLimit)
+                    } else {
+                        None
+                    }
+                }
+                EventState::LowLimit => {
+                    if value > (low + db) && value <= high {
+                        Some(EventState::Normal)
+                    } else if value > high {
+                        Some(EventState::HighLimit)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
             _ => {
                 // For other event types, a simple offnormal/normal toggle
                 // based on whether the value is within limits.
@@ -493,19 +491,15 @@ impl BACnetObject for EventEnrollment {
             }
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::EventType => Ok(BACnetValue::Enumerated(self.event_type as u32)),
-            PropertyId::EventState => {
-                Ok(BACnetValue::Enumerated(*self.event_state.read() as u32))
-            }
+            PropertyId::EventState => Ok(BACnetValue::Enumerated(*self.event_state.read() as u32)),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
             PropertyId::EventEnable => {
                 Ok(BACnetValue::BitString(self.event_enable.read().to_bits()))
             }
-            PropertyId::AckedTransitions => {
-                Ok(BACnetValue::BitString(self.acked_transitions.read().to_bits()))
-            }
-            PropertyId::NotifyType => {
-                Ok(BACnetValue::Enumerated(*self.notify_type.read() as u32))
-            }
+            PropertyId::AckedTransitions => Ok(BACnetValue::BitString(
+                self.acked_transitions.read().to_bits(),
+            )),
+            PropertyId::NotifyType => Ok(BACnetValue::Enumerated(*self.notify_type.read() as u32)),
             PropertyId::NotificationClass => {
                 Ok(BACnetValue::Unsigned(*self.notification_class.read()))
             }
@@ -529,9 +523,9 @@ impl BACnetObject for EventEnrollment {
                 .properties
                 .get(PropertyId::Reliability)
                 .ok_or(PropertyError::NotFound(PropertyId::Reliability)),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             _ => self
                 .properties
                 .get(property_id)
@@ -561,8 +555,7 @@ impl BACnetObject for EventEnrollment {
             }
             PropertyId::NotifyType => {
                 if let Some(v) = value.as_unsigned() {
-                    NotifyType::from_u32(v)
-                        .ok_or(PropertyError::ValueOutOfRange(property_id))?;
+                    NotifyType::from_u32(v).ok_or(PropertyError::ValueOutOfRange(property_id))?;
                     *self.notify_type.write() = NotifyType::from_u32(v).unwrap();
                     Ok(())
                 } else {
@@ -812,13 +805,11 @@ impl BACnetObject for NotificationClass {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::NotificationClass as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(
+                ObjectType::NotificationClass as u32,
+            )),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
-            PropertyId::NotificationClass => {
-                Ok(BACnetValue::Unsigned(self.notification_class))
-            }
+            PropertyId::NotificationClass => Ok(BACnetValue::Unsigned(self.notification_class)),
             PropertyId::Priority => {
                 let p = self.priority.read();
                 Ok(BACnetValue::Array(vec![
@@ -843,15 +834,24 @@ impl BACnetObject for NotificationClass {
         value: BACnetValue,
     ) -> Result<(), PropertyError> {
         match property_id {
-            PropertyId::ObjectIdentifier | PropertyId::ObjectType | PropertyId::NotificationClass => {
-                Err(PropertyError::ReadOnly(property_id))
-            }
+            PropertyId::ObjectIdentifier
+            | PropertyId::ObjectType
+            | PropertyId::NotificationClass => Err(PropertyError::ReadOnly(property_id)),
             PropertyId::Priority => {
                 if let BACnetValue::Array(arr) = &value {
                     if arr.len() == 3 {
-                        let p0 = arr[0].as_unsigned().ok_or(PropertyError::InvalidDataType(property_id))? as u8;
-                        let p1 = arr[1].as_unsigned().ok_or(PropertyError::InvalidDataType(property_id))? as u8;
-                        let p2 = arr[2].as_unsigned().ok_or(PropertyError::InvalidDataType(property_id))? as u8;
+                        let p0 = arr[0]
+                            .as_unsigned()
+                            .ok_or(PropertyError::InvalidDataType(property_id))?
+                            as u8;
+                        let p1 = arr[1]
+                            .as_unsigned()
+                            .ok_or(PropertyError::InvalidDataType(property_id))?
+                            as u8;
+                        let p2 = arr[2]
+                            .as_unsigned()
+                            .ok_or(PropertyError::InvalidDataType(property_id))?
+                            as u8;
                         *self.priority.write() = [p0, p1, p2];
                         Ok(())
                     } else {
@@ -909,7 +909,10 @@ mod tests {
             .with_low_limit(20.0)
             .with_deadband(2.0);
 
-        assert_eq!(ee.object_identifier(), ObjectId::new(ObjectType::EventEnrollment, 1));
+        assert_eq!(
+            ee.object_identifier(),
+            ObjectId::new(ObjectType::EventEnrollment, 1)
+        );
         assert_eq!(ee.object_name(), "TestAlarm");
         assert_eq!(ee.event_type(), EventType::OutOfRange);
         assert_eq!(ee.event_state(), EventState::Normal);
@@ -1055,13 +1058,15 @@ mod tests {
     fn test_event_enrollment_write_properties() {
         let ee = EventEnrollment::new(1, "Alarm", EventType::OutOfRange);
 
-        ee.write_property(PropertyId::HighLimit, BACnetValue::Real(95.0)).unwrap();
+        ee.write_property(PropertyId::HighLimit, BACnetValue::Real(95.0))
+            .unwrap();
         assert_eq!(
             ee.read_property(PropertyId::HighLimit).unwrap(),
             BACnetValue::Real(95.0)
         );
 
-        ee.write_property(PropertyId::LowLimit, BACnetValue::Real(5.0)).unwrap();
+        ee.write_property(PropertyId::LowLimit, BACnetValue::Real(5.0))
+            .unwrap();
         assert_eq!(
             ee.read_property(PropertyId::LowLimit).unwrap(),
             BACnetValue::Real(5.0)
@@ -1098,7 +1103,10 @@ mod tests {
             .with_priority(3, 5, 10)
             .with_ack_required(EventTransitionBits::all());
 
-        assert_eq!(nc.object_identifier(), ObjectId::new(ObjectType::NotificationClass, 1));
+        assert_eq!(
+            nc.object_identifier(),
+            ObjectId::new(ObjectType::NotificationClass, 1)
+        );
         assert_eq!(nc.notification_class_number(), 1);
         assert_eq!(nc.priority_for_transition(EventState::HighLimit), 3);
         assert_eq!(nc.priority_for_transition(EventState::Fault), 5);
@@ -1127,8 +1135,7 @@ mod tests {
 
     #[test]
     fn test_notification_class_properties() {
-        let nc = NotificationClass::new(5, "NC5")
-            .with_priority(1, 2, 3);
+        let nc = NotificationClass::new(5, "NC5").with_priority(1, 2, 3);
 
         assert_eq!(
             nc.read_property(PropertyId::NotificationClass).unwrap(),

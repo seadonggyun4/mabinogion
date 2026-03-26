@@ -25,7 +25,9 @@ impl BinaryEncodable for bool {
         buf.put_u8(if *self { 1 } else { 0 });
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 1 }
+    fn encoded_size(&self) -> usize {
+        1
+    }
 }
 
 impl BinaryEncodable for i8 {
@@ -33,7 +35,9 @@ impl BinaryEncodable for i8 {
         buf.put_i8(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 1 }
+    fn encoded_size(&self) -> usize {
+        1
+    }
 }
 
 impl BinaryEncodable for u8 {
@@ -41,7 +45,9 @@ impl BinaryEncodable for u8 {
         buf.put_u8(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 1 }
+    fn encoded_size(&self) -> usize {
+        1
+    }
 }
 
 impl BinaryEncodable for i16 {
@@ -49,7 +55,9 @@ impl BinaryEncodable for i16 {
         buf.put_i16_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 2 }
+    fn encoded_size(&self) -> usize {
+        2
+    }
 }
 
 impl BinaryEncodable for u16 {
@@ -57,7 +65,9 @@ impl BinaryEncodable for u16 {
         buf.put_u16_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 2 }
+    fn encoded_size(&self) -> usize {
+        2
+    }
 }
 
 impl BinaryEncodable for i32 {
@@ -65,7 +75,9 @@ impl BinaryEncodable for i32 {
         buf.put_i32_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 }
+    fn encoded_size(&self) -> usize {
+        4
+    }
 }
 
 impl BinaryEncodable for u32 {
@@ -73,7 +85,9 @@ impl BinaryEncodable for u32 {
         buf.put_u32_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 }
+    fn encoded_size(&self) -> usize {
+        4
+    }
 }
 
 impl BinaryEncodable for i64 {
@@ -81,7 +95,9 @@ impl BinaryEncodable for i64 {
         buf.put_i64_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 8 }
+    fn encoded_size(&self) -> usize {
+        8
+    }
 }
 
 impl BinaryEncodable for u64 {
@@ -89,7 +105,9 @@ impl BinaryEncodable for u64 {
         buf.put_u64_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 8 }
+    fn encoded_size(&self) -> usize {
+        8
+    }
 }
 
 impl BinaryEncodable for f32 {
@@ -97,7 +115,9 @@ impl BinaryEncodable for f32 {
         buf.put_f32_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 }
+    fn encoded_size(&self) -> usize {
+        4
+    }
 }
 
 impl BinaryEncodable for f64 {
@@ -105,7 +125,9 @@ impl BinaryEncodable for f64 {
         buf.put_f64_le(*self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 8 }
+    fn encoded_size(&self) -> usize {
+        8
+    }
 }
 
 // =========================================================================
@@ -119,14 +141,18 @@ impl BinaryEncodable for str {
         buf.put_slice(bytes);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 + self.len() }
+    fn encoded_size(&self) -> usize {
+        4 + self.len()
+    }
 }
 
 impl BinaryEncodable for String {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()> {
         self.as_str().encode(buf)
     }
-    fn encoded_size(&self) -> usize { 4 + self.len() }
+    fn encoded_size(&self) -> usize {
+        4 + self.len()
+    }
 }
 
 /// Encode an optional string (None → -1 length).
@@ -158,7 +184,9 @@ impl BinaryEncodable for Vec<u8> {
         buf.put_slice(self);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 + self.len() }
+    fn encoded_size(&self) -> usize {
+        4 + self.len()
+    }
 }
 
 /// Encode an optional byte string (None → -1 length).
@@ -194,7 +222,9 @@ impl BinaryEncodable for DateTime<Utc> {
         buf.put_i64_le(ticks);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 8 }
+    fn encoded_size(&self) -> usize {
+        8
+    }
 }
 
 // =========================================================================
@@ -210,7 +240,9 @@ impl BinaryEncodable for uuid::Uuid {
         buf.put_slice(d4);
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 16 }
+    fn encoded_size(&self) -> usize {
+        16
+    }
 }
 
 // =========================================================================

@@ -443,84 +443,394 @@ impl KnxMetricsSnapshot {
         let mut out = String::with_capacity(4096);
 
         // Server-level
-        prom_gauge(&mut out, "knx_server_state", "Current server state (0=Stopped,1=Starting,2=Running,3=Stopping)", self.server_state as f64);
-        prom_gauge(&mut out, "knx_active_connections", "Number of active tunnel connections", self.active_connections as f64);
-        prom_gauge(&mut out, "knx_max_connections", "Maximum connection capacity", self.max_connections as f64);
+        prom_gauge(
+            &mut out,
+            "knx_server_state",
+            "Current server state (0=Stopped,1=Starting,2=Running,3=Stopping)",
+            self.server_state as f64,
+        );
+        prom_gauge(
+            &mut out,
+            "knx_active_connections",
+            "Number of active tunnel connections",
+            self.active_connections as f64,
+        );
+        prom_gauge(
+            &mut out,
+            "knx_max_connections",
+            "Maximum connection capacity",
+            self.max_connections as f64,
+        );
 
         // Heartbeat
-        prom_counter(&mut out, "knx_heartbeat_requests_total", "Total heartbeat requests processed", self.heartbeat_total_requests as f64);
-        prom_counter(&mut out, "knx_heartbeat_continue_total", "Continue (0x00) heartbeat responses", self.heartbeat_continue_count as f64);
-        prom_counter(&mut out, "knx_heartbeat_immediate_reconnect_total", "ImmediateReconnect (0x21) heartbeat responses", self.heartbeat_immediate_reconnect_count as f64);
-        prom_counter(&mut out, "knx_heartbeat_abandon_tunnel_total", "AbandonTunnel (0x27) heartbeat responses", self.heartbeat_abandon_tunnel_count as f64);
-        prom_counter(&mut out, "knx_heartbeat_delayed_reconnect_total", "DelayedReconnect (0x29) heartbeat responses", self.heartbeat_delayed_reconnect_count as f64);
-        prom_counter(&mut out, "knx_heartbeat_no_response_total", "NoResponse (timeout simulation) heartbeat instances", self.heartbeat_no_response_count as f64);
-        prom_gauge(&mut out, "knx_heartbeat_fault_rate", "Heartbeat fault rate (non-Continue / total)", self.heartbeat_fault_rate);
+        prom_counter(
+            &mut out,
+            "knx_heartbeat_requests_total",
+            "Total heartbeat requests processed",
+            self.heartbeat_total_requests as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_heartbeat_continue_total",
+            "Continue (0x00) heartbeat responses",
+            self.heartbeat_continue_count as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_heartbeat_immediate_reconnect_total",
+            "ImmediateReconnect (0x21) heartbeat responses",
+            self.heartbeat_immediate_reconnect_count as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_heartbeat_abandon_tunnel_total",
+            "AbandonTunnel (0x27) heartbeat responses",
+            self.heartbeat_abandon_tunnel_count as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_heartbeat_delayed_reconnect_total",
+            "DelayedReconnect (0x29) heartbeat responses",
+            self.heartbeat_delayed_reconnect_count as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_heartbeat_no_response_total",
+            "NoResponse (timeout simulation) heartbeat instances",
+            self.heartbeat_no_response_count as f64,
+        );
+        prom_gauge(
+            &mut out,
+            "knx_heartbeat_fault_rate",
+            "Heartbeat fault rate (non-Continue / total)",
+            self.heartbeat_fault_rate,
+        );
 
         // Group Value Cache
-        prom_counter(&mut out, "knx_cache_hits_total", "Total cache hits", self.cache_hits_total as f64);
-        prom_counter(&mut out, "knx_cache_misses_total", "Total cache misses", self.cache_misses_total as f64);
-        prom_gauge(&mut out, "knx_cache_hit_rate", "Cache hit rate (0.0-1.0)", self.cache_hit_rate);
-        prom_counter(&mut out, "knx_cache_lookups_total", "Total cache lookups", self.cache_lookups_total as f64);
-        prom_counter(&mut out, "knx_cache_evictions_total", "Cache LRU evictions", self.cache_evictions_total as f64);
-        prom_counter(&mut out, "knx_cache_expirations_total", "Cache TTL expirations", self.cache_expirations_total as f64);
-        prom_counter(&mut out, "knx_cache_updates_total", "Total cache updates", self.cache_updates_total as f64);
-        prom_counter(&mut out, "knx_cache_indication_updates_total", "Cache updates from L_Data.ind", self.cache_indication_updates as f64);
-        prom_counter(&mut out, "knx_cache_write_updates_total", "Cache updates from GroupValueWrite", self.cache_write_updates as f64);
-        prom_gauge(&mut out, "knx_cache_entries", "Current number of cached entries", self.cache_entries_current as f64);
+        prom_counter(
+            &mut out,
+            "knx_cache_hits_total",
+            "Total cache hits",
+            self.cache_hits_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_misses_total",
+            "Total cache misses",
+            self.cache_misses_total as f64,
+        );
+        prom_gauge(
+            &mut out,
+            "knx_cache_hit_rate",
+            "Cache hit rate (0.0-1.0)",
+            self.cache_hit_rate,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_lookups_total",
+            "Total cache lookups",
+            self.cache_lookups_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_evictions_total",
+            "Cache LRU evictions",
+            self.cache_evictions_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_expirations_total",
+            "Cache TTL expirations",
+            self.cache_expirations_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_updates_total",
+            "Total cache updates",
+            self.cache_updates_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_indication_updates_total",
+            "Cache updates from L_Data.ind",
+            self.cache_indication_updates as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_cache_write_updates_total",
+            "Cache updates from GroupValueWrite",
+            self.cache_write_updates as f64,
+        );
+        prom_gauge(
+            &mut out,
+            "knx_cache_entries",
+            "Current number of cached entries",
+            self.cache_entries_current as f64,
+        );
 
         // Send Error Tracker
-        prom_counter(&mut out, "knx_error_tracker_successes_total", "Total successful sends", self.error_tracker_successes_total as f64);
-        prom_counter(&mut out, "knx_error_tracker_failures_total", "Total failed sends", self.error_tracker_failures_total as f64);
-        prom_gauge(&mut out, "knx_error_tracker_error_rate", "Overall error rate (0.0-1.0)", self.error_tracker_error_rate);
-        prom_counter(&mut out, "knx_error_tracker_events_total", "Total tracked events", self.error_tracker_events_total as f64);
-        prom_counter(&mut out, "knx_error_tracker_consecutive_triggers_total", "Consecutive threshold trigger count", self.error_tracker_consecutive_triggers as f64);
-        prom_counter(&mut out, "knx_error_tracker_rate_triggers_total", "Rate threshold trigger count", self.error_tracker_rate_triggers as f64);
+        prom_counter(
+            &mut out,
+            "knx_error_tracker_successes_total",
+            "Total successful sends",
+            self.error_tracker_successes_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_error_tracker_failures_total",
+            "Total failed sends",
+            self.error_tracker_failures_total as f64,
+        );
+        prom_gauge(
+            &mut out,
+            "knx_error_tracker_error_rate",
+            "Overall error rate (0.0-1.0)",
+            self.error_tracker_error_rate,
+        );
+        prom_counter(
+            &mut out,
+            "knx_error_tracker_events_total",
+            "Total tracked events",
+            self.error_tracker_events_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_error_tracker_consecutive_triggers_total",
+            "Consecutive threshold trigger count",
+            self.error_tracker_consecutive_triggers as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_error_tracker_rate_triggers_total",
+            "Rate threshold trigger count",
+            self.error_tracker_rate_triggers as f64,
+        );
 
         // Filter Chain
-        prom_counter(&mut out, "knx_filter_chain_frames_sent_total", "Frames processed in send direction", self.filter_chain_frames_sent as f64);
-        prom_counter(&mut out, "knx_filter_chain_frames_received_total", "Frames processed in recv direction", self.filter_chain_frames_received as f64);
-        prom_counter(&mut out, "knx_filter_chain_frames_dropped_total", "Frames dropped by filter chain", self.filter_chain_frames_dropped as f64);
-        prom_counter(&mut out, "knx_filter_chain_frames_queued_total", "Frames queued by filter chain", self.filter_chain_frames_queued as f64);
-        prom_counter(&mut out, "knx_filter_chain_total_delay_us", "Total accumulated filter delay (microseconds)", self.filter_chain_total_delay_us as f64);
-        prom_counter(&mut out, "knx_filter_chain_bypass_total", "Filter chain bypass count (disabled)", self.filter_chain_bypass_count as f64);
+        prom_counter(
+            &mut out,
+            "knx_filter_chain_frames_sent_total",
+            "Frames processed in send direction",
+            self.filter_chain_frames_sent as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_filter_chain_frames_received_total",
+            "Frames processed in recv direction",
+            self.filter_chain_frames_received as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_filter_chain_frames_dropped_total",
+            "Frames dropped by filter chain",
+            self.filter_chain_frames_dropped as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_filter_chain_frames_queued_total",
+            "Frames queued by filter chain",
+            self.filter_chain_frames_queued as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_filter_chain_total_delay_us",
+            "Total accumulated filter delay (microseconds)",
+            self.filter_chain_total_delay_us as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_filter_chain_bypass_total",
+            "Filter chain bypass count (disabled)",
+            self.filter_chain_bypass_count as f64,
+        );
 
         // PaceFilter
-        prom_counter(&mut out, "knx_pace_immediate_pass_total", "Frames passed immediately (no delay)", self.pace_immediate_pass as f64);
-        prom_counter(&mut out, "knx_pace_delayed_frames_total", "Frames delayed for bus timing", self.pace_delayed_frames as f64);
-        prom_counter(&mut out, "knx_pace_dropped_frames_total", "Frames dropped by pace filter", self.pace_dropped_frames as f64);
-        prom_counter(&mut out, "knx_pace_total_delay_us", "Total pace filter delay (microseconds)", self.pace_total_delay_us as f64);
-        prom_counter(&mut out, "knx_pace_busy_to_idle_total", "Busy to Idle state transitions", self.pace_busy_to_idle as f64);
-        prom_counter(&mut out, "knx_pace_idle_to_down_total", "Idle to Down state transitions", self.pace_idle_to_down as f64);
+        prom_counter(
+            &mut out,
+            "knx_pace_immediate_pass_total",
+            "Frames passed immediately (no delay)",
+            self.pace_immediate_pass as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_pace_delayed_frames_total",
+            "Frames delayed for bus timing",
+            self.pace_delayed_frames as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_pace_dropped_frames_total",
+            "Frames dropped by pace filter",
+            self.pace_dropped_frames as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_pace_total_delay_us",
+            "Total pace filter delay (microseconds)",
+            self.pace_total_delay_us as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_pace_busy_to_idle_total",
+            "Busy to Idle state transitions",
+            self.pace_busy_to_idle as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_pace_idle_to_down_total",
+            "Idle to Down state transitions",
+            self.pace_idle_to_down as f64,
+        );
 
         // QueueFilter
-        prom_counter(&mut out, "knx_queue_direct_pass_total", "Frames passed directly (no queuing)", self.queue_direct_pass as f64);
-        prom_counter(&mut out, "knx_queue_queued_frames_total", "Frames enqueued due to backpressure", self.queue_queued_frames as f64);
-        prom_counter(&mut out, "knx_queue_dropped_full_total", "Frames dropped (queue full)", self.queue_dropped_full as f64);
-        prom_counter(&mut out, "knx_queue_evicted_frames_total", "Frames evicted from lower-priority queues", self.queue_evicted_frames as f64);
-        prom_counter(&mut out, "knx_queue_drained_frames_total", "Frames drained from queue", self.queue_drained_frames as f64);
-        prom_counter(&mut out, "knx_queue_high_priority_total", "High-priority frames processed", self.queue_high_priority as f64);
-        prom_counter(&mut out, "knx_queue_normal_priority_total", "Normal-priority frames processed", self.queue_normal_priority as f64);
-        prom_counter(&mut out, "knx_queue_low_priority_total", "Low-priority frames processed", self.queue_low_priority as f64);
+        prom_counter(
+            &mut out,
+            "knx_queue_direct_pass_total",
+            "Frames passed directly (no queuing)",
+            self.queue_direct_pass as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_queued_frames_total",
+            "Frames enqueued due to backpressure",
+            self.queue_queued_frames as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_dropped_full_total",
+            "Frames dropped (queue full)",
+            self.queue_dropped_full as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_evicted_frames_total",
+            "Frames evicted from lower-priority queues",
+            self.queue_evicted_frames as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_drained_frames_total",
+            "Frames drained from queue",
+            self.queue_drained_frames as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_high_priority_total",
+            "High-priority frames processed",
+            self.queue_high_priority as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_normal_priority_total",
+            "Normal-priority frames processed",
+            self.queue_normal_priority as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_queue_low_priority_total",
+            "Low-priority frames processed",
+            self.queue_low_priority as f64,
+        );
 
         // RetryFilter
-        prom_counter(&mut out, "knx_retry_direct_pass_total", "Frames passed directly (circuit closed)", self.retry_direct_pass as f64);
-        prom_counter(&mut out, "knx_retry_circuit_open_drops_total", "Frames dropped (circuit breaker open)", self.retry_circuit_open_drops as f64);
-        prom_counter(&mut out, "knx_retry_probe_frames_total", "Probe frames during half-open state", self.retry_probe_frames as f64);
-        prom_counter(&mut out, "knx_retry_attempts_total", "Total retry attempts", self.retry_attempts as f64);
-        prom_counter(&mut out, "knx_retry_successes_total", "Successful transmissions (retry filter)", self.retry_successes as f64);
-        prom_counter(&mut out, "knx_retry_failures_total", "Failed transmissions (retry filter)", self.retry_failures as f64);
-        prom_counter(&mut out, "knx_retry_state_transitions_total", "Circuit breaker state transitions", self.retry_state_transitions as f64);
-        prom_counter(&mut out, "knx_retry_circuit_trips_total", "Circuit breaker trips (Closed to Open)", self.retry_circuit_trips as f64);
-        prom_counter(&mut out, "knx_retry_circuit_resets_total", "Circuit breaker resets (HalfOpen to Closed)", self.retry_circuit_resets as f64);
+        prom_counter(
+            &mut out,
+            "knx_retry_direct_pass_total",
+            "Frames passed directly (circuit closed)",
+            self.retry_direct_pass as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_circuit_open_drops_total",
+            "Frames dropped (circuit breaker open)",
+            self.retry_circuit_open_drops as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_probe_frames_total",
+            "Probe frames during half-open state",
+            self.retry_probe_frames as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_attempts_total",
+            "Total retry attempts",
+            self.retry_attempts as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_successes_total",
+            "Successful transmissions (retry filter)",
+            self.retry_successes as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_failures_total",
+            "Failed transmissions (retry filter)",
+            self.retry_failures as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_state_transitions_total",
+            "Circuit breaker state transitions",
+            self.retry_state_transitions as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_circuit_trips_total",
+            "Circuit breaker trips (Closed to Open)",
+            self.retry_circuit_trips as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_retry_circuit_resets_total",
+            "Circuit breaker resets (HalfOpen to Closed)",
+            self.retry_circuit_resets as f64,
+        );
 
         // Tunnel (aggregated per-connection)
-        prom_counter(&mut out, "knx_tunnel_frames_sent_total", "Total frames sent across all connections", self.tunnel_frames_sent_total as f64);
-        prom_counter(&mut out, "knx_tunnel_frames_received_total", "Total frames received across all connections", self.tunnel_frames_received_total as f64);
-        prom_counter(&mut out, "knx_tunnel_duplicates_total", "Total duplicate frames detected", self.tunnel_duplicates_total as f64);
-        prom_counter(&mut out, "knx_tunnel_out_of_order_total", "Total out-of-order frames detected", self.tunnel_out_of_order_total as f64);
-        prom_counter(&mut out, "knx_tunnel_fatal_desyncs_total", "Total fatal desync events", self.tunnel_fatal_desyncs_total as f64);
-        prom_counter(&mut out, "knx_tunnel_resets_total", "Total sequence resets", self.tunnel_resets_total as f64);
-        prom_counter(&mut out, "knx_tunnel_fsm_transitions_total", "Total FSM state transitions", self.tunnel_fsm_transitions_total as f64);
+        prom_counter(
+            &mut out,
+            "knx_tunnel_frames_sent_total",
+            "Total frames sent across all connections",
+            self.tunnel_frames_sent_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_tunnel_frames_received_total",
+            "Total frames received across all connections",
+            self.tunnel_frames_received_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_tunnel_duplicates_total",
+            "Total duplicate frames detected",
+            self.tunnel_duplicates_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_tunnel_out_of_order_total",
+            "Total out-of-order frames detected",
+            self.tunnel_out_of_order_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_tunnel_fatal_desyncs_total",
+            "Total fatal desync events",
+            self.tunnel_fatal_desyncs_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_tunnel_resets_total",
+            "Total sequence resets",
+            self.tunnel_resets_total as f64,
+        );
+        prom_counter(
+            &mut out,
+            "knx_tunnel_fsm_transitions_total",
+            "Total FSM state transitions",
+            self.tunnel_fsm_transitions_total as f64,
+        );
 
         out
     }
@@ -530,17 +840,28 @@ impl KnxMetricsSnapshot {
         let mut out = String::with_capacity(1024);
 
         out.push_str("=== KNXnet/IP Metrics Summary ===\n");
-        out.push_str(&format!("Server state: {}\n", match self.server_state {
-            0 => "Stopped",
-            1 => "Starting",
-            2 => "Running",
-            3 => "Stopping",
-            _ => "Unknown",
-        }));
-        out.push_str(&format!("Connections: {}/{}\n", self.active_connections, self.max_connections));
+        out.push_str(&format!(
+            "Server state: {}\n",
+            match self.server_state {
+                0 => "Stopped",
+                1 => "Starting",
+                2 => "Running",
+                3 => "Stopping",
+                _ => "Unknown",
+            }
+        ));
+        out.push_str(&format!(
+            "Connections: {}/{}\n",
+            self.active_connections, self.max_connections
+        ));
         out.push_str(&format!("\n--- Heartbeat ---\n"));
-        out.push_str(&format!("Requests: {}  Fault rate: {:.1}%\n", self.heartbeat_total_requests, self.heartbeat_fault_rate * 100.0));
-        out.push_str(&format!("  Continue={} ImmRecon={} Abandon={} DelayRecon={} NoResp={}\n",
+        out.push_str(&format!(
+            "Requests: {}  Fault rate: {:.1}%\n",
+            self.heartbeat_total_requests,
+            self.heartbeat_fault_rate * 100.0
+        ));
+        out.push_str(&format!(
+            "  Continue={} ImmRecon={} Abandon={} DelayRecon={} NoResp={}\n",
             self.heartbeat_continue_count,
             self.heartbeat_immediate_reconnect_count,
             self.heartbeat_abandon_tunnel_count,
@@ -548,24 +869,48 @@ impl KnxMetricsSnapshot {
             self.heartbeat_no_response_count,
         ));
         out.push_str(&format!("\n--- Cache ---\n"));
-        out.push_str(&format!("Hit rate: {:.1}%  Lookups: {}  Entries: {}\n", self.cache_hit_rate * 100.0, self.cache_lookups_total, self.cache_entries_current));
-        out.push_str(&format!("  Hits={} Misses={} Evictions={} Expirations={}\n", self.cache_hits_total, self.cache_misses_total, self.cache_evictions_total, self.cache_expirations_total));
+        out.push_str(&format!(
+            "Hit rate: {:.1}%  Lookups: {}  Entries: {}\n",
+            self.cache_hit_rate * 100.0,
+            self.cache_lookups_total,
+            self.cache_entries_current
+        ));
+        out.push_str(&format!(
+            "  Hits={} Misses={} Evictions={} Expirations={}\n",
+            self.cache_hits_total,
+            self.cache_misses_total,
+            self.cache_evictions_total,
+            self.cache_expirations_total
+        ));
         out.push_str(&format!("\n--- Error Tracker ---\n"));
-        out.push_str(&format!("Error rate: {:.1}%  Events: {}\n", self.error_tracker_error_rate * 100.0, self.error_tracker_events_total));
-        out.push_str(&format!("  Successes={} Failures={} ConsecTrigs={} RateTrigs={}\n",
-            self.error_tracker_successes_total, self.error_tracker_failures_total,
-            self.error_tracker_consecutive_triggers, self.error_tracker_rate_triggers,
+        out.push_str(&format!(
+            "Error rate: {:.1}%  Events: {}\n",
+            self.error_tracker_error_rate * 100.0,
+            self.error_tracker_events_total
+        ));
+        out.push_str(&format!(
+            "  Successes={} Failures={} ConsecTrigs={} RateTrigs={}\n",
+            self.error_tracker_successes_total,
+            self.error_tracker_failures_total,
+            self.error_tracker_consecutive_triggers,
+            self.error_tracker_rate_triggers,
         ));
         out.push_str(&format!("\n--- Filter Chain ---\n"));
-        out.push_str(&format!("Sent={} Received={} Dropped={} Queued={} Bypassed={}\n",
-            self.filter_chain_frames_sent, self.filter_chain_frames_received,
-            self.filter_chain_frames_dropped, self.filter_chain_frames_queued,
+        out.push_str(&format!(
+            "Sent={} Received={} Dropped={} Queued={} Bypassed={}\n",
+            self.filter_chain_frames_sent,
+            self.filter_chain_frames_received,
+            self.filter_chain_frames_dropped,
+            self.filter_chain_frames_queued,
             self.filter_chain_bypass_count,
         ));
         out.push_str(&format!("\n--- Tunnel ---\n"));
-        out.push_str(&format!("Sent={} Received={} Dupes={} OoO={} Desyncs={}\n",
-            self.tunnel_frames_sent_total, self.tunnel_frames_received_total,
-            self.tunnel_duplicates_total, self.tunnel_out_of_order_total,
+        out.push_str(&format!(
+            "Sent={} Received={} Dupes={} OoO={} Desyncs={}\n",
+            self.tunnel_frames_sent_total,
+            self.tunnel_frames_received_total,
+            self.tunnel_duplicates_total,
+            self.tunnel_out_of_order_total,
             self.tunnel_fatal_desyncs_total,
         ));
 
@@ -705,7 +1050,11 @@ pub struct ConnectionMetricsSnapshot {
 fn prom_counter(out: &mut String, name: &str, help: &str, value: f64) {
     out.push_str(&format!(
         "# HELP {} {}\n# TYPE {} counter\n{} {}\n",
-        name, help, name, name, format_prom_value(value),
+        name,
+        help,
+        name,
+        name,
+        format_prom_value(value),
     ));
 }
 
@@ -713,7 +1062,11 @@ fn prom_counter(out: &mut String, name: &str, help: &str, value: f64) {
 fn prom_gauge(out: &mut String, name: &str, help: &str, value: f64) {
     out.push_str(&format!(
         "# HELP {} {}\n# TYPE {} gauge\n{} {}\n",
-        name, help, name, name, format_prom_value(value),
+        name,
+        help,
+        name,
+        name,
+        format_prom_value(value),
     ));
 }
 
@@ -937,8 +1290,7 @@ mod tests {
             FsmStatsSnapshot { transitions: 80 },
         ];
 
-        let snapshot = KnxMetricsSnapshot::zero()
-            .with_tunnel_aggregate(&seq_stats, &fsm_stats);
+        let snapshot = KnxMetricsSnapshot::zero().with_tunnel_aggregate(&seq_stats, &fsm_stats);
 
         assert_eq!(snapshot.tunnel_frames_sent_total, 300);
         assert_eq!(snapshot.tunnel_frames_received_total, 285);
@@ -951,8 +1303,7 @@ mod tests {
 
     #[test]
     fn test_prometheus_output_format() {
-        let snapshot = KnxMetricsSnapshot::zero()
-            .with_server(1000, 2, 3, 10);
+        let snapshot = KnxMetricsSnapshot::zero().with_server(1000, 2, 3, 10);
 
         let prom = snapshot.to_prometheus();
 
@@ -1019,8 +1370,7 @@ mod tests {
 
     #[test]
     fn test_summary_output() {
-        let snapshot = KnxMetricsSnapshot::zero()
-            .with_server(1000, 2, 3, 10);
+        let snapshot = KnxMetricsSnapshot::zero().with_server(1000, 2, 3, 10);
 
         let summary = snapshot.summary();
         assert!(summary.contains("KNXnet/IP Metrics Summary"));
@@ -1054,43 +1404,72 @@ mod tests {
             no_response_count: 0,
         };
         let cache = CacheStatsSnapshot {
-            hits: 50, misses: 10, evictions: 0,
-            expirations: 0, updates: 30,
-            indication_updates: 20, write_updates: 10,
+            hits: 50,
+            misses: 10,
+            evictions: 0,
+            expirations: 0,
+            updates: 30,
+            indication_updates: 20,
+            write_updates: 10,
         };
         let tracker = TrackerStatsSnapshot {
-            total_successes: 100, total_failures: 5,
-            consecutive_triggers: 0, rate_triggers: 0,
+            total_successes: 100,
+            total_failures: 5,
+            consecutive_triggers: 0,
+            rate_triggers: 0,
         };
         let filter = FilterChainStatsSnapshot {
-            frames_sent: 200, frames_received: 195,
-            frames_dropped: 3, frames_queued: 2,
-            total_delay_us: 100_000, bypass_count: 0,
+            frames_sent: 200,
+            frames_received: 195,
+            frames_dropped: 3,
+            frames_queued: 2,
+            total_delay_us: 100_000,
+            bypass_count: 0,
         };
         let pace = PaceFilterStatsSnapshot {
-            immediate_pass: 150, delayed_frames: 50,
-            dropped_frames: 3, total_delay_us: 100_000,
-            busy_to_idle: 40, idle_to_down: 10,
+            immediate_pass: 150,
+            delayed_frames: 50,
+            dropped_frames: 3,
+            total_delay_us: 100_000,
+            busy_to_idle: 40,
+            idle_to_down: 10,
         };
         let queue = QueueFilterStatsSnapshot {
-            direct_pass: 190, queued_frames: 10,
-            dropped_full: 0, evicted_frames: 0,
-            drained_frames: 10, high_priority: 5,
-            normal_priority: 180, low_priority: 15,
+            direct_pass: 190,
+            queued_frames: 10,
+            dropped_full: 0,
+            evicted_frames: 0,
+            drained_frames: 10,
+            high_priority: 5,
+            normal_priority: 180,
+            low_priority: 15,
         };
         let retry = RetryFilterStatsSnapshot {
-            direct_pass: 195, circuit_open_drops: 2,
-            probe_frames: 1, retry_attempts: 5,
-            successes: 195, failures: 5,
-            state_transitions: 3, circuit_trips: 1,
+            direct_pass: 195,
+            circuit_open_drops: 2,
+            probe_frames: 1,
+            retry_attempts: 5,
+            successes: 195,
+            failures: 5,
+            state_transitions: 3,
+            circuit_trips: 1,
             circuit_resets: 1,
         };
 
         let snapshot = collector.collect(
-            2, 3, 10,
-            &heartbeat, &cache, 25, &tracker,
-            &filter, &pace, &queue, &retry,
-            &[], &[],
+            2,
+            3,
+            10,
+            &heartbeat,
+            &cache,
+            25,
+            &tracker,
+            &filter,
+            &pace,
+            &queue,
+            &retry,
+            &[],
+            &[],
         );
 
         assert_eq!(snapshot.server_state, 2);
@@ -1111,8 +1490,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_serialization() {
-        let snapshot = KnxMetricsSnapshot::zero()
-            .with_server(1000, 2, 1, 10);
+        let snapshot = KnxMetricsSnapshot::zero().with_server(1000, 2, 1, 10);
 
         let json = serde_json::to_string(&snapshot).unwrap();
         let deserialized: KnxMetricsSnapshot = serde_json::from_str(&json).unwrap();

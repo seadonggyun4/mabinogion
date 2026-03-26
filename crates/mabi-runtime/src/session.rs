@@ -105,19 +105,20 @@ impl RuntimeSession {
             })?;
             let descriptor = driver.descriptor();
             let service = driver.build(launch.clone(), extensions.clone()).await?;
+            let service_protocol = service.status().protocol.or(Some(descriptor.protocol));
 
             let service_devices = DeviceRegistry::new();
             service.register_devices(&service_devices)?;
             for (device_id, port) in service_devices.entries() {
                 devices.register(
                     device_id,
-                    extensions.decorate_device_port(Some(descriptor.protocol), port),
+                    extensions.decorate_device_port(service_protocol, port),
                 );
             }
 
             handles.push(ServiceHandle::named(
                 launch.service_name(&descriptor),
-                Some(descriptor.protocol),
+                service_protocol,
                 service,
             ));
         }

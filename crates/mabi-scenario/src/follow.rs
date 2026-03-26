@@ -458,10 +458,7 @@ mod tests {
     fn test_follow_manager() {
         let mut manager = FollowManager::new();
 
-        manager.register(
-            "follower-1",
-            FollowConfig::new("source-1").with_gain(1.5),
-        );
+        manager.register("follower-1", FollowConfig::new("source-1").with_gain(1.5));
 
         manager.register(
             "follower-2",

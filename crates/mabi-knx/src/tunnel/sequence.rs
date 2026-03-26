@@ -7,7 +7,7 @@
 //! - `distance >= FATAL_DESYNC_THRESHOLD` → FatalDesync (tunnel restart)
 //! - else → OutOfOrder (log warning)
 
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 /// Distance threshold for fatal desync (knxd: `seqno >= rno + 5`).
 const FATAL_DESYNC_THRESHOLD: u8 = 5;
@@ -19,15 +19,10 @@ const FORWARD_BOUNDARY: u8 = 128;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceivedValidation {
     /// Sequence matches expected — advance rno and process frame.
-    Valid {
-        sequence: u8,
-    },
+    Valid { sequence: u8 },
     /// Duplicate of the last processed frame — send ACK but don't process.
     /// knxd: `(seqno+1) & 0xff == rno`
-    Duplicate {
-        sequence: u8,
-        expected: u8,
-    },
+    Duplicate { sequence: u8, expected: u8 },
     /// Mild out-of-order (1-4 frames ahead) — log warning, send ACK.
     OutOfOrder {
         sequence: u8,
@@ -152,7 +147,11 @@ impl SequenceTracker {
         loop {
             let current = self.sno.load(Ordering::SeqCst);
             let next = current.wrapping_add(1);
-            if self.sno.compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            if self
+                .sno
+                .compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
                 self.stats.frames_sent.fetch_add(1, Ordering::Relaxed);
                 return current;
             }
@@ -189,7 +188,11 @@ impl SequenceTracker {
                     break;
                 }
                 let next = expected.wrapping_add(1);
-                if self.rno.compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                if self
+                    .rno
+                    .compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
                     break;
                 }
             }
@@ -200,7 +203,9 @@ impl SequenceTracker {
         // Case 2: duplicate — (seqno+1) & 0xff == rno
         // This means seqno == rno - 1 (the frame we just processed)
         if sequence.wrapping_add(1) == expected {
-            self.stats.duplicates_detected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .duplicates_detected
+                .fetch_add(1, Ordering::Relaxed);
             return ReceivedValidation::Duplicate { sequence, expected };
         }
 
@@ -219,7 +224,9 @@ impl SequenceTracker {
                 }
             } else {
                 // Case 3: Mild out-of-order (1-4 frames ahead)
-                self.stats.out_of_order_detected.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .out_of_order_detected
+                    .fetch_add(1, Ordering::Relaxed);
                 ReceivedValidation::OutOfOrder {
                     sequence,
                     expected,
@@ -228,7 +235,9 @@ impl SequenceTracker {
             }
         } else {
             // Backward distance — treat as duplicate of an older frame
-            self.stats.duplicates_detected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .duplicates_detected
+                .fetch_add(1, Ordering::Relaxed);
             ReceivedValidation::Duplicate { sequence, expected }
         }
     }
@@ -306,7 +315,13 @@ mod tests {
 
         // Duplicate of frame 0: (0+1)&0xff == 1 == rno
         let result = tracker.validate_received(0);
-        assert!(matches!(result, ReceivedValidation::Duplicate { sequence: 0, expected: 1 }));
+        assert!(matches!(
+            result,
+            ReceivedValidation::Duplicate {
+                sequence: 0,
+                expected: 1
+            }
+        ));
         assert!(result.should_ack());
         assert!(!result.should_process());
         assert_eq!(tracker.current_rno(), 1); // rno unchanged
@@ -318,7 +333,14 @@ mod tests {
 
         // Skip to sequence 2 (distance = 2, < 5)
         let result = tracker.validate_received(2);
-        assert!(matches!(result, ReceivedValidation::OutOfOrder { sequence: 2, expected: 0, distance: 2 }));
+        assert!(matches!(
+            result,
+            ReceivedValidation::OutOfOrder {
+                sequence: 2,
+                expected: 0,
+                distance: 2
+            }
+        ));
         assert!(result.should_process());
         assert!(result.should_ack());
     }
@@ -329,7 +351,14 @@ mod tests {
 
         // Skip to sequence 5 (distance = 5, >= threshold)
         let result = tracker.validate_received(5);
-        assert!(matches!(result, ReceivedValidation::FatalDesync { sequence: 5, expected: 0, distance: 5 }));
+        assert!(matches!(
+            result,
+            ReceivedValidation::FatalDesync {
+                sequence: 5,
+                expected: 0,
+                distance: 5
+            }
+        ));
         assert!(result.requires_restart());
         assert!(!result.should_ack());
     }
@@ -368,7 +397,13 @@ mod tests {
 
         // 255 is now the duplicate: (255+1)&0xff == 0 == rno
         let result = tracker.validate_received(255);
-        assert!(matches!(result, ReceivedValidation::Duplicate { sequence: 255, expected: 0 }));
+        assert!(matches!(
+            result,
+            ReceivedValidation::Duplicate {
+                sequence: 255,
+                expected: 0
+            }
+        ));
     }
 
     #[test]
@@ -391,7 +426,13 @@ mod tests {
         assert_eq!(seq, 0);
 
         assert_eq!(tracker.validate_ack(0), AckValidation::Valid);
-        assert!(matches!(tracker.validate_ack(1), AckValidation::Mismatch { expected: 0, actual: 1 }));
+        assert!(matches!(
+            tracker.validate_ack(1),
+            AckValidation::Mismatch {
+                expected: 0,
+                actual: 1
+            }
+        ));
     }
 
     #[test]

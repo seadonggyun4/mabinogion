@@ -182,10 +182,7 @@ pub enum LogDatum {
     /// A null value (e.g., property couldn't be read).
     NullValue,
     /// A failure status indicator.
-    Failure {
-        error_class: u16,
-        error_code: u16,
-    },
+    Failure { error_class: u16, error_code: u16 },
     /// Time change indicator (internal clock adjustment).
     TimeChange(f32),
 }
@@ -645,18 +642,14 @@ impl BACnetObject for TrendLog {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::TrendLog as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::TrendLog as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::Enable => Ok(BACnetValue::Boolean(self.is_enabled())),
-            PropertyId::StopWhenFull => {
-                Ok(BACnetValue::Boolean(self.stop_when_full.load(Ordering::Acquire)))
-            }
+            PropertyId::StopWhenFull => Ok(BACnetValue::Boolean(
+                self.stop_when_full.load(Ordering::Acquire),
+            )),
             PropertyId::BufferSize => Ok(BACnetValue::Unsigned(self.buffer_size as u32)),
-            PropertyId::RecordCount => {
-                Ok(BACnetValue::Unsigned(self.record_count() as u32))
-            }
+            PropertyId::RecordCount => Ok(BACnetValue::Unsigned(self.record_count() as u32)),
             PropertyId::TotalRecordCount => {
                 Ok(BACnetValue::Unsigned(self.total_record_count() as u32))
             }
@@ -665,11 +658,9 @@ impl BACnetObject for TrendLog {
             PropertyId::NotificationThreshold => {
                 Ok(BACnetValue::Unsigned(*self.notification_threshold.read()))
             }
-            PropertyId::RecordsSinceNotification => {
-                Ok(BACnetValue::Unsigned(
-                    self.records_since_notification.load(Ordering::Relaxed) as u32,
-                ))
-            }
+            PropertyId::RecordsSinceNotification => Ok(BACnetValue::Unsigned(
+                self.records_since_notification.load(Ordering::Relaxed) as u32,
+            )),
             PropertyId::LogBuffer => {
                 // Return as an Array of structured values.
                 // Each element encodes: timestamp, datum, status_flags.
@@ -712,28 +703,38 @@ impl BACnetObject for TrendLog {
                 Err(PropertyError::ReadOnly(property_id))
             }
             PropertyId::Enable => {
-                let v = value.as_bool().ok_or(PropertyError::InvalidDataType(property_id))?;
+                let v = value
+                    .as_bool()
+                    .ok_or(PropertyError::InvalidDataType(property_id))?;
                 self.enabled.store(v, Ordering::Release);
                 Ok(())
             }
             PropertyId::StopWhenFull => {
-                let v = value.as_bool().ok_or(PropertyError::InvalidDataType(property_id))?;
+                let v = value
+                    .as_bool()
+                    .ok_or(PropertyError::InvalidDataType(property_id))?;
                 self.stop_when_full.store(v, Ordering::Release);
                 Ok(())
             }
             PropertyId::LogInterval => {
-                let v = value.as_unsigned().ok_or(PropertyError::InvalidDataType(property_id))?;
+                let v = value
+                    .as_unsigned()
+                    .ok_or(PropertyError::InvalidDataType(property_id))?;
                 *self.log_interval.write() = v;
                 Ok(())
             }
             PropertyId::NotificationThreshold => {
-                let v = value.as_unsigned().ok_or(PropertyError::InvalidDataType(property_id))?;
+                let v = value
+                    .as_unsigned()
+                    .ok_or(PropertyError::InvalidDataType(property_id))?;
                 *self.notification_threshold.write() = v;
                 Ok(())
             }
             PropertyId::RecordCount => {
                 // Writing 0 to RecordCount purges the buffer (ASHRAE 135, Clause 12.25.37)
-                let v = value.as_unsigned().ok_or(PropertyError::InvalidDataType(property_id))?;
+                let v = value
+                    .as_unsigned()
+                    .ok_or(PropertyError::InvalidDataType(property_id))?;
                 if v == 0 {
                     self.purge();
                     Ok(())
@@ -820,7 +821,10 @@ mod tests {
     #[test]
     fn test_trend_log_creation() {
         let tl = TrendLog::new(1, "TL_1", 100);
-        assert_eq!(tl.object_identifier(), ObjectId::new(ObjectType::TrendLog, 1));
+        assert_eq!(
+            tl.object_identifier(),
+            ObjectId::new(ObjectType::TrendLog, 1)
+        );
         assert_eq!(tl.object_name(), "TL_1");
         assert_eq!(tl.buffer_size(), 100);
         assert_eq!(tl.record_count(), 0);
@@ -839,26 +843,23 @@ mod tests {
         assert_eq!(tl.description(), Some("Test trend log"));
         assert_eq!(tl.log_interval(), 60);
         assert!(tl.is_enabled());
-        assert_eq!(tl.read_property(PropertyId::StopWhenFull).unwrap(), BACnetValue::Boolean(true));
-        assert_eq!(tl.read_property(PropertyId::NotificationThreshold).unwrap(), BACnetValue::Unsigned(10));
+        assert_eq!(
+            tl.read_property(PropertyId::StopWhenFull).unwrap(),
+            BACnetValue::Boolean(true)
+        );
+        assert_eq!(
+            tl.read_property(PropertyId::NotificationThreshold).unwrap(),
+            BACnetValue::Unsigned(10)
+        );
     }
 
     #[test]
     fn test_add_records() {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
-        tl.add_record_with_timestamp(
-            LogDatum::RealValue(72.5),
-            make_timestamp(10, 0, 0),
-        );
-        tl.add_record_with_timestamp(
-            LogDatum::RealValue(73.0),
-            make_timestamp(10, 1, 0),
-        );
-        tl.add_record_with_timestamp(
-            LogDatum::RealValue(73.5),
-            make_timestamp(10, 2, 0),
-        );
+        tl.add_record_with_timestamp(LogDatum::RealValue(72.5), make_timestamp(10, 0, 0));
+        tl.add_record_with_timestamp(LogDatum::RealValue(73.0), make_timestamp(10, 1, 0));
+        tl.add_record_with_timestamp(LogDatum::RealValue(73.5), make_timestamp(10, 2, 0));
 
         assert_eq!(tl.record_count(), 3);
         assert_eq!(tl.total_record_count(), 3);
@@ -869,10 +870,7 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 3).with_enabled(true);
 
         for i in 0..5 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Buffer size is 3, so only last 3 records should remain
@@ -892,10 +890,7 @@ mod tests {
             .with_stop_when_full(true);
 
         for i in 0..5 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Should only have the first 3 records
@@ -911,10 +906,7 @@ mod tests {
     fn test_disabled_no_logging() {
         let tl = TrendLog::new(1, "TL", 100); // Disabled by default
 
-        tl.add_record_with_timestamp(
-            LogDatum::RealValue(1.0),
-            make_timestamp(10, 0, 0),
-        );
+        tl.add_record_with_timestamp(LogDatum::RealValue(1.0), make_timestamp(10, 0, 0));
 
         assert_eq!(tl.record_count(), 0);
     }
@@ -924,10 +916,7 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
         for i in 0..10 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         assert_eq!(tl.record_count(), 10);
@@ -940,14 +929,12 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
         for i in 0..5 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         assert_eq!(tl.record_count(), 5);
-        tl.write_property(PropertyId::RecordCount, BACnetValue::Unsigned(0)).unwrap();
+        tl.write_property(PropertyId::RecordCount, BACnetValue::Unsigned(0))
+            .unwrap();
         assert_eq!(tl.record_count(), 0);
     }
 
@@ -956,10 +943,7 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
         for i in 0..10u8 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Read 3 records starting at position 4 (1-based)
@@ -975,17 +959,14 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
         for i in 0..10u8 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Read 3 records backwards ending at position 5 (1-based)
         let (records, count, more) = tl.read_range_by_position(5, -3);
         assert_eq!(count, 3);
         assert!(more); // More records before
-        // Reversed: seq 4, 3, 2
+                       // Reversed: seq 4, 3, 2
         assert_eq!(records[0].sequence_number, 4);
         assert_eq!(records[2].sequence_number, 2);
     }
@@ -995,10 +976,7 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
         for i in 0..10u8 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Read 3 records starting at sequence 5
@@ -1014,10 +992,7 @@ mod tests {
         let tl = TrendLog::new(1, "TL", 100).with_enabled(true);
 
         for i in 0..10u8 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Read 3 records starting at 10:05:00
@@ -1036,17 +1011,11 @@ mod tests {
             .with_notification_threshold(5);
 
         for i in 0..4 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
         assert!(!tl.notification_threshold_reached());
 
-        tl.add_record_with_timestamp(
-            LogDatum::RealValue(4.0),
-            make_timestamp(10, 4, 0),
-        );
+        tl.add_record_with_timestamp(LogDatum::RealValue(4.0), make_timestamp(10, 4, 0));
         assert!(tl.notification_threshold_reached());
 
         tl.reset_notification_counter();
@@ -1060,10 +1029,7 @@ mod tests {
         assert!(tl.sequence_range().is_none());
 
         for i in 0..7 {
-            tl.add_record_with_timestamp(
-                LogDatum::RealValue(i as f32),
-                make_timestamp(10, i, 0),
-            );
+            tl.add_record_with_timestamp(LogDatum::RealValue(i as f32), make_timestamp(10, i, 0));
         }
 
         // Buffer holds 5 records (seq 2..6)
@@ -1116,15 +1082,21 @@ mod tests {
     fn test_property_writes() {
         let tl = TrendLog::new(1, "TL", 100);
 
-        tl.write_property(PropertyId::Enable, BACnetValue::Boolean(true)).unwrap();
+        tl.write_property(PropertyId::Enable, BACnetValue::Boolean(true))
+            .unwrap();
         assert!(tl.is_enabled());
 
-        tl.write_property(PropertyId::LogInterval, BACnetValue::Unsigned(30)).unwrap();
+        tl.write_property(PropertyId::LogInterval, BACnetValue::Unsigned(30))
+            .unwrap();
         assert_eq!(tl.log_interval(), 30);
 
         // Read-only properties should fail
-        assert!(tl.write_property(PropertyId::ObjectIdentifier, BACnetValue::Unsigned(0)).is_err());
-        assert!(tl.write_property(PropertyId::BufferSize, BACnetValue::Unsigned(0)).is_err());
+        assert!(tl
+            .write_property(PropertyId::ObjectIdentifier, BACnetValue::Unsigned(0))
+            .is_err());
+        assert!(tl
+            .write_property(PropertyId::BufferSize, BACnetValue::Unsigned(0))
+            .is_err());
     }
 
     #[test]

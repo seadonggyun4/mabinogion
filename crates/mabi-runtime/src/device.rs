@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 
 use mabi_core::device::{DeviceHandle, DeviceInfo, DeviceState};
-use mabi_core::types::DataPoint;
+use mabi_core::types::{DataPoint, DataPointDef};
 use mabi_core::value::Value;
 use mabi_core::Result as CoreResult;
 
@@ -36,6 +36,11 @@ pub trait DevicePort: Send + Sync {
 
     /// Writes a point value.
     async fn write(&self, point_id: &str, value: Value) -> CoreResult<()>;
+
+    /// Returns the point definitions exposed by the device, if available.
+    fn point_definitions(&self) -> Vec<DataPointDef> {
+        Vec::new()
+    }
 }
 
 /// Shared trait-object type for device controllers.

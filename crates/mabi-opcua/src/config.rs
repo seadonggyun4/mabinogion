@@ -34,8 +34,12 @@ impl SecurityPolicy {
             Self::Basic128Rsa15 => "http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15",
             Self::Basic256 => "http://opcfoundation.org/UA/SecurityPolicy#Basic256",
             Self::Basic256Sha256 => "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256",
-            Self::Aes128Sha256RsaOaep => "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep",
-            Self::Aes256Sha256RsaPss => "http://opcfoundation.org/UA/SecurityPolicy#Aes256_Sha256_RsaPss",
+            Self::Aes128Sha256RsaOaep => {
+                "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep"
+            }
+            Self::Aes256Sha256RsaPss => {
+                "http://opcfoundation.org/UA/SecurityPolicy#Aes256_Sha256_RsaPss"
+            }
         }
     }
 }

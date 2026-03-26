@@ -171,9 +171,8 @@ impl ConfigLoader {
             ConfigFormat::Yaml => {
                 serde_yaml::to_string(config).map_err(|e| Error::Serialization(e.to_string()))
             }
-            ConfigFormat::Json => {
-                serde_json::to_string_pretty(config).map_err(|e| Error::Serialization(e.to_string()))
-            }
+            ConfigFormat::Json => serde_json::to_string_pretty(config)
+                .map_err(|e| Error::Serialization(e.to_string())),
             ConfigFormat::Toml => {
                 toml::to_string_pretty(config).map_err(|e| Error::Serialization(e.to_string()))
             }
@@ -428,10 +427,22 @@ mod tests {
 
     #[test]
     fn test_format_from_extension() {
-        assert_eq!(ConfigFormat::from_extension("yaml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_extension("yml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_extension("json"), Some(ConfigFormat::Json));
-        assert_eq!(ConfigFormat::from_extension("toml"), Some(ConfigFormat::Toml));
+        assert_eq!(
+            ConfigFormat::from_extension("yaml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("yml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("json"),
+            Some(ConfigFormat::Json)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("toml"),
+            Some(ConfigFormat::Toml)
+        );
         assert_eq!(ConfigFormat::from_extension("txt"), None);
     }
 
@@ -541,9 +552,15 @@ count = 42
         let candidates = discovery.candidates();
 
         // Should have candidates for each dir × format × extension
-        assert!(candidates.iter().any(|p| p.to_string_lossy().contains("config.yaml")));
-        assert!(candidates.iter().any(|p| p.to_string_lossy().contains("config.toml")));
-        assert!(candidates.iter().any(|p| p.to_string_lossy().contains("config.json")));
+        assert!(candidates
+            .iter()
+            .any(|p| p.to_string_lossy().contains("config.yaml")));
+        assert!(candidates
+            .iter()
+            .any(|p| p.to_string_lossy().contains("config.toml")));
+        assert!(candidates
+            .iter()
+            .any(|p| p.to_string_lossy().contains("config.json")));
     }
 
     #[test]

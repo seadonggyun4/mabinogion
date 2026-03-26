@@ -3,13 +3,13 @@
 //! These builders provide a convenient way to construct nodes with
 //! all their attributes configured properly.
 
-use crate::types::{NodeId, AccessLevel, Variant, variant::DataTypeId};
-use super::base::{QualifiedName, LocalizedText};
 use super::base::Node;
+use super::base::{LocalizedText, QualifiedName};
 use super::classes::{ObjectNode, VariableNode};
 use super::reference::{Reference, ReferenceTypeId};
 use super::store::AddressSpace;
 use crate::error::OpcUaResult;
+use crate::types::{variant::DataTypeId, AccessLevel, NodeId, Variant};
 
 /// Generic node builder trait.
 pub trait NodeBuilder {
@@ -141,12 +141,12 @@ impl NodeBuilder for VariableBuilder {
     type Node = VariableNode;
 
     fn build(self) -> VariableNode {
-        let browse_name = self.browse_name.unwrap_or_else(|| {
-            QualifiedName::new(self.node_id.namespace(), "Variable")
-        });
-        let display_name = self.display_name.unwrap_or_else(|| {
-            LocalizedText::invariant(&browse_name.name)
-        });
+        let browse_name = self
+            .browse_name
+            .unwrap_or_else(|| QualifiedName::new(self.node_id.namespace(), "Variable"));
+        let display_name = self
+            .display_name
+            .unwrap_or_else(|| LocalizedText::invariant(&browse_name.name));
 
         let mut variable = VariableNode::new(
             self.node_id,
@@ -219,12 +219,12 @@ impl NodeBuilder for ObjectBuilder {
     type Node = ObjectNode;
 
     fn build(self) -> ObjectNode {
-        let browse_name = self.browse_name.unwrap_or_else(|| {
-            QualifiedName::new(self.node_id.namespace(), "Object")
-        });
-        let display_name = self.display_name.unwrap_or_else(|| {
-            LocalizedText::invariant(&browse_name.name)
-        });
+        let browse_name = self
+            .browse_name
+            .unwrap_or_else(|| QualifiedName::new(self.node_id.namespace(), "Object"));
+        let display_name = self
+            .display_name
+            .unwrap_or_else(|| LocalizedText::invariant(&browse_name.name));
 
         let mut object = ObjectNode::new(self.node_id, browse_name, display_name)
             .with_event_notifier(self.event_notifier);
@@ -386,10 +386,8 @@ impl BatchVariableBuilder {
         for variable in variables {
             let node_id = variable.base.node_id.clone();
             address_space.insert_node(variable);
-            address_space.add_reference(Reference::has_component(
-                parent_id.clone(),
-                node_id.clone(),
-            ));
+            address_space
+                .add_reference(Reference::has_component(parent_id.clone(), node_id.clone()));
             node_ids.push(node_id);
         }
 

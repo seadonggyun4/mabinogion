@@ -90,8 +90,7 @@ impl LeakDetector {
 
     /// Check if leak detection is active.
     pub fn is_running(&self) -> bool {
-        self.is_running
-            .load(std::sync::atomic::Ordering::SeqCst)
+        self.is_running.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Record an allocation for leak tracking.
@@ -455,7 +454,10 @@ fn analyze_growth(samples: &[MemorySample]) -> GrowthAnalysis {
     let mean_y: f64 = points.iter().map(|(_, y)| y).sum::<f64>() / n;
 
     // Calculate slope (bytes per second)
-    let numerator: f64 = points.iter().map(|(x, y)| (x - mean_x) * (y - mean_y)).sum();
+    let numerator: f64 = points
+        .iter()
+        .map(|(x, y)| (x - mean_x) * (y - mean_y))
+        .sum();
     let denominator: f64 = points.iter().map(|(x, _)| (x - mean_x).powi(2)).sum();
 
     if denominator == 0.0 {

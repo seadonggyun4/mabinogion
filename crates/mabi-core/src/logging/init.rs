@@ -259,9 +259,16 @@ fn init_multi_with_reload(
     // For simplicity, we handle stdout/stderr + file combination
     // More complex combinations could be added as needed
 
-    let has_console = targets.iter().any(|t| matches!(t, LogTarget::Stdout | LogTarget::Stderr));
+    let has_console = targets
+        .iter()
+        .any(|t| matches!(t, LogTarget::Stdout | LogTarget::Stderr));
     let file_target = targets.iter().find_map(|t| {
-        if let LogTarget::File { directory, filename_prefix, rotation } = t {
+        if let LogTarget::File {
+            directory,
+            filename_prefix,
+            rotation,
+        } = t
+        {
             Some((directory.clone(), filename_prefix.clone(), rotation.clone()))
         } else {
             None
@@ -309,11 +316,22 @@ fn init_multi_with_reload(
         registry.with(console_layer).with(file_layer).init();
     } else if has_console {
         // Just console
-        init_stdout_with_reload(config, reload::Layer::new(build_env_filter(config)).0, span_events)?;
+        init_stdout_with_reload(
+            config,
+            reload::Layer::new(build_env_filter(config)).0,
+            span_events,
+        )?;
     } else if let Some((directory, filename_prefix, rotation_config)) = file_target {
         // Just file
         let reload_layer = reload::Layer::new(build_env_filter(config)).0;
-        init_file_with_reload(config, reload_layer, span_events, &directory, &filename_prefix, &rotation_config)?;
+        init_file_with_reload(
+            config,
+            reload_layer,
+            span_events,
+            &directory,
+            &filename_prefix,
+            &rotation_config,
+        )?;
     }
 
     Ok(())
@@ -328,7 +346,14 @@ fn init_static(config: &LogConfig, filter: EnvFilter, span_events: FmtSpan) -> R
             directory,
             filename_prefix,
             rotation,
-        } => init_file_static(config, filter, span_events, directory, filename_prefix, rotation),
+        } => init_file_static(
+            config,
+            filter,
+            span_events,
+            directory,
+            filename_prefix,
+            rotation,
+        ),
         LogTarget::Multi(_) => {
             // For multi-target without dynamic, we use the same logic as with dynamic
             // but don't register a controller
@@ -463,9 +488,8 @@ fn build_env_filter(config: &LogConfig) -> EnvFilter {
     // First, try to get filter from environment variable
     EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         let filter_str = config.build_filter_string();
-        EnvFilter::try_new(&filter_str).unwrap_or_else(|_| {
-            EnvFilter::new(config.level.as_filter_str())
-        })
+        EnvFilter::try_new(&filter_str)
+            .unwrap_or_else(|_| EnvFilter::new(config.level.as_filter_str()))
     })
 }
 
@@ -493,8 +517,8 @@ pub fn is_logging_initialized() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::config::LogLevel;
+    use super::*;
 
     #[test]
     fn test_build_env_filter() {

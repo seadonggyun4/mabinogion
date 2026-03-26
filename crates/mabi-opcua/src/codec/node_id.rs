@@ -10,10 +10,10 @@
 
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
 use crate::error::{OpcUaError, OpcUaResult};
-use crate::types::{NodeId, node_id::NodeIdType};
+use crate::types::{node_id::NodeIdType, NodeId};
 
 /// NodeId encoding type bytes.
 const TWO_BYTE: u8 = 0x00;
@@ -119,7 +119,10 @@ impl BinaryDecodable for NodeId {
                 let bs = Vec::<u8>::decode(buf)?;
                 Ok(NodeId::byte_string(ns, bs))
             }
-            _ => Err(OpcUaError::Codec(format!("Unknown NodeId encoding: 0x{:02X}", encoding))),
+            _ => Err(OpcUaError::Codec(format!(
+                "Unknown NodeId encoding: 0x{:02X}",
+                encoding
+            ))),
         }
     }
 }

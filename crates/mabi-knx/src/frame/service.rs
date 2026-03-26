@@ -140,10 +140,7 @@ impl ServiceType {
 
     /// Check if this is an ACK.
     pub fn is_ack(&self) -> bool {
-        matches!(
-            self,
-            Self::DeviceConfigurationAck | Self::TunnellingAck
-        )
+        matches!(self, Self::DeviceConfigurationAck | Self::TunnellingAck)
     }
 
     /// Check if this is a tunnelling service.
@@ -291,15 +288,24 @@ mod tests {
 
     #[test]
     fn test_service_type_conversion() {
-        assert_eq!(ServiceType::try_from(0x0201).unwrap(), ServiceType::SearchRequest);
+        assert_eq!(
+            ServiceType::try_from(0x0201).unwrap(),
+            ServiceType::SearchRequest
+        );
         assert_eq!(u16::from(ServiceType::SearchRequest), 0x0201);
     }
 
     #[test]
     fn test_service_type_family() {
         assert_eq!(ServiceType::SearchRequest.family(), ServiceFamily::Core);
-        assert_eq!(ServiceType::TunnellingRequest.family(), ServiceFamily::Tunnelling);
-        assert_eq!(ServiceType::RoutingIndication.family(), ServiceFamily::Routing);
+        assert_eq!(
+            ServiceType::TunnellingRequest.family(),
+            ServiceFamily::Tunnelling
+        );
+        assert_eq!(
+            ServiceType::RoutingIndication.family(),
+            ServiceFamily::Routing
+        );
     }
 
     #[test]

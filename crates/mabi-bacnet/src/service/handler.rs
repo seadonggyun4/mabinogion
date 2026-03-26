@@ -6,7 +6,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::apdu::types::{AbortReason, ConfirmedService, ErrorClass, ErrorCode, RejectReason, UnconfirmedService};
+use crate::apdu::types::{
+    AbortReason, ConfirmedService, ErrorClass, ErrorCode, RejectReason, UnconfirmedService,
+};
 use crate::object::ObjectRegistry;
 
 /// Context provided to service handlers.
@@ -244,7 +246,12 @@ impl ServiceRegistry {
     /// Per ASHRAE 135 Clause 5.4.4, an unrecognized service gets a
     /// Reject(UnrecognizedService), not an Error. A data-length violation
     /// gets Reject(MissingRequiredParameter).
-    pub fn dispatch_confirmed(&self, service: u8, data: &[u8], ctx: &ServiceContext) -> ServiceResult {
+    pub fn dispatch_confirmed(
+        &self,
+        service: u8,
+        data: &[u8],
+        ctx: &ServiceContext,
+    ) -> ServiceResult {
         match self.confirmed_handlers.get(&service) {
             Some(handler) => {
                 if data.len() < handler.min_data_length() {
@@ -257,7 +264,12 @@ impl ServiceRegistry {
     }
 
     /// Dispatch an unconfirmed service request.
-    pub fn dispatch_unconfirmed(&self, service: u8, data: &[u8], ctx: &ServiceContext) -> ServiceResult {
+    pub fn dispatch_unconfirmed(
+        &self,
+        service: u8,
+        data: &[u8],
+        ctx: &ServiceContext,
+    ) -> ServiceResult {
         match self.unconfirmed_handlers.get(&service) {
             Some(handler) => handler.handle(data, ctx),
             None => ServiceResult::NoResponse,

@@ -7,16 +7,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::{ExtensionObject, DiagnosticInfo};
-use crate::error::OpcUaResult;
-use crate::types::{NodeId, StatusCode};
-use crate::nodes::LocalizedText;
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::{DiagnosticInfo, ExtensionObject};
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::nodes::LocalizedText;
+use crate::types::{NodeId, StatusCode};
 
 // OPC UA type IDs for GetEndpoints
-const GET_ENDPOINTS_REQUEST_ID: u32 = 428;  // i=428
+const GET_ENDPOINTS_REQUEST_ID: u32 = 428; // i=428
 const GET_ENDPOINTS_RESPONSE_ID: u32 = 431; // i=431
 
 /// Common OPC UA request header (decoded from each service request).
@@ -69,7 +69,11 @@ impl ResponseHeader {
         // StringTable (empty array)
         buf.put_i32_le(0);
         // AdditionalHeader (null ExtensionObject)
-        (ExtensionObject { type_id: NodeId::numeric(0, 0), body: None }).encode(buf)?;
+        (ExtensionObject {
+            type_id: NodeId::numeric(0, 0),
+            body: None,
+        })
+        .encode(buf)?;
         Ok(())
     }
 }
@@ -122,7 +126,11 @@ impl ServiceHandler for GetEndpointsHandler {
         // EndpointUrl
         context.server_config.endpoint_url.encode(&mut out)?;
         // Server (ApplicationDescription)
-        encode_application_description(&context.server_config.endpoint_url, &context.server_config.server_name, &mut out)?;
+        encode_application_description(
+            &context.server_config.endpoint_url,
+            &context.server_config.server_name,
+            &mut out,
+        )?;
         // ServerCertificate (empty)
         out.put_i32_le(-1);
         // SecurityMode: None = 1
@@ -137,7 +145,7 @@ impl ServiceHandler for GetEndpointsHandler {
         out.put_i32_le(-1); // IssuedTokenType (null)
         out.put_i32_le(-1); // IssuerEndpointUrl (null)
         out.put_i32_le(-1); // SecurityPolicyUri (null)
-        // TransportProfileUri
+                            // TransportProfileUri
         "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary".encode(&mut out)?;
         // SecurityLevel
         out.put_u8(0);

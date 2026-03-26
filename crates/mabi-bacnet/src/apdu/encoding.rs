@@ -175,7 +175,8 @@ impl ApduEncoder {
 
     /// Encode boolean.
     pub fn encode_boolean(&mut self, value: bool) {
-        self.buf.put_u8((TagNumber::Boolean as u8) << 4 | if value { 1 } else { 0 });
+        self.buf
+            .put_u8((TagNumber::Boolean as u8) << 4 | if value { 1 } else { 0 });
     }
 
     /// Encode unsigned integer (application tagged).
@@ -702,11 +703,7 @@ impl<'a> ApduDecoder<'a> {
     /// Decode a signed integer.
     pub fn decode_signed(&mut self, len: usize) -> Result<i32, ApduError> {
         let bytes = self.read_bytes(len)?;
-        let mut value = if bytes[0] & 0x80 != 0 {
-            -1i32
-        } else {
-            0i32
-        };
+        let mut value = if bytes[0] & 0x80 != 0 { -1i32 } else { 0i32 };
         for &b in bytes {
             value = (value << 8) | (b as i32);
         }
@@ -735,7 +732,9 @@ impl<'a> ApduDecoder<'a> {
         let mut arr = [0u8; 4];
         arr.copy_from_slice(bytes);
         let value = u32::from_be_bytes(arr);
-        ObjectId::decode(value).ok_or(ApduError::DecodeError("Invalid object identifier".to_string()))
+        ObjectId::decode(value).ok_or(ApduError::DecodeError(
+            "Invalid object identifier".to_string(),
+        ))
     }
 
     /// Decode a character string.

@@ -202,7 +202,10 @@ impl StateTransitionFault {
         }
 
         if self.rng.gen::<f64>() < probability {
-            let count = self.failure_counts.entry(operation.to_string()).or_insert(0);
+            let count = self
+                .failure_counts
+                .entry(operation.to_string())
+                .or_insert(0);
             *count += 1;
 
             if self.config.permanent_failure && *count >= self.config.retry_limit {
@@ -259,9 +262,10 @@ impl Fault for StateTransitionFault {
 
         // Only apply to lifecycle operations
         match &ctx.operation {
-            OperationType::Initialize | OperationType::Start | OperationType::Stop | OperationType::Tick => {
-                Ok(true)
-            }
+            OperationType::Initialize
+            | OperationType::Start
+            | OperationType::Stop
+            | OperationType::Tick => Ok(true),
             _ => Ok(false),
         }
     }

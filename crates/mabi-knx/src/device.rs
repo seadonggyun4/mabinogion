@@ -11,9 +11,9 @@ use parking_lot::RwLock;
 use tokio::sync::broadcast;
 
 use mabi_core::{
-    Device, DeviceInfo, DeviceState, Protocol, Result as CoreResult, Value,
-    types::{DataPoint, DataPointDef, DataPointId, DataType, AccessMode},
     device::DeviceStatistics,
+    types::{AccessMode, DataPoint, DataPointDef, DataPointId, DataType},
+    Device, DeviceInfo, DeviceState, Protocol, Result as CoreResult, Value,
 };
 
 use crate::address::{GroupAddress, IndividualAddress};
@@ -93,8 +93,8 @@ impl KnxDevice {
         // Create corresponding data point definition
         let point_id = format!("{}_{}", address, name_str);
         let data_type = dpt_to_data_type(dpt_id);
-        let def = DataPointDef::new(&point_id, &name_str, data_type)
-            .with_access(if obj.can_write() {
+        let def =
+            DataPointDef::new(&point_id, &name_str, data_type).with_access(if obj.can_write() {
                 AccessMode::ReadWrite
             } else {
                 AccessMode::ReadOnly
@@ -113,7 +113,8 @@ impl KnxDevice {
 
     /// Write a group object value.
     pub fn write_group(&self, address: &GroupAddress, value: &DptValue) -> KnxResult<()> {
-        self.group_objects.write_value(address, value, Some(self.id()))
+        self.group_objects
+            .write_value(address, value, Some(self.id()))
     }
 
     fn update_point_count(&self) {
@@ -291,10 +292,7 @@ impl Device for KnxDevice {
 
         // Emit change notification
         let device_id = self.id();
-        let data_point = DataPoint::new(
-            DataPointId::new(&device_id, point_id),
-            value,
-        );
+        let data_point = DataPoint::new(DataPointId::new(&device_id, point_id), value);
         let _ = self.change_tx.send(data_point);
 
         Ok(())
@@ -355,7 +353,8 @@ impl KnxDeviceBuilder {
         name: impl Into<String>,
         dpt_id: DptId,
     ) -> Self {
-        self.group_objects.push((address, name.into(), dpt_id, None));
+        self.group_objects
+            .push((address, name.into(), dpt_id, None));
         self
     }
 
@@ -374,7 +373,9 @@ impl KnxDeviceBuilder {
 
     /// Build the device.
     pub fn build(self) -> KnxResult<KnxDevice> {
-        let registry = self.dpt_registry.unwrap_or_else(|| Arc::new(DptRegistry::new()));
+        let registry = self
+            .dpt_registry
+            .unwrap_or_else(|| Arc::new(DptRegistry::new()));
         let table = Arc::new(GroupObjectTable::with_registry(registry.clone()));
 
         // Add group objects

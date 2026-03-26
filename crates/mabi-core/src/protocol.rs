@@ -71,7 +71,6 @@ impl Protocol {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

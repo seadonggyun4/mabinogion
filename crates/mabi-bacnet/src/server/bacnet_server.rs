@@ -18,7 +18,10 @@ use crate::apdu::encoding::ApduEncoder;
 use crate::apdu::segmentation::{
     AssemblyResult, Segment, SegmentAssembler, SegmentTransmitter, DEFAULT_WINDOW_SIZE,
 };
-use crate::apdu::types::{AbortReason, ApduType, ConfirmedService, ErrorClass, ErrorCode, RejectReason, UnconfirmedService};
+use crate::apdu::types::{
+    AbortReason, ApduType, ConfirmedService, ErrorClass, ErrorCode, RejectReason,
+    UnconfirmedService,
+};
 use crate::error::{BacnetError, BacnetResult};
 use crate::network::bbmd::{Bbmd, BbmdConfig};
 use crate::network::bvlc::{BvlcFunction, BvlcMessage};
@@ -32,7 +35,9 @@ use crate::service::cov::{CovManager, CovNotification};
 use crate::service::discovery::WhoIsHandler;
 use crate::service::handler::{ServiceContext, ServiceRegistry, ServiceResult};
 use crate::service::property::{ReadPropertyHandler, WritePropertyHandler};
-use crate::service::property_multiple::{ReadPropertyMultipleHandler, WritePropertyMultipleHandler};
+use crate::service::property_multiple::{
+    ReadPropertyMultipleHandler, WritePropertyMultipleHandler,
+};
 use crate::service::subscribe_cov::SubscribeCovHandler;
 use crate::service::tsm::{ServerTsm, TransactionKey, TsmConfig};
 
@@ -205,24 +210,48 @@ impl BACnetServer {
         services.register_confirmed(Arc::new(WritePropertyMultipleHandler::new()));
         // COV services
         services.register_confirmed(Arc::new(SubscribeCovHandler::new(cov_manager.clone())));
-        services.register_confirmed(Arc::new(crate::service::subscribe_cov::SubscribeCovPropertyHandler::new(cov_manager.clone())));
+        services.register_confirmed(Arc::new(
+            crate::service::subscribe_cov::SubscribeCovPropertyHandler::new(cov_manager.clone()),
+        ));
         // Log services (ReadRange for TrendLog)
         services.register_confirmed(Arc::new(crate::service::read_range::ReadRangeHandler::new()));
         // File access services (AtomicReadFile/AtomicWriteFile)
-        services.register_confirmed(Arc::new(crate::service::file_access::AtomicReadFileHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::file_access::AtomicWriteFileHandler::new()));
+        services.register_confirmed(Arc::new(
+            crate::service::file_access::AtomicReadFileHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::file_access::AtomicWriteFileHandler::new(),
+        ));
         // Alarm and event services
-        services.register_confirmed(Arc::new(crate::service::alarm::AcknowledgeAlarmHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::alarm::GetAlarmSummaryHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::alarm::GetEnrollmentSummaryHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::alarm::GetEventInformationHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::alarm::ConfirmedEventNotificationHandler::new()));
+        services.register_confirmed(Arc::new(
+            crate::service::alarm::AcknowledgeAlarmHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::alarm::GetAlarmSummaryHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::alarm::GetEnrollmentSummaryHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::alarm::GetEventInformationHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::alarm::ConfirmedEventNotificationHandler::new(),
+        ));
         // Object management services
-        services.register_confirmed(Arc::new(crate::service::create_delete::CreateObjectHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::create_delete::DeleteObjectHandler::new()));
+        services.register_confirmed(Arc::new(
+            crate::service::create_delete::CreateObjectHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::create_delete::DeleteObjectHandler::new(),
+        ));
         // Device control services
-        services.register_confirmed(Arc::new(crate::service::device_control::DeviceCommunicationControlHandler::new()));
-        services.register_confirmed(Arc::new(crate::service::device_control::ReinitializeDeviceHandler::new()));
+        services.register_confirmed(Arc::new(
+            crate::service::device_control::DeviceCommunicationControlHandler::new(),
+        ));
+        services.register_confirmed(Arc::new(
+            crate::service::device_control::ReinitializeDeviceHandler::new(),
+        ));
         // Discovery services
         services.register_unconfirmed(Arc::new(WhoIsHandler::new(
             config.device_instance,
@@ -231,8 +260,12 @@ impl BACnetServer {
             config.vendor_id,
         )));
         // Time synchronization services
-        services.register_unconfirmed(Arc::new(crate::service::device_control::TimeSynchronizationHandler::new()));
-        services.register_unconfirmed(Arc::new(crate::service::device_control::UtcTimeSynchronizationHandler::new()));
+        services.register_unconfirmed(Arc::new(
+            crate::service::device_control::TimeSynchronizationHandler::new(),
+        ));
+        services.register_unconfirmed(Arc::new(
+            crate::service::device_control::UtcTimeSynchronizationHandler::new(),
+        ));
 
         // Update Device object with registered services and object types
         let confirmed_choices = services.supported_confirmed_services();
@@ -244,9 +277,10 @@ impl BACnetServer {
         // max_apdu_length minus the segmented ComplexACK header overhead (5 bytes:
         // pdu_type, invoke_id, sequence_number, window_size, service_choice).
         let segment_header_overhead = 5;
-        let max_segment_data = (config.max_apdu_length as usize).saturating_sub(segment_header_overhead);
-        let segment_transmitter = SegmentTransmitter::new(max_segment_data)
-            .with_window_size(DEFAULT_WINDOW_SIZE);
+        let max_segment_data =
+            (config.max_apdu_length as usize).saturating_sub(segment_header_overhead);
+        let segment_transmitter =
+            SegmentTransmitter::new(max_segment_data).with_window_size(DEFAULT_WINDOW_SIZE);
         let segment_assembler = SegmentAssembler::default();
 
         Self {
@@ -700,12 +734,25 @@ impl BACnetServer {
         // Send response(s) — may be multiple APDUs if response is segmented
         match response {
             ProcessedResponse::Single(response_apdu, dest) => {
-                self.send_response(&response_apdu, dest, &npdu, bvlc, network).await?;
+                self.send_response(&response_apdu, dest, &npdu, bvlc, network)
+                    .await?;
             }
-            ProcessedResponse::Segmented { segments, dest, invoke_id, service_choice } => {
+            ProcessedResponse::Segmented {
+                segments,
+                dest,
+                invoke_id,
+                service_choice,
+            } => {
                 self.send_segmented_response(
-                    &segments, dest, invoke_id, service_choice, &npdu, bvlc, network,
-                ).await?;
+                    &segments,
+                    dest,
+                    invoke_id,
+                    service_choice,
+                    &npdu,
+                    bvlc,
+                    network,
+                )
+                .await?;
             }
             ProcessedResponse::None => {}
         }
@@ -735,7 +782,10 @@ impl BACnetServer {
         // Too short to even contain a valid header — cannot extract invoke_id,
         // so we must silently discard per ASHRAE 135 Clause 6.1.
         if apdu.len() < 3 {
-            debug!("Confirmed request too short ({} bytes), discarding", apdu.len());
+            debug!(
+                "Confirmed request too short ({} bytes), discarding",
+                apdu.len()
+            );
             self.metrics.record_error();
             return Ok(ProcessedResponse::None);
         }
@@ -769,7 +819,8 @@ impl BACnetServer {
             let (service_choice_opt, segment_data) = if sequence_number == 0 {
                 // First segment: service-choice is at byte 5
                 if apdu.len() < 6 {
-                    let reject = build_reject_apdu(invoke_id, RejectReason::MissingRequiredParameter as u8);
+                    let reject =
+                        build_reject_apdu(invoke_id, RejectReason::MissingRequiredParameter as u8);
                     self.metrics.record_error();
                     return Ok(ProcessedResponse::Single(reject, source));
                 }
@@ -780,12 +831,7 @@ impl BACnetServer {
             };
 
             // Build a Segment struct for the assembler
-            let mut segment = Segment::new(
-                sequence_number,
-                more_follows,
-                invoke_id,
-                segment_data,
-            );
+            let mut segment = Segment::new(sequence_number, more_follows, invoke_id, segment_data);
             if let Some(sc) = service_choice_opt {
                 segment = segment.with_service_choice(sc);
             }
@@ -946,9 +992,9 @@ impl BACnetServer {
 
         // Step 3: Dispatch to handler
         let ctx_with_invoke = ctx.clone().with_invoke_id(invoke_id);
-        let result = self
-            .services
-            .dispatch_confirmed(service_choice, service_data, &ctx_with_invoke);
+        let result =
+            self.services
+                .dispatch_confirmed(service_choice, service_data, &ctx_with_invoke);
 
         // Step 4: Build response APDU using the 3-tier protocol
         let response = match result {
@@ -1191,7 +1237,9 @@ impl BACnetServer {
                 sequence = sequence_number,
                 more = more_follows,
                 size = segment_data.len(),
-                "Sent segment {}/{}", i + 1, total
+                "Sent segment {}/{}",
+                i + 1,
+                total
             );
         }
 
@@ -1227,9 +1275,19 @@ impl ServiceContext {
 ///
 /// Produces a BACnet-Error-PDU per ASHRAE 135, Clause 21.8, with
 /// error-class and error-code encoded as ENUMERATED (Application Tag 9).
-fn build_error_apdu(invoke_id: u8, service_choice: u8, error_class: ErrorClass, error_code: ErrorCode) -> Vec<u8> {
+fn build_error_apdu(
+    invoke_id: u8,
+    service_choice: u8,
+    error_class: ErrorClass,
+    error_code: ErrorCode,
+) -> Vec<u8> {
     let mut encoder = ApduEncoder::new();
-    encoder.encode_error_pdu(invoke_id, service_choice, error_class as u32, error_code as u32);
+    encoder.encode_error_pdu(
+        invoke_id,
+        service_choice,
+        error_class as u32,
+        error_code as u32,
+    );
     encoder.into_bytes()
 }
 
@@ -1312,7 +1370,9 @@ async fn send_cov_notification(
     }
     let bvlc = BvlcMessage::original_unicast(npdu.encode());
 
-    network.send_to(&bvlc.encode(), notification.destination).await
+    network
+        .send_to(&bvlc.encode(), notification.destination)
+        .await
 }
 
 #[cfg(test)]
@@ -1380,8 +1440,8 @@ mod tests {
 
         assert_eq!(apdu.len(), 3);
         assert_eq!(apdu[0], 0x60); // Reject PDU type
-        assert_eq!(apdu[1], 7);    // Invoke ID
-        assert_eq!(apdu[2], 9);    // UnrecognizedService = 9
+        assert_eq!(apdu[1], 7); // Invoke ID
+        assert_eq!(apdu[2], 9); // UnrecognizedService = 9
     }
 
     #[test]
@@ -1399,8 +1459,8 @@ mod tests {
 
         assert_eq!(apdu.len(), 3);
         assert_eq!(apdu[0], 0x71); // Abort PDU type (0x70) + server bit (0x01)
-        assert_eq!(apdu[1], 10);   // Invoke ID
-        assert_eq!(apdu[2], 4);    // SegmentationNotSupported = 4
+        assert_eq!(apdu[1], 10); // Invoke ID
+        assert_eq!(apdu[2], 4); // SegmentationNotSupported = 4
     }
 
     #[test]
@@ -1447,9 +1507,9 @@ mod tests {
 
         assert_eq!(apdu.len(), 4);
         assert_eq!(apdu[0], 0x41); // SegmentACK (0x40) + server bit (0x01)
-        assert_eq!(apdu[1], 42);   // Invoke ID
-        assert_eq!(apdu[2], 3);    // Sequence number
-        assert_eq!(apdu[3], 1);    // Window size
+        assert_eq!(apdu[1], 42); // Invoke ID
+        assert_eq!(apdu[2], 3); // Sequence number
+        assert_eq!(apdu[3], 1); // Window size
     }
 
     #[test]
@@ -1488,32 +1548,32 @@ mod tests {
     fn test_segmented_complex_ack_header_first_segment() {
         let mut encoder = ApduEncoder::new();
         encoder.encode_segmented_complex_ack_header(
-            1,   // invoke_id
-            0,   // sequence 0 (first)
-            1,   // window_size
+            1,    // invoke_id
+            0,    // sequence 0 (first)
+            1,    // window_size
             true, // more follows
-            12,  // ReadProperty service
+            12,   // ReadProperty service
         );
         let bytes = encoder.into_bytes();
 
         assert_eq!(bytes.len(), 5);
         // PDU type byte: ComplexACK (0x30) | segmented (0x08) | more_follows (0x04) = 0x3C
         assert_eq!(bytes[0], 0x3C);
-        assert_eq!(bytes[1], 1);   // invoke_id
-        assert_eq!(bytes[2], 0);   // sequence_number
-        assert_eq!(bytes[3], 1);   // window_size
-        assert_eq!(bytes[4], 12);  // service_choice
+        assert_eq!(bytes[1], 1); // invoke_id
+        assert_eq!(bytes[2], 0); // sequence_number
+        assert_eq!(bytes[3], 1); // window_size
+        assert_eq!(bytes[4], 12); // service_choice
     }
 
     #[test]
     fn test_segmented_complex_ack_header_last_segment() {
         let mut encoder = ApduEncoder::new();
         encoder.encode_segmented_complex_ack_header(
-            5,    // invoke_id
-            3,    // sequence 3 (last)
-            1,    // window_size
+            5,     // invoke_id
+            3,     // sequence 3 (last)
+            1,     // window_size
             false, // no more
-            14,   // ReadPropertyMultiple
+            14,    // ReadPropertyMultiple
         );
         let bytes = encoder.into_bytes();
 
@@ -1572,13 +1632,7 @@ mod tests {
         for (i, seg) in segments.iter().enumerate() {
             let more = i < total - 1;
             let mut enc = ApduEncoder::new();
-            enc.encode_segmented_complex_ack_header(
-                invoke_id,
-                i as u8,
-                1,
-                more,
-                service_choice,
-            );
+            enc.encode_segmented_complex_ack_header(invoke_id, i as u8, 1, more, service_choice);
             enc.put_bytes(&seg.data);
             packets.push(enc.into_bytes());
         }
@@ -1615,8 +1669,7 @@ mod tests {
         let invoke_id = 1;
 
         // Simulate 3 segments arriving
-        let seg1 = Segment::new(0, true, invoke_id, vec![1, 2, 3])
-            .with_service_choice(12);
+        let seg1 = Segment::new(0, true, invoke_id, vec![1, 2, 3]).with_service_choice(12);
         let result = assembler.process_segment(source_hash, &seg1).unwrap();
         assert!(matches!(result, AssemblyResult::NeedAck(0)));
 
@@ -1663,9 +1716,8 @@ mod tests {
     fn test_segment_ack_with_nak() {
         let mut encoder = ApduEncoder::new();
         encoder.encode_segment_ack_pdu(
-            10, 5, 2,
-            true,  // server
-            true,  // NAK
+            10, 5, 2, true, // server
+            true, // NAK
         );
         let bytes = encoder.into_bytes();
 
@@ -1681,16 +1733,15 @@ mod tests {
     fn test_segment_ack_client_no_nak() {
         let mut encoder = ApduEncoder::new();
         encoder.encode_segment_ack_pdu(
-            255, 0, 1,
-            false, // client
+            255, 0, 1, false, // client
             false, // no NAK
         );
         let bytes = encoder.into_bytes();
 
         assert_eq!(bytes[0], 0x40); // Plain SegmentACK
-        assert_eq!(bytes[1], 255);  // Max invoke_id
-        assert_eq!(bytes[2], 0);    // Sequence 0
-        assert_eq!(bytes[3], 1);    // Window 1
+        assert_eq!(bytes[1], 255); // Max invoke_id
+        assert_eq!(bytes[2], 0); // Sequence 0
+        assert_eq!(bytes[3], 1); // Window 1
     }
 
     // ===== BBMD server integration tests =====
@@ -1699,8 +1750,7 @@ mod tests {
     fn test_server_with_bbmd_config() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         assert!(server.bbmd().is_enabled());
     }
@@ -1718,17 +1768,13 @@ mod tests {
     fn test_server_bbmd_foreign_device_registration() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         let source = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 200), 47808);
         let ttl_data = [0x00, 0x3C]; // TTL = 60 seconds
 
         let msg = BvlcMessage {
-            header: crate::network::bvlc::BvlcHeader::new(
-                BvlcFunction::RegisterForeignDevice,
-                6,
-            ),
+            header: crate::network::bvlc::BvlcHeader::new(BvlcFunction::RegisterForeignDevice, 6),
             npdu: ttl_data.to_vec(),
             original_source: None,
             result_code: None,
@@ -1745,14 +1791,18 @@ mod tests {
     fn test_server_bbmd_forward_addresses() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         // Add a BDT peer
         let peer = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 47808);
-        server.bbmd().bdt().add(
-            crate::network::bbmd::BdtEntry::new(peer, Ipv4Addr::new(255, 0, 0, 0))
-        ).unwrap();
+        server
+            .bbmd()
+            .bdt()
+            .add(crate::network::bbmd::BdtEntry::new(
+                peer,
+                Ipv4Addr::new(255, 0, 0, 0),
+            ))
+            .unwrap();
 
         // Register a foreign device
         let foreign = SocketAddrV4::new(Ipv4Addr::new(172, 16, 0, 50), 47808);
@@ -1768,17 +1818,26 @@ mod tests {
     fn test_server_bbmd_forward_excludes_source() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         let peer1 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 47808);
         let peer2 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 2), 47808);
-        server.bbmd().bdt().add(
-            crate::network::bbmd::BdtEntry::new(peer1, Ipv4Addr::new(255, 0, 0, 0))
-        ).unwrap();
-        server.bbmd().bdt().add(
-            crate::network::bbmd::BdtEntry::new(peer2, Ipv4Addr::new(255, 0, 0, 0))
-        ).unwrap();
+        server
+            .bbmd()
+            .bdt()
+            .add(crate::network::bbmd::BdtEntry::new(
+                peer1,
+                Ipv4Addr::new(255, 0, 0, 0),
+            ))
+            .unwrap();
+        server
+            .bbmd()
+            .bdt()
+            .add(crate::network::bbmd::BdtEntry::new(
+                peer2,
+                Ipv4Addr::new(255, 0, 0, 0),
+            ))
+            .unwrap();
 
         // Exclude peer1 (the source)
         let addrs = server.bbmd().get_forward_addresses(Some(&peer1));
@@ -1790,8 +1849,7 @@ mod tests {
     fn test_server_bbmd_bdt_write_and_read() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         // Write BDT with 2 entries (10 bytes each)
         let mut bdt_data = Vec::new();
@@ -1833,7 +1891,10 @@ mod tests {
         let response = server.bbmd().handle_message(&read_msg, source);
         assert!(response.is_some());
         let response = response.unwrap();
-        assert_eq!(response.header.function, BvlcFunction::ReadBroadcastDistributionTableAck);
+        assert_eq!(
+            response.header.function,
+            BvlcFunction::ReadBroadcastDistributionTableAck
+        );
         // 2 entries * 10 bytes
         assert_eq!(response.npdu.len(), 20);
     }
@@ -1842,8 +1903,7 @@ mod tests {
     fn test_server_bbmd_fdt_cleanup() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         // Register with TTL=0 (immediately expired)
         let foreign = SocketAddrV4::new(Ipv4Addr::new(172, 16, 0, 50), 47808);
@@ -1883,10 +1943,7 @@ mod tests {
 
         let source = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 200), 47808);
         let msg = BvlcMessage {
-            header: crate::network::bvlc::BvlcHeader::new(
-                BvlcFunction::RegisterForeignDevice,
-                6,
-            ),
+            header: crate::network::bvlc::BvlcHeader::new(BvlcFunction::RegisterForeignDevice, 6),
             npdu: vec![0x00, 0x3C],
             original_source: None,
             result_code: None,
@@ -1906,10 +1963,7 @@ mod tests {
 
         let source = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 200), 47808);
         let msg = BvlcMessage {
-            header: crate::network::bvlc::BvlcHeader::new(
-                BvlcFunction::RegisterForeignDevice,
-                6,
-            ),
+            header: crate::network::bvlc::BvlcHeader::new(BvlcFunction::RegisterForeignDevice, 6),
             npdu: vec![0x00, 0x3C],
             original_source: None,
             result_code: None,
@@ -1929,8 +1983,7 @@ mod tests {
     fn test_server_bbmd_delete_fdt_entry() {
         let config = ServerConfig::new(1234);
         let registry = ObjectRegistry::new();
-        let server = BACnetServer::new(config, registry)
-            .with_bbmd_config(BbmdConfig::enabled());
+        let server = BACnetServer::new(config, registry).with_bbmd_config(BbmdConfig::enabled());
 
         // Register a foreign device first
         let foreign = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 200), 47808);
@@ -1972,8 +2025,7 @@ mod tests {
         // Feed a partial segment (incomplete assembly)
         {
             let mut assembler = server.segment_assembler().lock();
-            let seg = Segment::new(0, true, 1, vec![1, 2, 3])
-                .with_service_choice(12);
+            let seg = Segment::new(0, true, 1, vec![1, 2, 3]).with_service_choice(12);
             let _ = assembler.process_segment(12345, &seg);
             assert_eq!(assembler.active_count(), 1);
         }

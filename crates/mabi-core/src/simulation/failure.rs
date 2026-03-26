@@ -640,10 +640,9 @@ mod tests {
 
     #[test]
     fn test_scheduled_failure() {
-        let failure =
-            ScheduledFailure::new(Duration::from_secs(10), FailureType::NetworkPartition)
-                .for_duration(Duration::from_secs(30))
-                .repeat(3);
+        let failure = ScheduledFailure::new(Duration::from_secs(10), FailureType::NetworkPartition)
+            .for_duration(Duration::from_secs(30))
+            .repeat(3);
 
         assert_eq!(failure.at, Duration::from_secs(10));
         assert_eq!(failure.duration, Some(Duration::from_secs(30)));

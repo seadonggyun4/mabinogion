@@ -647,10 +647,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_engine_shorthand() {
-        let e = engine()
-            .name("Quick Engine")
-            .max_devices(500)
-            .build();
+        let e = engine().name("Quick Engine").max_devices(500).build();
 
         assert_eq!(e.config().name, "Quick Engine");
         assert_eq!(e.config().max_devices, 500);

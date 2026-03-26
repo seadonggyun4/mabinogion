@@ -60,9 +60,8 @@ pub const TICK_BUCKETS: &[f64] = &[0.0001, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0
 pub static GLOBAL_REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
 
 /// Global metrics collector instance (singleton).
-static GLOBAL_METRICS: Lazy<MetricsCollector> = Lazy::new(|| {
-    MetricsCollector::with_registry(GLOBAL_REGISTRY.clone())
-});
+static GLOBAL_METRICS: Lazy<MetricsCollector> =
+    Lazy::new(|| MetricsCollector::with_registry(GLOBAL_REGISTRY.clone()));
 
 // ============================================================================
 // Metrics Collector
@@ -282,7 +281,11 @@ impl MetricsCollector {
         self.inner.tick_duration.observe(duration.as_secs_f64());
 
         // Update tick rate calculation
-        let count = self.inner.tick_count_for_rate.fetch_add(1, Ordering::Relaxed) + 1;
+        let count = self
+            .inner
+            .tick_count_for_rate
+            .fetch_add(1, Ordering::Relaxed)
+            + 1;
         let mut last_time = self.inner.last_tick_time.write();
         let elapsed = last_time.elapsed();
 
@@ -1008,7 +1011,11 @@ pub fn classify_error<E: std::fmt::Display>(error: &E) -> &'static str {
         "connection"
     } else if error_str.contains("protocol") || error_str.contains("invalid") {
         "protocol"
-    } else if error_str.contains(" io ") || error_str.contains("i/o") || error_str.starts_with("io ") || error_str.ends_with(" io") {
+    } else if error_str.contains(" io ")
+        || error_str.contains("i/o")
+        || error_str.starts_with("io ")
+        || error_str.ends_with(" io")
+    {
         "io"
     } else if error_str.contains("not found") {
         "not_found"

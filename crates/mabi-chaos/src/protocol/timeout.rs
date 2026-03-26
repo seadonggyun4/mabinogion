@@ -175,9 +175,7 @@ impl TimeoutFault {
         match &self.config.pattern {
             TimeoutPattern::NoResponse | TimeoutPattern::PartialResponse => true,
             TimeoutPattern::DelayedResponse => true,
-            TimeoutPattern::Intermittent { success_rate } => {
-                self.rng.gen::<f64>() > *success_rate
-            }
+            TimeoutPattern::Intermittent { success_rate } => self.rng.gen::<f64>() > *success_rate,
         }
     }
 
@@ -249,11 +247,9 @@ impl Fault for TimeoutFault {
                     duration_ms: self.config.timeout_ms,
                 })
             }
-            _ => {
-                Ok(FaultBehavior::Abort {
-                    error: self.config.error_message.clone(),
-                })
-            }
+            _ => Ok(FaultBehavior::Abort {
+                error: self.config.error_message.clone(),
+            }),
         }
     }
 

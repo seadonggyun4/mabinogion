@@ -239,11 +239,7 @@ impl CovManager {
     }
 
     /// Notify value change for an object (called when object changes).
-    pub async fn notify_change(
-        &self,
-        object_id: ObjectId,
-        values: Vec<(PropertyId, BACnetValue)>,
-    ) {
+    pub async fn notify_change(&self, object_id: ObjectId, values: Vec<(PropertyId, BACnetValue)>) {
         let device_id = ObjectId::device(self.device_instance);
 
         for entry in self.subscriptions.iter() {
@@ -274,7 +270,10 @@ impl CovManager {
 
     /// Get all active subscriptions as a list.
     pub fn list_subscriptions(&self) -> Vec<CovSubscription> {
-        self.subscriptions.iter().map(|entry| entry.clone()).collect()
+        self.subscriptions
+            .iter()
+            .map(|entry| entry.clone())
+            .collect()
     }
 }
 
@@ -394,7 +393,10 @@ mod tests {
             time_remaining: 300,
             list_of_values: vec![
                 (PropertyId::PresentValue, BACnetValue::Real(72.5)),
-                (PropertyId::StatusFlags, BACnetValue::BitString(vec![false, false, false, false])),
+                (
+                    PropertyId::StatusFlags,
+                    BACnetValue::BitString(vec![false, false, false, false]),
+                ),
             ],
             confirmed: false,
         };
@@ -413,9 +415,7 @@ mod tests {
             initiating_device: ObjectId::device(1234),
             monitored_object: ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1),
             time_remaining: 0,
-            list_of_values: vec![
-                (PropertyId::PresentValue, BACnetValue::Real(25.0)),
-            ],
+            list_of_values: vec![(PropertyId::PresentValue, BACnetValue::Real(25.0))],
             confirmed: true,
         };
 
@@ -423,8 +423,11 @@ mod tests {
         // ConfirmedRequest header
         assert_eq!(apdu[0], 0x00); // PDU type 0, no segmentation
         assert_eq!(apdu[1], 0x05); // max-segments=0, max-apdu=5 (1476)
-        assert_eq!(apdu[2], 7);    // invoke_id
-        assert_eq!(apdu[3], crate::apdu::types::ConfirmedService::ConfirmedCovNotification as u8);
+        assert_eq!(apdu[2], 7); // invoke_id
+        assert_eq!(
+            apdu[3],
+            crate::apdu::types::ConfirmedService::ConfirmedCovNotification as u8
+        );
         // Service data follows
         assert!(apdu.len() > 4);
     }
@@ -486,15 +489,33 @@ mod tests {
         let obj1 = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1);
         let obj2 = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 2);
 
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.1:47808".parse().unwrap(), 1, obj1, false, None,
-        )).unwrap();
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.2:47808".parse().unwrap(), 1, obj1, true, None,
-        )).unwrap();
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.3:47808".parse().unwrap(), 1, obj2, false, None,
-        )).unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.1:47808".parse().unwrap(),
+                1,
+                obj1,
+                false,
+                None,
+            ))
+            .unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.2:47808".parse().unwrap(),
+                1,
+                obj1,
+                true,
+                None,
+            ))
+            .unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.3:47808".parse().unwrap(),
+                1,
+                obj2,
+                false,
+                None,
+            ))
+            .unwrap();
 
         let subs = manager.subscriptions_for_object(obj1);
         assert_eq!(subs.len(), 2);
@@ -509,12 +530,24 @@ mod tests {
         let obj = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1);
 
         // Subscribe two subscribers, one confirmed, one unconfirmed
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.1:47808".parse().unwrap(), 1, obj, false, None,
-        )).unwrap();
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.2:47808".parse().unwrap(), 2, obj, true, None,
-        )).unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.1:47808".parse().unwrap(),
+                1,
+                obj,
+                false,
+                None,
+            ))
+            .unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.2:47808".parse().unwrap(),
+                2,
+                obj,
+                true,
+                None,
+            ))
+            .unwrap();
 
         // Trigger notification
         let values = vec![(PropertyId::PresentValue, BACnetValue::Real(42.0))];
@@ -525,9 +558,17 @@ mod tests {
         let n2 = rx.try_recv().unwrap();
 
         // One confirmed, one not
-        let (confirmed_count, unconfirmed_count) = [n1, n2].iter().fold((0, 0), |(c, u), n| {
-            if n.confirmed { (c + 1, u) } else { (c, u + 1) }
-        });
+        let (confirmed_count, unconfirmed_count) =
+            [n1, n2].iter().fold(
+                (0, 0),
+                |(c, u), n| {
+                    if n.confirmed {
+                        (c + 1, u)
+                    } else {
+                        (c, u + 1)
+                    }
+                },
+            );
         assert_eq!(confirmed_count, 1);
         assert_eq!(unconfirmed_count, 1);
     }
@@ -537,12 +578,24 @@ mod tests {
         let (manager, _rx) = CovManager::new(1234, 100);
         let obj = ObjectId::new(crate::object::types::ObjectType::AnalogInput, 1);
 
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.1:47808".parse().unwrap(), 1, obj, false, None,
-        )).unwrap();
-        manager.subscribe(CovSubscription::new(
-            "10.0.0.2:47808".parse().unwrap(), 2, obj, true, Some(Duration::from_secs(600)),
-        )).unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.1:47808".parse().unwrap(),
+                1,
+                obj,
+                false,
+                None,
+            ))
+            .unwrap();
+        manager
+            .subscribe(CovSubscription::new(
+                "10.0.0.2:47808".parse().unwrap(),
+                2,
+                obj,
+                true,
+                Some(Duration::from_secs(600)),
+            ))
+            .unwrap();
 
         let list = manager.list_subscriptions();
         assert_eq!(list.len(), 2);

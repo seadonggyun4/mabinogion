@@ -30,7 +30,9 @@ use crate::object::device::{CommunicationControlState, DeviceObject};
 use crate::object::property::{BACnetDate, BACnetTime};
 use crate::object::types::{ObjectId, ObjectType};
 
-use super::handler::{ConfirmedServiceHandler, ServiceContext, ServiceResult, UnconfirmedServiceHandler};
+use super::handler::{
+    ConfirmedServiceHandler, ServiceContext, ServiceResult, UnconfirmedServiceHandler,
+};
 
 // ── TimeSynchronization ─────────────────────────────────────────────────────
 
@@ -52,24 +54,32 @@ pub fn decode_time_sync_request(data: &[u8]) -> Result<TimeSyncRequest, &'static
     let mut decoder = ApduDecoder::new(data);
 
     // Date: application tag 10, length 4
-    let (tag, _is_context, _len) = decoder.decode_tag_info().map_err(|_| "Failed to decode date tag")?;
+    let (tag, _is_context, _len) = decoder
+        .decode_tag_info()
+        .map_err(|_| "Failed to decode date tag")?;
     if tag != 10 {
         return Err("Expected Date application tag (10)");
     }
-    let date_bytes = decoder.read_bytes(4).map_err(|_| "Failed to read date bytes")?;
+    let date_bytes = decoder
+        .read_bytes(4)
+        .map_err(|_| "Failed to read date bytes")?;
     let date = BACnetDate {
-        year: date_bytes[0],        // year - 1900
+        year: date_bytes[0], // year - 1900
         month: date_bytes[1],
         day: date_bytes[2],
         day_of_week: date_bytes[3],
     };
 
     // Time: application tag 11, length 4
-    let (tag, _is_context, _len) = decoder.decode_tag_info().map_err(|_| "Failed to decode time tag")?;
+    let (tag, _is_context, _len) = decoder
+        .decode_tag_info()
+        .map_err(|_| "Failed to decode time tag")?;
     if tag != 11 {
         return Err("Expected Time application tag (11)");
     }
-    let time_bytes = decoder.read_bytes(4).map_err(|_| "Failed to read time bytes")?;
+    let time_bytes = decoder
+        .read_bytes(4)
+        .map_err(|_| "Failed to read time bytes")?;
     let time = BACnetTime {
         hour: time_bytes[0],
         minute: time_bytes[1],
@@ -91,10 +101,8 @@ fn bacnet_datetime_to_epoch(date: &BACnetDate, time: &BACnetTime) -> i64 {
     let m = if month <= 2 { month + 9 } else { month - 3 };
     let days = 365 * y + y / 4 - y / 100 + y / 400 + (m * 306 + 5) / 10 + day - 1 - 719468;
 
-    let secs = days * 86400
-        + time.hour as i64 * 3600
-        + time.minute as i64 * 60
-        + time.second as i64;
+    let secs =
+        days * 86400 + time.hour as i64 * 3600 + time.minute as i64 * 60 + time.second as i64;
 
     secs
 }
@@ -242,7 +250,9 @@ pub fn decode_dcc_request(data: &[u8]) -> Result<DeviceCommunicationControlReque
     let mut password = None;
 
     while !decoder.is_empty() {
-        let (tag_num, is_context, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
+        let (tag_num, is_context, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
 
         if !is_context {
             return Err("Expected context-tagged fields");
@@ -251,20 +261,24 @@ pub fn decode_dcc_request(data: &[u8]) -> Result<DeviceCommunicationControlReque
         match tag_num {
             0 => {
                 // timeDuration
-                let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode duration")?;
+                let val = decoder
+                    .decode_unsigned(len)
+                    .map_err(|_| "Failed to decode duration")?;
                 time_duration = Some(val as u16);
             }
             1 => {
                 // enable-disable
-                let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode enable-disable")?;
-                enable_disable = Some(
-                    EnableDisable::from_u32(val)
-                        .ok_or("Invalid enable-disable value")?,
-                );
+                let val = decoder
+                    .decode_unsigned(len)
+                    .map_err(|_| "Failed to decode enable-disable")?;
+                enable_disable =
+                    Some(EnableDisable::from_u32(val).ok_or("Invalid enable-disable value")?);
             }
             2 => {
                 // password
-                let s = decoder.decode_character_string(len).map_err(|_| "Failed to decode password")?;
+                let s = decoder
+                    .decode_character_string(len)
+                    .map_err(|_| "Failed to decode password")?;
                 password = Some(s);
             }
             _ => {
@@ -403,7 +417,9 @@ pub fn decode_reinitialize_request(data: &[u8]) -> Result<ReinitializeDeviceRequ
     let mut password = None;
 
     while !decoder.is_empty() {
-        let (tag_num, is_context, len) = decoder.decode_tag_info().map_err(|_| "Failed to decode tag")?;
+        let (tag_num, is_context, len) = decoder
+            .decode_tag_info()
+            .map_err(|_| "Failed to decode tag")?;
 
         if !is_context {
             return Err("Expected context-tagged fields");
@@ -411,14 +427,16 @@ pub fn decode_reinitialize_request(data: &[u8]) -> Result<ReinitializeDeviceRequ
 
         match tag_num {
             0 => {
-                let val = decoder.decode_unsigned(len).map_err(|_| "Failed to decode state")?;
-                state = Some(
-                    ReinitializedState::from_u32(val)
-                        .ok_or("Invalid reinitialize state")?,
-                );
+                let val = decoder
+                    .decode_unsigned(len)
+                    .map_err(|_| "Failed to decode state")?;
+                state =
+                    Some(ReinitializedState::from_u32(val).ok_or("Invalid reinitialize state")?);
             }
             1 => {
-                let s = decoder.decode_character_string(len).map_err(|_| "Failed to decode password")?;
+                let s = decoder
+                    .decode_character_string(len)
+                    .map_err(|_| "Failed to decode password")?;
                 password = Some(s);
             }
             _ => {
@@ -517,11 +535,11 @@ impl ConfirmedServiceHandler for ReinitializeDeviceHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::apdu::encoding::ApduEncoder;
     use crate::object::device::DeviceObjectConfig;
-    use crate::object::registry::ObjectRegistry;
     use crate::object::property::SegmentationSupport;
+    use crate::object::registry::ObjectRegistry;
+    use std::sync::Arc;
 
     fn setup_device_registry() -> (Arc<ObjectRegistry>, u32) {
         let registry = Arc::new(ObjectRegistry::new());
@@ -562,15 +580,24 @@ mod tests {
         assert_eq!(ts.name(), "TimeSynchronization");
 
         let utc = UtcTimeSynchronizationHandler::new();
-        assert_eq!(utc.service_choice(), UnconfirmedService::UtcTimeSynchronization);
+        assert_eq!(
+            utc.service_choice(),
+            UnconfirmedService::UtcTimeSynchronization
+        );
         assert_eq!(utc.name(), "UTCTimeSynchronization");
 
         let dcc = DeviceCommunicationControlHandler::new();
-        assert_eq!(dcc.service_choice(), ConfirmedService::DeviceCommunicationControl);
+        assert_eq!(
+            dcc.service_choice(),
+            ConfirmedService::DeviceCommunicationControl
+        );
         assert_eq!(dcc.name(), "DeviceCommunicationControl");
 
         let reinit = ReinitializeDeviceHandler::new();
-        assert_eq!(reinit.service_choice(), ConfirmedService::ReinitializeDevice);
+        assert_eq!(
+            reinit.service_choice(),
+            ConfirmedService::ReinitializeDevice
+        );
         assert_eq!(reinit.name(), "ReinitializeDevice");
     }
 
@@ -580,7 +607,7 @@ mod tests {
         // Time: 10:30:00.00
         let data = [
             0xA4, // application tag 10, length 4
-            124, 1, 15, 1, // date
+            124, 1, 15, 1,    // date
             0xB4, // application tag 11, length 4
             10, 30, 0, 0, // time
         ];
@@ -602,7 +629,7 @@ mod tests {
         // Send a time sync for a known time
         let data = [
             0xA4, 124, 1, 15, 1, // Date: 2024-01-15
-            0xB4, 10, 30, 0, 0,  // Time: 10:30:00
+            0xB4, 10, 30, 0, 0, // Time: 10:30:00
         ];
 
         let result = handler.handle(&data, &ctx);
@@ -634,7 +661,7 @@ mod tests {
         // [0] timeDuration = 60 minutes
         // [1] enable-disable = Disable (1)
         let data = [
-            0x09, 60,   // context tag [0], len=1, value=60
+            0x09, 60, // context tag [0], len=1, value=60
             0x19, 0x01, // context tag [1], len=1, value=1 (Disable)
         ];
 
@@ -657,13 +684,19 @@ mod tests {
         let device_id = ObjectId::new(ObjectType::Device, dev_inst);
         let obj = registry.get(&device_id).unwrap();
         let device = obj.as_any().downcast_ref::<DeviceObject>().unwrap();
-        assert_eq!(device.communication_control(), CommunicationControlState::Disabled);
+        assert_eq!(
+            device.communication_control(),
+            CommunicationControlState::Disabled
+        );
 
         // Then enable
         let enable_data = [0x19, 0x00]; // Enable
         let result = handler.handle(&enable_data, &ctx);
         assert!(matches!(result, ServiceResult::SimpleAck));
-        assert_eq!(device.communication_control(), CommunicationControlState::Enabled);
+        assert_eq!(
+            device.communication_control(),
+            CommunicationControlState::Enabled
+        );
     }
 
     #[test]
@@ -675,7 +708,13 @@ mod tests {
         // No password — should fail
         let data = [0x19, 0x01]; // Disable, no password
         let result = handler.handle(&data, &ctx);
-        assert!(matches!(result, ServiceResult::Error { error_code: ErrorCode::PasswordFailure, .. }));
+        assert!(matches!(
+            result,
+            ServiceResult::Error {
+                error_code: ErrorCode::PasswordFailure,
+                ..
+            }
+        ));
 
         // Wrong password — encode context tag [1] enable=Disable, then context tag [2] password
         let mut encoder = ApduEncoder::new();
@@ -683,7 +722,13 @@ mod tests {
         encoder.encode_context_character_string(2, "wrong");
         let data = encoder.into_bytes();
         let result = handler.handle(&data, &ctx);
-        assert!(matches!(result, ServiceResult::Error { error_code: ErrorCode::PasswordFailure, .. }));
+        assert!(matches!(
+            result,
+            ServiceResult::Error {
+                error_code: ErrorCode::PasswordFailure,
+                ..
+            }
+        ));
 
         // Correct password
         let mut encoder = ApduEncoder::new();
@@ -707,7 +752,10 @@ mod tests {
         let device_id = ObjectId::new(ObjectType::Device, dev_inst);
         let obj = registry.get(&device_id).unwrap();
         let device = obj.as_any().downcast_ref::<DeviceObject>().unwrap();
-        assert_eq!(device.communication_control(), CommunicationControlState::DisabledInitiation);
+        assert_eq!(
+            device.communication_control(),
+            CommunicationControlState::DisabledInitiation
+        );
     }
 
     #[test]
@@ -749,7 +797,10 @@ mod tests {
         assert!(matches!(result, ServiceResult::SimpleAck));
 
         // Verify reset
-        assert_eq!(device.communication_control(), CommunicationControlState::Enabled);
+        assert_eq!(
+            device.communication_control(),
+            CommunicationControlState::Enabled
+        );
         assert_eq!(device.time_offset_secs(), 0);
     }
 
@@ -762,7 +813,13 @@ mod tests {
         // StartBackup (not supported)
         let data = [0x09, 0x02];
         let result = handler.handle(&data, &ctx);
-        assert!(matches!(result, ServiceResult::Error { error_code: ErrorCode::ServiceRequestDenied, .. }));
+        assert!(matches!(
+            result,
+            ServiceResult::Error {
+                error_code: ErrorCode::ServiceRequestDenied,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -774,7 +831,13 @@ mod tests {
         // No password
         let data = [0x09, 0x00];
         let result = handler.handle(&data, &ctx);
-        assert!(matches!(result, ServiceResult::Error { error_code: ErrorCode::PasswordFailure, .. }));
+        assert!(matches!(
+            result,
+            ServiceResult::Error {
+                error_code: ErrorCode::PasswordFailure,
+                ..
+            }
+        ));
 
         // Correct password
         let mut encoder = ApduEncoder::new();
@@ -788,8 +851,18 @@ mod tests {
     #[test]
     fn test_bacnet_datetime_to_epoch() {
         // 2024-01-01 00:00:00 UTC should be 1704067200
-        let date = BACnetDate { year: 124, month: 1, day: 1, day_of_week: 1 };
-        let time = BACnetTime { hour: 0, minute: 0, second: 0, hundredths: 0 };
+        let date = BACnetDate {
+            year: 124,
+            month: 1,
+            day: 1,
+            day_of_week: 1,
+        };
+        let time = BACnetTime {
+            hour: 0,
+            minute: 0,
+            second: 0,
+            hundredths: 0,
+        };
         let epoch = bacnet_datetime_to_epoch(&date, &time);
         assert_eq!(epoch, 1704067200);
     }
@@ -798,15 +871,27 @@ mod tests {
     fn test_enable_disable_from_u32() {
         assert_eq!(EnableDisable::from_u32(0), Some(EnableDisable::Enable));
         assert_eq!(EnableDisable::from_u32(1), Some(EnableDisable::Disable));
-        assert_eq!(EnableDisable::from_u32(2), Some(EnableDisable::DisableInitiation));
+        assert_eq!(
+            EnableDisable::from_u32(2),
+            Some(EnableDisable::DisableInitiation)
+        );
         assert_eq!(EnableDisable::from_u32(3), None);
     }
 
     #[test]
     fn test_reinitialized_state_from_u32() {
-        assert_eq!(ReinitializedState::from_u32(0), Some(ReinitializedState::Coldstart));
-        assert_eq!(ReinitializedState::from_u32(1), Some(ReinitializedState::Warmstart));
-        assert_eq!(ReinitializedState::from_u32(7), Some(ReinitializedState::ActivateChanges));
+        assert_eq!(
+            ReinitializedState::from_u32(0),
+            Some(ReinitializedState::Coldstart)
+        );
+        assert_eq!(
+            ReinitializedState::from_u32(1),
+            Some(ReinitializedState::Warmstart)
+        );
+        assert_eq!(
+            ReinitializedState::from_u32(7),
+            Some(ReinitializedState::ActivateChanges)
+        );
         assert_eq!(ReinitializedState::from_u32(8), None);
     }
 }

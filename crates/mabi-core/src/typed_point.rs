@@ -503,8 +503,7 @@ mod tests {
 
     #[test]
     fn test_from_definition() {
-        let def = DataPointDef::new("count", "Counter", DataType::Int32)
-            .with_range(0.0, 1000.0);
+        let def = DataPointDef::new("count", "Counter", DataType::Int32).with_range(0.0, 1000.0);
 
         let point: Int32Point = TypedDataPoint::from_definition(&def).unwrap();
         assert_eq!(point.id, "count");
@@ -531,7 +530,10 @@ mod tests {
         // Test String
         assert_eq!(String::data_type(), DataType::String);
         let s = "hello".to_string();
-        assert_eq!(String::from_value(&Value::String(s.clone())), Some(s.clone()));
+        assert_eq!(
+            String::from_value(&Value::String(s.clone())),
+            Some(s.clone())
+        );
         assert_eq!(s.to_value(), Value::String("hello".to_string()));
     }
 }

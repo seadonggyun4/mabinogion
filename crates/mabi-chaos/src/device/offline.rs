@@ -254,7 +254,8 @@ impl DeviceOfflineFault {
                     let elapsed = self.last_state_change.elapsed().as_millis() as u64;
                     if elapsed >= *interval_ms {
                         self.is_offline = true;
-                        self.offline_until = Some(now + Duration::from_millis(*offline_duration_ms));
+                        self.offline_until =
+                            Some(now + Duration::from_millis(*offline_duration_ms));
                         self.last_state_change = now;
                     }
                 }

@@ -190,7 +190,13 @@ pub fn format_bytes(bytes: u64) -> String {
 /// Sanitize a string for use as an identifier.
 pub fn sanitize_identifier(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

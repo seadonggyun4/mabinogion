@@ -46,9 +46,7 @@ impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
             bind_addr: format!("0.0.0.0:{}", DEFAULT_PORT).parse().unwrap(),
-            broadcast_addr: format!("255.255.255.255:{}", DEFAULT_PORT)
-                .parse()
-                .unwrap(),
+            broadcast_addr: format!("255.255.255.255:{}", DEFAULT_PORT).parse().unwrap(),
             recv_buffer_size: DEFAULT_BUFFER_SIZE,
             send_buffer_size: DEFAULT_BUFFER_SIZE,
             max_apdu_size: MAX_APDU_SIZE,
@@ -261,9 +259,9 @@ impl BACnetNetwork {
         })?;
 
         // Enable broadcast
-        socket.set_broadcast(true).map_err(|e| {
-            BacnetError::Server(format!("Failed to enable broadcast: {}", e))
-        })?;
+        socket
+            .set_broadcast(true)
+            .map_err(|e| BacnetError::Server(format!("Failed to enable broadcast: {}", e)))?;
 
         let (recv_tx, recv_rx) = mpsc::channel(config.channel_buffer_size);
 
@@ -320,9 +318,11 @@ impl BACnetNetwork {
             }
 
             // Use a timeout to allow checking shutdown flag periodically
-            let recv_result =
-                tokio::time::timeout(std::time::Duration::from_millis(100), self.socket.recv_from(&mut buf))
-                    .await;
+            let recv_result = tokio::time::timeout(
+                std::time::Duration::from_millis(100),
+                self.socket.recv_from(&mut buf),
+            )
+            .await;
 
             match recv_result {
                 Ok(Ok((len, source))) => {

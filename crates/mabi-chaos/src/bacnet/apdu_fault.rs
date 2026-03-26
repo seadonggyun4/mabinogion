@@ -188,12 +188,11 @@ pub struct ApduFault {
 impl ApduFault {
     pub fn new(id: impl Into<String>, config: ApduFaultConfig) -> Self {
         let id = id.into();
-        let metadata =
-            FaultMetadata::new(&id, "BACnet APDU Fault", FaultCategory::Protocol)
-                .with_description("Corrupts BACnet APDU at the wire level")
-                .with_severity(FaultSeverity::High)
-                .with_tag("bacnet")
-                .with_tag("apdu");
+        let metadata = FaultMetadata::new(&id, "BACnet APDU Fault", FaultCategory::Protocol)
+            .with_description("Corrupts BACnet APDU at the wire level")
+            .with_severity(FaultSeverity::High)
+            .with_tag("bacnet")
+            .with_tag("apdu");
 
         Self {
             base: BaseFault::new(metadata),
@@ -350,7 +349,10 @@ impl Fault for ApduFault {
             return Ok(FaultBehavior::Continue);
         }
 
-        ctx.set_metadata("bacnet_apdu_fault", &format!("{:?}", self.config.fault_type));
+        ctx.set_metadata(
+            "bacnet_apdu_fault",
+            &format!("{:?}", self.config.fault_type),
+        );
         ctx.record_applied_fault(self.id(), "apdu_corrupt");
 
         tracing::debug!(
@@ -532,7 +534,11 @@ mod tests {
         let mut data = vec![0x00, 0x04, 0x01, 0x0C, 0x0C, 0x00];
         fault.corrupt_apdu(&mut data);
         let apdu_type = (data[0] >> 4) & 0x0F;
-        assert!(apdu_type >= 8, "APDU type should be invalid (>=8), got {}", apdu_type);
+        assert!(
+            apdu_type >= 8,
+            "APDU type should be invalid (>=8), got {}",
+            apdu_type
+        );
     }
 
     #[test]

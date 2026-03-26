@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::config::{SecurityPolicy, MessageSecurityMode};
+use crate::config::{MessageSecurityMode, SecurityPolicy};
 
 /// Security policy configuration with all cryptographic parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,18 +78,33 @@ impl SecurityPolicyConfig {
         Self {
             policy: SecurityPolicy::Basic128Rsa15,
             uri: SecurityPolicy::Basic128Rsa15.uri().to_string(),
-            symmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#hmac-sha1".to_string()),
-            symmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#aes128-cbc".to_string()),
-            asymmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string()),
-            asymmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-1_5".to_string()),
-            asymmetric_key_wrap_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-1_5".to_string()),
-            key_derivation_algorithm: Some("http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha1".to_string()),
+            symmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#hmac-sha1".to_string(),
+            ),
+            symmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#aes128-cbc".to_string(),
+            ),
+            asymmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string(),
+            ),
+            asymmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-1_5".to_string(),
+            ),
+            asymmetric_key_wrap_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-1_5".to_string(),
+            ),
+            key_derivation_algorithm: Some(
+                "http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha1"
+                    .to_string(),
+            ),
             min_asymmetric_key_length: 1024,
             max_asymmetric_key_length: 2048,
             derived_signature_key_length: 16,
             symmetric_key_length: 16,
             symmetric_block_size: 16,
-            certificate_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string()),
+            certificate_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string(),
+            ),
             secure_channel_nonce_length: 16,
             deprecated: true,
         }
@@ -100,18 +115,33 @@ impl SecurityPolicyConfig {
         Self {
             policy: SecurityPolicy::Basic256,
             uri: SecurityPolicy::Basic256.uri().to_string(),
-            symmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#hmac-sha1".to_string()),
-            symmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#aes256-cbc".to_string()),
-            asymmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string()),
-            asymmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string()),
-            asymmetric_key_wrap_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string()),
-            key_derivation_algorithm: Some("http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha1".to_string()),
+            symmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#hmac-sha1".to_string(),
+            ),
+            symmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#aes256-cbc".to_string(),
+            ),
+            asymmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string(),
+            ),
+            asymmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string(),
+            ),
+            asymmetric_key_wrap_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string(),
+            ),
+            key_derivation_algorithm: Some(
+                "http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha1"
+                    .to_string(),
+            ),
             min_asymmetric_key_length: 1024,
             max_asymmetric_key_length: 2048,
             derived_signature_key_length: 24,
             symmetric_key_length: 32,
             symmetric_block_size: 16,
-            certificate_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string()),
+            certificate_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#rsa-sha1".to_string(),
+            ),
             secure_channel_nonce_length: 32,
             deprecated: true,
         }
@@ -122,18 +152,33 @@ impl SecurityPolicyConfig {
         Self {
             policy: SecurityPolicy::Basic256Sha256,
             uri: SecurityPolicy::Basic256Sha256.uri().to_string(),
-            symmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#hmac-sha256".to_string()),
-            symmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#aes256-cbc".to_string()),
-            asymmetric_signature_algorithm: Some("http://www.w3.org/2001/04/xmldsig#rsa-sha256".to_string()),
-            asymmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string()),
-            asymmetric_key_wrap_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string()),
-            key_derivation_algorithm: Some("http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha256".to_string()),
+            symmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#hmac-sha256".to_string(),
+            ),
+            symmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#aes256-cbc".to_string(),
+            ),
+            asymmetric_signature_algorithm: Some(
+                "http://www.w3.org/2001/04/xmldsig#rsa-sha256".to_string(),
+            ),
+            asymmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string(),
+            ),
+            asymmetric_key_wrap_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string(),
+            ),
+            key_derivation_algorithm: Some(
+                "http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha256"
+                    .to_string(),
+            ),
             min_asymmetric_key_length: 2048,
             max_asymmetric_key_length: 4096,
             derived_signature_key_length: 32,
             symmetric_key_length: 32,
             symmetric_block_size: 16,
-            certificate_signature_algorithm: Some("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256".to_string()),
+            certificate_signature_algorithm: Some(
+                "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256".to_string(),
+            ),
             secure_channel_nonce_length: 32,
             deprecated: false,
         }
@@ -144,18 +189,33 @@ impl SecurityPolicyConfig {
         Self {
             policy: SecurityPolicy::Aes128Sha256RsaOaep,
             uri: SecurityPolicy::Aes128Sha256RsaOaep.uri().to_string(),
-            symmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#hmac-sha256".to_string()),
-            symmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#aes128-cbc".to_string()),
-            asymmetric_signature_algorithm: Some("http://www.w3.org/2001/04/xmldsig#rsa-sha256".to_string()),
-            asymmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string()),
-            asymmetric_key_wrap_algorithm: Some("http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string()),
-            key_derivation_algorithm: Some("http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha256".to_string()),
+            symmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#hmac-sha256".to_string(),
+            ),
+            symmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#aes128-cbc".to_string(),
+            ),
+            asymmetric_signature_algorithm: Some(
+                "http://www.w3.org/2001/04/xmldsig#rsa-sha256".to_string(),
+            ),
+            asymmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string(),
+            ),
+            asymmetric_key_wrap_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#rsa-oaep".to_string(),
+            ),
+            key_derivation_algorithm: Some(
+                "http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha256"
+                    .to_string(),
+            ),
             min_asymmetric_key_length: 2048,
             max_asymmetric_key_length: 4096,
             derived_signature_key_length: 32,
             symmetric_key_length: 16,
             symmetric_block_size: 16,
-            certificate_signature_algorithm: Some("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256".to_string()),
+            certificate_signature_algorithm: Some(
+                "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256".to_string(),
+            ),
             secure_channel_nonce_length: 32,
             deprecated: false,
         }
@@ -166,18 +226,33 @@ impl SecurityPolicyConfig {
         Self {
             policy: SecurityPolicy::Aes256Sha256RsaPss,
             uri: SecurityPolicy::Aes256Sha256RsaPss.uri().to_string(),
-            symmetric_signature_algorithm: Some("http://www.w3.org/2000/09/xmldsig#hmac-sha256".to_string()),
-            symmetric_encryption_algorithm: Some("http://www.w3.org/2001/04/xmlenc#aes256-cbc".to_string()),
-            asymmetric_signature_algorithm: Some("http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1".to_string()),
-            asymmetric_encryption_algorithm: Some("http://opcfoundation.org/UA/security/rsa-oaep-sha2-256".to_string()),
-            asymmetric_key_wrap_algorithm: Some("http://opcfoundation.org/UA/security/rsa-oaep-sha2-256".to_string()),
-            key_derivation_algorithm: Some("http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha256".to_string()),
+            symmetric_signature_algorithm: Some(
+                "http://www.w3.org/2000/09/xmldsig#hmac-sha256".to_string(),
+            ),
+            symmetric_encryption_algorithm: Some(
+                "http://www.w3.org/2001/04/xmlenc#aes256-cbc".to_string(),
+            ),
+            asymmetric_signature_algorithm: Some(
+                "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1".to_string(),
+            ),
+            asymmetric_encryption_algorithm: Some(
+                "http://opcfoundation.org/UA/security/rsa-oaep-sha2-256".to_string(),
+            ),
+            asymmetric_key_wrap_algorithm: Some(
+                "http://opcfoundation.org/UA/security/rsa-oaep-sha2-256".to_string(),
+            ),
+            key_derivation_algorithm: Some(
+                "http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512/dk/p_sha256"
+                    .to_string(),
+            ),
             min_asymmetric_key_length: 2048,
             max_asymmetric_key_length: 4096,
             derived_signature_key_length: 32,
             symmetric_key_length: 32,
             symmetric_block_size: 16,
-            certificate_signature_algorithm: Some("http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1".to_string()),
+            certificate_signature_algorithm: Some(
+                "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1".to_string(),
+            ),
             secure_channel_nonce_length: 32,
             deprecated: false,
         }
@@ -223,17 +298,26 @@ impl SecurityPolicyProvider {
     pub fn new() -> Self {
         let mut policies = HashMap::new();
         policies.insert(SecurityPolicy::None, SecurityPolicyConfig::none());
-        policies.insert(SecurityPolicy::Basic128Rsa15, SecurityPolicyConfig::basic128_rsa15());
+        policies.insert(
+            SecurityPolicy::Basic128Rsa15,
+            SecurityPolicyConfig::basic128_rsa15(),
+        );
         policies.insert(SecurityPolicy::Basic256, SecurityPolicyConfig::basic256());
-        policies.insert(SecurityPolicy::Basic256Sha256, SecurityPolicyConfig::basic256_sha256());
-        policies.insert(SecurityPolicy::Aes128Sha256RsaOaep, SecurityPolicyConfig::aes128_sha256_rsa_oaep());
-        policies.insert(SecurityPolicy::Aes256Sha256RsaPss, SecurityPolicyConfig::aes256_sha256_rsa_pss());
+        policies.insert(
+            SecurityPolicy::Basic256Sha256,
+            SecurityPolicyConfig::basic256_sha256(),
+        );
+        policies.insert(
+            SecurityPolicy::Aes128Sha256RsaOaep,
+            SecurityPolicyConfig::aes128_sha256_rsa_oaep(),
+        );
+        policies.insert(
+            SecurityPolicy::Aes256Sha256RsaPss,
+            SecurityPolicyConfig::aes256_sha256_rsa_pss(),
+        );
 
         // By default, enable None and Basic256Sha256
-        let enabled_policies = vec![
-            SecurityPolicy::None,
-            SecurityPolicy::Basic256Sha256,
-        ];
+        let enabled_policies = vec![SecurityPolicy::None, SecurityPolicy::Basic256Sha256];
 
         Self {
             policies,
@@ -363,7 +447,8 @@ mod tests {
     #[test]
     fn test_policy_by_uri() {
         let provider = SecurityPolicyProvider::new();
-        let policy = provider.get_by_uri("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+        let policy =
+            provider.get_by_uri("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
         assert_eq!(policy, Some(SecurityPolicy::Basic256Sha256));
     }
 
@@ -376,8 +461,13 @@ mod tests {
         assert!(!provider.validate_mode_for_policy(SecurityPolicy::None, MessageSecurityMode::Sign));
 
         // Other policies require Sign or SignAndEncrypt
-        assert!(!provider.validate_mode_for_policy(SecurityPolicy::Basic256Sha256, MessageSecurityMode::None));
-        assert!(provider.validate_mode_for_policy(SecurityPolicy::Basic256Sha256, MessageSecurityMode::Sign));
-        assert!(provider.validate_mode_for_policy(SecurityPolicy::Basic256Sha256, MessageSecurityMode::SignAndEncrypt));
+        assert!(!provider
+            .validate_mode_for_policy(SecurityPolicy::Basic256Sha256, MessageSecurityMode::None));
+        assert!(provider
+            .validate_mode_for_policy(SecurityPolicy::Basic256Sha256, MessageSecurityMode::Sign));
+        assert!(provider.validate_mode_for_policy(
+            SecurityPolicy::Basic256Sha256,
+            MessageSecurityMode::SignAndEncrypt
+        ));
     }
 }

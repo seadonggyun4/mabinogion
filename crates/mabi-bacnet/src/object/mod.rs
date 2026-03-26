@@ -18,8 +18,7 @@ pub mod trend_log;
 pub mod types;
 
 pub use device::{
-    BACnetDateTime, CommunicationControlState, DeviceObject, DeviceObjectConfig,
-    DeviceSystemStatus,
+    BACnetDateTime, CommunicationControlState, DeviceObject, DeviceObjectConfig, DeviceSystemStatus,
 };
 pub use event_enrollment::{
     EventEnrollment, EventNotification, EventTransitionBits, EventType, NotificationClass,
@@ -28,6 +27,10 @@ pub use event_enrollment::{
 pub use file::{FileAccessMethod, FileObject};
 pub use property::{BACnetValue, PropertyError, PropertyId, PropertyStore, StatusFlags};
 pub use registry::{default_object_descriptors, ObjectRegistry, ObjectTypeDescriptor};
+pub use schedule::{
+    Calendar, CalendarEntry, DateRange, ObjectPropertyReference, Schedule, SpecialEvent,
+    SpecialEventPeriod, TimeValue,
+};
 pub use standard::{
     AnalogInput, AnalogOutput, AnalogValue, BinaryInput, BinaryOutput, BinaryValue,
     MultiStateInput, MultiStateOutput, MultiStateValue,
@@ -35,9 +38,5 @@ pub use standard::{
 pub use traits::{BACnetObject, CovSupport, ObjectBuilder, WritableObject};
 pub use trend_log::{
     DeviceObjectPropertyReference, LogDatum, LogRecord, LogStatus, LogTimestamp, TrendLog,
-};
-pub use schedule::{
-    Calendar, CalendarEntry, DateRange, ObjectPropertyReference, Schedule, SpecialEvent,
-    SpecialEventPeriod, TimeValue,
 };
 pub use types::{ObjectId, ObjectType};

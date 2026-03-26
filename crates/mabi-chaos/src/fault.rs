@@ -366,7 +366,9 @@ impl fmt::Display for FaultCategory {
 // =============================================================================
 
 /// Severity level of a fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum FaultSeverity {
     /// Minor impact, typically logging or metrics only.
@@ -609,7 +611,10 @@ mod tests {
         assert!(FaultBehavior::Continue.should_proceed());
         assert!(FaultBehavior::Delay { duration_ms: 100 }.should_proceed());
         assert!(!FaultBehavior::Skip.should_proceed());
-        assert!(!FaultBehavior::Abort { error: "test".into() }.should_proceed());
+        assert!(!FaultBehavior::Abort {
+            error: "test".into()
+        }
+        .should_proceed());
 
         assert!(!FaultBehavior::Continue.was_affected());
         assert!(FaultBehavior::Skip.was_affected());

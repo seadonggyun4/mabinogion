@@ -205,10 +205,12 @@ impl CliContextBuilder {
         let working_dir = self
             .working_dir
             .or_else(|| std::env::current_dir().ok())
-            .ok_or_else(|| CliError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "Could not determine working directory",
-            )))?;
+            .ok_or_else(|| {
+                CliError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not determine working directory",
+                ))
+            })?;
 
         Ok(CliContext {
             engine: Arc::new(RwLock::new(None)),

@@ -257,8 +257,7 @@ impl ConfirmedServiceHandler for AtomicReadFileHandler {
             } => {
                 let (records, eof) =
                     file_obj.read_records(file_start_record, requested_record_count as i32);
-                let response =
-                    encode_read_file_record_ack(eof, file_start_record, &records);
+                let response = encode_read_file_record_ack(eof, file_start_record, &records);
                 ServiceResult::ComplexAck(response)
             }
         }
@@ -481,27 +480,23 @@ impl ConfirmedServiceHandler for AtomicWriteFileHandler {
             WriteFileAccess::Stream {
                 file_start_position,
                 file_data,
-            } => {
-                match file_obj.write_stream(file_start_position, &file_data) {
-                    Ok(actual_pos) => {
-                        let response = encode_write_file_stream_ack(actual_pos);
-                        ServiceResult::ComplexAck(response)
-                    }
-                    Err(_) => ServiceResult::write_access_denied(),
+            } => match file_obj.write_stream(file_start_position, &file_data) {
+                Ok(actual_pos) => {
+                    let response = encode_write_file_stream_ack(actual_pos);
+                    ServiceResult::ComplexAck(response)
                 }
-            }
+                Err(_) => ServiceResult::write_access_denied(),
+            },
             WriteFileAccess::Record {
                 file_start_record,
                 file_record_data,
-            } => {
-                match file_obj.write_records(file_start_record, file_record_data) {
-                    Ok(actual_idx) => {
-                        let response = encode_write_file_record_ack(actual_idx);
-                        ServiceResult::ComplexAck(response)
-                    }
-                    Err(_) => ServiceResult::write_access_denied(),
+            } => match file_obj.write_records(file_start_record, file_record_data) {
+                Ok(actual_idx) => {
+                    let response = encode_write_file_record_ack(actual_idx);
+                    ServiceResult::ComplexAck(response)
                 }
-            }
+                Err(_) => ServiceResult::write_access_denied(),
+            },
         }
     }
 
@@ -523,9 +518,7 @@ impl ConfirmedServiceHandler for AtomicWriteFileHandler {
 /// Uses the `as_any()` trait method for safe downcasting to the
 /// concrete `FileObject` type, enabling access to file-specific
 /// operations (`read_stream`, `write_stream`, etc.).
-fn downcast_file_object(
-    obj: &Arc<dyn crate::object::traits::BACnetObject>,
-) -> Option<&FileObject> {
+fn downcast_file_object(obj: &Arc<dyn crate::object::traits::BACnetObject>) -> Option<&FileObject> {
     obj.as_any().downcast_ref::<FileObject>()
 }
 
@@ -573,11 +566,7 @@ fn encode_read_file_stream_ack(eof: bool, start_position: i32, data: &[u8]) -> V
 ///     fileRecordData     SEQUENCE OF OCTET STRING
 /// }
 /// ```
-fn encode_read_file_record_ack(
-    eof: bool,
-    start_record: i32,
-    records: &[Vec<u8>],
-) -> Vec<u8> {
+fn encode_read_file_record_ack(eof: bool, start_record: i32, records: &[Vec<u8>]) -> Vec<u8> {
     let mut encoder = ApduEncoder::new();
 
     // endOfFile
@@ -685,8 +674,7 @@ mod tests {
     use crate::object::types::ObjectId;
 
     fn make_stream_file(instance: u32, data: &[u8]) -> Arc<FileObject> {
-        let file = FileObject::new(instance, format!("File{}", instance))
-            .with_data(data.to_vec());
+        let file = FileObject::new(instance, format!("File{}", instance)).with_data(data.to_vec());
         Arc::new(file)
     }
 
@@ -806,11 +794,7 @@ mod tests {
         buf
     }
 
-    fn encode_write_file_record_request(
-        instance: u32,
-        start: i32,
-        records: &[&[u8]],
-    ) -> Vec<u8> {
+    fn encode_write_file_record_request(instance: u32, start: i32, records: &[&[u8]]) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // ObjectIdentifier
@@ -984,7 +968,11 @@ mod tests {
     fn test_read_file_record_handler() {
         let file = make_record_file(
             2,
-            vec![b"Record0".to_vec(), b"Record1".to_vec(), b"Record2".to_vec()],
+            vec![
+                b"Record0".to_vec(),
+                b"Record1".to_vec(),
+                b"Record2".to_vec(),
+            ],
         );
         let registry = Arc::new(ObjectRegistry::new());
         registry.register(file);
@@ -1040,9 +1028,7 @@ mod tests {
 
     #[test]
     fn test_write_read_only_file() {
-        let file = Arc::new(
-            FileObject::new(1, "ReadOnlyFile").with_read_only(true),
-        );
+        let file = Arc::new(FileObject::new(1, "ReadOnlyFile").with_read_only(true));
         let registry = Arc::new(ObjectRegistry::new());
         registry.register(file);
         let ctx = make_ctx(&registry);

@@ -11,14 +11,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::types::NodeId;
-use crate::nodes::{QualifiedName, RelativePathElement};
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::nodes::{QualifiedName, RelativePathElement};
+use crate::types::NodeId;
 
 const TRANSLATE_BROWSE_PATHS_REQUEST_ID: u32 = 554;
 const TRANSLATE_BROWSE_PATHS_RESPONSE_ID: u32 = 557;
@@ -73,7 +73,9 @@ impl ServiceHandler for TranslateBrowsePathsHandler {
             }
 
             // Resolve the path
-            let result = context.address_space.resolve_browse_path(&starting_node, &elements);
+            let result = context
+                .address_space
+                .resolve_browse_path(&starting_node, &elements);
 
             // BrowsePathResult
             result.status.encode(&mut out)?;
@@ -84,8 +86,8 @@ impl ServiceHandler for TranslateBrowsePathsHandler {
                 // BrowsePathTarget = ExpandedNodeId + RemainingPathIndex
                 // ExpandedNodeId: encode as NodeId + server_index(0) + namespace_uri(null)
                 target.target_id.encode(&mut out)?;
-                out.put_u32_le(0);    // server_index
-                out.put_i32_le(-1);   // namespace_uri (null string)
+                out.put_u32_le(0); // server_index
+                out.put_i32_le(-1); // namespace_uri (null string)
                 out.put_u32_le(target.remaining_path_index);
             }
         }

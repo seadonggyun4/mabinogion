@@ -28,16 +28,16 @@
 //! let results = simulator.run().await?;
 //! ```
 
-pub mod scale;
-pub mod memory_sim;
 pub mod failure;
 pub mod load;
+pub mod memory_sim;
+pub mod scale;
 pub mod scenarios;
 
-pub use scale::*;
-pub use memory_sim::*;
 pub use failure::*;
 pub use load::*;
+pub use memory_sim::*;
+pub use scale::*;
 pub use scenarios::*;
 
 use std::sync::Arc;
@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 use crate::error::Result;
-use crate::profiling::{Profiler, ProfileReport};
+use crate::profiling::{ProfileReport, Profiler};
 
 /// Main simulation configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,15 +211,10 @@ pub enum SimulationEvent {
     },
 
     /// Error occurred.
-    Error {
-        message: String,
-        recoverable: bool,
-    },
+    Error { message: String, recoverable: bool },
 
     /// Simulation completed.
-    Completed {
-        result: SimulationResult,
-    },
+    Completed { result: SimulationResult },
 }
 
 /// Current phase of the simulation.
@@ -359,7 +354,8 @@ impl Simulator {
 
         // Start profiling
         self.profiler.start();
-        self.running.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.running
+            .store(true, std::sync::atomic::Ordering::SeqCst);
 
         // Emit start event
         let _ = self.event_tx.send(SimulationEvent::Started {
@@ -419,14 +415,18 @@ impl Simulator {
         // Check for memory leaks
         let leak_warnings = self.profiler.check_leaks();
         for leak in leak_warnings {
-            warnings.push(format!("Potential memory leak: {} - {}", leak.region, leak.message));
+            warnings.push(format!(
+                "Potential memory leak: {} - {}",
+                leak.region, leak.message
+            ));
         }
 
         phase_durations.insert("finalization".into(), finalize_start.elapsed());
 
         // Build result
         self.set_phase(SimulationPhase::Completed);
-        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
 
         let final_metrics = self.metrics.read().clone();
         let passed = errors.is_empty() && self.check_success_criteria(&final_metrics);
@@ -516,7 +516,10 @@ impl Simulator {
 
         while start_time.elapsed() < self.config.max_duration {
             // Apply load pattern
-            let ops = self.config.load_pattern.ops_for_elapsed(start_time.elapsed());
+            let ops = self
+                .config
+                .load_pattern
+                .ops_for_elapsed(start_time.elapsed());
             self.simulate_operations(ops).await;
 
             // Apply memory pattern
@@ -616,7 +619,8 @@ impl Simulator {
                 let idx = (elapsed.as_millis() as usize) % sizes.len();
                 self.profiler.record_allocation("frag", sizes[idx]);
                 if elapsed.as_millis() % 2 == 0 {
-                    self.profiler.record_deallocation("frag", sizes[(idx + 2) % sizes.len()]);
+                    self.profiler
+                        .record_deallocation("frag", sizes[(idx + 2) % sizes.len()]);
                 }
             }
             MemoryPattern::Custom(pattern) => {
@@ -659,7 +663,8 @@ impl Simulator {
 
     /// Stop the simulation early.
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

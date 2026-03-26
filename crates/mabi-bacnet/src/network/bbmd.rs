@@ -236,7 +236,10 @@ impl ForeignDeviceTable {
     pub fn register(&self, address: SocketAddrV4, ttl_seconds: u16) -> Result<(), BbmdError> {
         if let Some(mut entry) = self.entries.get_mut(&address) {
             entry.refresh(ttl_seconds);
-            debug!(?address, ttl_seconds, "Foreign device registration refreshed");
+            debug!(
+                ?address,
+                ttl_seconds, "Foreign device registration refreshed"
+            );
             return Ok(());
         }
 
@@ -418,11 +421,7 @@ impl Bbmd {
     }
 
     /// Handle a BVLC message and return a response if needed.
-    pub fn handle_message(
-        &self,
-        msg: &BvlcMessage,
-        source: SocketAddrV4,
-    ) -> Option<BvlcMessage> {
+    pub fn handle_message(&self, msg: &BvlcMessage, source: SocketAddrV4) -> Option<BvlcMessage> {
         if !self.config.enabled {
             return None;
         }
@@ -436,9 +435,7 @@ impl Bbmd {
                 self.handle_delete_fdt_entry(source, &msg.npdu)
             }
             BvlcFunction::ReadBroadcastDistributionTable => self.handle_read_bdt(),
-            BvlcFunction::WriteBroadcastDistributionTable => {
-                self.handle_write_bdt(&msg.npdu)
-            }
+            BvlcFunction::WriteBroadcastDistributionTable => self.handle_write_bdt(&msg.npdu),
             BvlcFunction::DistributeBroadcastToNetwork => {
                 // This is handled by the forwarding logic, not here
                 None
@@ -455,11 +452,15 @@ impl Bbmd {
     ) -> Option<BvlcMessage> {
         if !self.config.accept_foreign_devices {
             warn!(?source, "Foreign device registration rejected (disabled)");
-            return Some(BvlcMessage::result(BvlcResultCode::RegisterForeignDeviceNak));
+            return Some(BvlcMessage::result(
+                BvlcResultCode::RegisterForeignDeviceNak,
+            ));
         }
 
         if data.len() < 2 {
-            return Some(BvlcMessage::result(BvlcResultCode::RegisterForeignDeviceNak));
+            return Some(BvlcMessage::result(
+                BvlcResultCode::RegisterForeignDeviceNak,
+            ));
         }
 
         let ttl_seconds = u16::from_be_bytes([data[0], data[1]]);
@@ -468,7 +469,9 @@ impl Bbmd {
             Ok(()) => Some(BvlcMessage::result(BvlcResultCode::Success)),
             Err(e) => {
                 warn!(?source, ?e, "Failed to register foreign device");
-                Some(BvlcMessage::result(BvlcResultCode::RegisterForeignDeviceNak))
+                Some(BvlcMessage::result(
+                    BvlcResultCode::RegisterForeignDeviceNak,
+                ))
             }
         }
     }
@@ -479,10 +482,7 @@ impl Bbmd {
         let length = (4 + data.len()) as u16;
 
         Some(BvlcMessage {
-            header: super::bvlc::BvlcHeader::new(
-                BvlcFunction::ReadForeignDeviceTableAck,
-                length,
-            ),
+            header: super::bvlc::BvlcHeader::new(BvlcFunction::ReadForeignDeviceTableAck, length),
             npdu: data,
             original_source: None,
             result_code: None,
@@ -490,11 +490,7 @@ impl Bbmd {
     }
 
     /// Handle Delete-Foreign-Device-Table-Entry request.
-    fn handle_delete_fdt_entry(
-        &self,
-        _source: SocketAddrV4,
-        data: &[u8],
-    ) -> Option<BvlcMessage> {
+    fn handle_delete_fdt_entry(&self, _source: SocketAddrV4, data: &[u8]) -> Option<BvlcMessage> {
         if data.len() < 6 {
             return Some(BvlcMessage::result(BvlcResultCode::DeleteFdtEntryNak));
         }

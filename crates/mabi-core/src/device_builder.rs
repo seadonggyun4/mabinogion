@@ -324,7 +324,11 @@ pub fn device(id: impl Into<String>, name: impl Into<String>) -> DeviceConfigBui
 }
 
 /// Shorthand function to create a new data point builder.
-pub fn point(id: impl Into<String>, name: impl Into<String>, data_type: DataType) -> DataPointBuilder {
+pub fn point(
+    id: impl Into<String>,
+    name: impl Into<String>,
+    data_type: DataType,
+) -> DataPointBuilder {
     DataPointBuilder::new(id, name, data_type)
 }
 
@@ -356,13 +360,11 @@ mod tests {
     #[test]
     fn test_device_config_builder_validation() {
         // Empty ID should fail
-        let result = DeviceConfigBuilder::new("", "Test")
-            .build();
+        let result = DeviceConfigBuilder::new("", "Test").build();
         assert!(result.is_err());
 
         // Empty name should fail
-        let result = DeviceConfigBuilder::new("test", "")
-            .build();
+        let result = DeviceConfigBuilder::new("test", "").build();
         assert!(result.is_err());
 
         // Duplicate point IDs should fail
@@ -421,9 +423,7 @@ mod tests {
 
     #[test]
     fn test_device_config_builder_with_tags_object() {
-        let tags = Tags::new()
-            .with_tag("env", "prod")
-            .with_label("monitored");
+        let tags = Tags::new().with_tag("env", "prod").with_label("monitored");
 
         let config = DeviceConfigBuilder::new("dev-002", "Device with Tags")
             .tags(tags)

@@ -90,29 +90,18 @@ pub enum ReloadStrategy {
 #[derive(Debug, Clone)]
 pub enum ReloadEvent {
     /// Configuration file changed (before processing).
-    FileChanged {
-        path: PathBuf,
-    },
+    FileChanged { path: PathBuf },
     /// Configuration successfully reloaded.
     Reloaded {
         path: PathBuf,
         changes: Vec<ConfigChange>,
     },
     /// Configuration reload failed.
-    Failed {
-        path: PathBuf,
-        error: String,
-    },
+    Failed { path: PathBuf, error: String },
     /// Validation failed (dry-run or ValidateFirst).
-    ValidationFailed {
-        path: PathBuf,
-        errors: Vec<String>,
-    },
+    ValidationFailed { path: PathBuf, errors: Vec<String> },
     /// Configuration rollback occurred.
-    RolledBack {
-        path: PathBuf,
-        reason: String,
-    },
+    RolledBack { path: PathBuf, reason: String },
 }
 
 /// Describes a configuration change.
@@ -255,9 +244,10 @@ impl HotReloadManager {
 
     /// Manually reload configuration from the file.
     pub fn reload(&self) -> Result<Vec<ConfigChange>> {
-        let path = self.config_path.as_ref().ok_or_else(|| {
-            Error::Config("No configuration path set".into())
-        })?;
+        let path = self
+            .config_path
+            .as_ref()
+            .ok_or_else(|| Error::Config("No configuration path set".into()))?;
 
         self.reload_from_path(path)
     }
@@ -267,9 +257,9 @@ impl HotReloadManager {
         tracing::debug!(path = %path.display(), "Reloading configuration");
 
         // Emit file changed event
-        let _ = self.event_tx.send(ReloadEvent::FileChanged {
-            path: path.clone(),
-        });
+        let _ = self
+            .event_tx
+            .send(ReloadEvent::FileChanged { path: path.clone() });
 
         // Load new configuration
         let new_config: EngineConfig = ConfigLoader::load(path)?;
@@ -328,25 +318,53 @@ impl HotReloadManager {
             changes.push(ConfigChange::new("name", &current.name, &new_config.name));
         }
         if current.max_devices != new_config.max_devices {
-            changes.push(ConfigChange::new("max_devices", current.max_devices, new_config.max_devices));
+            changes.push(ConfigChange::new(
+                "max_devices",
+                current.max_devices,
+                new_config.max_devices,
+            ));
         }
         if current.max_points != new_config.max_points {
-            changes.push(ConfigChange::new("max_points", current.max_points, new_config.max_points));
+            changes.push(ConfigChange::new(
+                "max_points",
+                current.max_points,
+                new_config.max_points,
+            ));
         }
         if current.tick_interval_ms != new_config.tick_interval_ms {
-            changes.push(ConfigChange::new("tick_interval_ms", current.tick_interval_ms, new_config.tick_interval_ms));
+            changes.push(ConfigChange::new(
+                "tick_interval_ms",
+                current.tick_interval_ms,
+                new_config.tick_interval_ms,
+            ));
         }
         if current.workers != new_config.workers {
-            changes.push(ConfigChange::new("workers", current.workers, new_config.workers));
+            changes.push(ConfigChange::new(
+                "workers",
+                current.workers,
+                new_config.workers,
+            ));
         }
         if current.enable_metrics != new_config.enable_metrics {
-            changes.push(ConfigChange::new("enable_metrics", current.enable_metrics, new_config.enable_metrics));
+            changes.push(ConfigChange::new(
+                "enable_metrics",
+                current.enable_metrics,
+                new_config.enable_metrics,
+            ));
         }
         if current.metrics_interval_secs != new_config.metrics_interval_secs {
-            changes.push(ConfigChange::new("metrics_interval_secs", current.metrics_interval_secs, new_config.metrics_interval_secs));
+            changes.push(ConfigChange::new(
+                "metrics_interval_secs",
+                current.metrics_interval_secs,
+                new_config.metrics_interval_secs,
+            ));
         }
         if current.log_level != new_config.log_level {
-            changes.push(ConfigChange::new("log_level", &current.log_level, &new_config.log_level));
+            changes.push(ConfigChange::new(
+                "log_level",
+                &current.log_level,
+                &new_config.log_level,
+            ));
         }
 
         changes
@@ -363,7 +381,8 @@ impl HotReloadManager {
         tokio::spawn(async move {
             while *running.read() {
                 match rx.recv().await {
-                    Ok(ConfigEvent::Modified { source, .. }) | Ok(ConfigEvent::Created { source, .. }) => {
+                    Ok(ConfigEvent::Modified { source, .. })
+                    | Ok(ConfigEvent::Created { source, .. }) => {
                         let path = source.path().clone();
 
                         // Load and validate
@@ -490,8 +509,7 @@ impl HotReloadManagerBuilder {
 
     /// Build the HotReloadManager.
     pub fn build(self) -> HotReloadManager {
-        let mut manager = HotReloadManager::new(self.config)
-            .strategy(self.strategy);
+        let mut manager = HotReloadManager::new(self.config).strategy(self.strategy);
 
         if let Some(path) = self.config_path {
             manager = manager.config_path(path);
@@ -579,8 +597,7 @@ mod tests {
         fs::write(&config_path, yaml).unwrap();
 
         let config = EngineConfig::default();
-        let manager = HotReloadManager::new(config)
-            .config_path(config_path.clone());
+        let manager = HotReloadManager::new(config).config_path(config_path.clone());
 
         // Reload
         let result = manager.reload();
@@ -596,7 +613,7 @@ mod tests {
         let config_path = dir.path().join("config.yaml");
 
         // Write invalid config
-        let yaml = "name: test\nmax_devices: 0\n";  // max_devices = 0 is invalid
+        let yaml = "name: test\nmax_devices: 0\n"; // max_devices = 0 is invalid
         fs::write(&config_path, yaml).unwrap();
 
         let config = EngineConfig::default();

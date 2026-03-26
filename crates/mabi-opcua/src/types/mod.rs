@@ -9,8 +9,8 @@ pub mod node_id;
 pub mod status_code;
 pub mod variant;
 
-pub use attribute::{AttributeId, AccessLevel, WriteMask};
+pub use attribute::{AccessLevel, AttributeId, WriteMask};
 pub use data_value::{DataValue, DataValueBuilder};
-pub use node_id::{NodeId, NodeIdType, ExpandedNodeId, NodeIdParseError};
+pub use node_id::{ExpandedNodeId, NodeId, NodeIdParseError, NodeIdType};
 pub use status_code::StatusCode;
-pub use variant::{Variant, VariantScalarValue, VariantArrayValue, DataTypeId};
+pub use variant::{DataTypeId, Variant, VariantArrayValue, VariantScalarValue};

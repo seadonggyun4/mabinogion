@@ -5,9 +5,8 @@
 use std::sync::Arc;
 
 use mabi_core::{
-    DeviceConfig, DeviceFactory, FactoryRegistry, Protocol,
+    device::BoxedDevice, DeviceConfig, DeviceFactory, FactoryRegistry, Protocol,
     Result as CoreResult,
-    device::BoxedDevice,
 };
 
 use crate::address::{GroupAddress, IndividualAddress};
@@ -58,7 +57,8 @@ impl KnxDeviceFactory {
             // Parse initial value if provided
             if let Some(ref json_value) = go_config.initial_value {
                 let dpt_value = parse_json_to_dpt(json_value, &dpt_id)?;
-                builder = builder.group_object_with_value(address, &go_config.name, dpt_id, dpt_value);
+                builder =
+                    builder.group_object_with_value(address, &go_config.name, dpt_id, dpt_value);
             } else {
                 builder = builder.group_object(address, &go_config.name, dpt_id);
             }
@@ -113,7 +113,9 @@ impl DeviceFactory for KnxDeviceFactory {
             if let Ok(objects) = serde_json::from_str::<Vec<GroupObjectConfig>>(group_objects_json)
             {
                 for go in objects {
-                    if let (Ok(addr), Ok(dpt)) = (go.address.parse::<GroupAddress>(), go.dpt.parse::<DptId>()) {
+                    if let (Ok(addr), Ok(dpt)) =
+                        (go.address.parse::<GroupAddress>(), go.dpt.parse::<DptId>())
+                    {
                         builder = builder.group_object(addr, &go.name, dpt);
                     }
                 }

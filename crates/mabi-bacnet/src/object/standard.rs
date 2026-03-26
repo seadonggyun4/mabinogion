@@ -72,7 +72,8 @@ impl AnalogInput {
 
     /// Set engineering units.
     pub fn with_units(self, units: u16) -> Self {
-        self.properties.set(PropertyId::Units, BACnetValue::Enumerated(units as u32));
+        self.properties
+            .set(PropertyId::Units, BACnetValue::Enumerated(units as u32));
         self
     }
 
@@ -123,15 +124,13 @@ impl BACnetObject for AnalogInput {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::AnalogInput as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::AnalogInput as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Real(*self.present_value.read())),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::CovIncrement => Ok(BACnetValue::Real(*self.cov_increment.read())),
             _ => self
                 .properties
@@ -276,7 +275,8 @@ impl AnalogOutput {
 
     /// Set engineering units.
     pub fn with_units(self, units: u16) -> Self {
-        self.properties.set(PropertyId::Units, BACnetValue::Enumerated(units as u32));
+        self.properties
+            .set(PropertyId::Units, BACnetValue::Enumerated(units as u32));
         self
     }
 
@@ -327,18 +327,14 @@ impl BACnetObject for AnalogOutput {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::AnalogOutput as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::AnalogOutput as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Real(*self.present_value.read())),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
-            PropertyId::RelinquishDefault => {
-                Ok(BACnetValue::Real(*self.relinquish_default.read()))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
+            PropertyId::RelinquishDefault => Ok(BACnetValue::Real(*self.relinquish_default.read())),
             PropertyId::PriorityArray => {
                 let pa = self.priority_array.read();
                 let values: Vec<BACnetValue> = pa
@@ -546,7 +542,8 @@ impl AnalogValue {
     }
 
     pub fn with_units(self, units: u16) -> Self {
-        self.properties.set(PropertyId::Units, BACnetValue::Enumerated(units as u32));
+        self.properties
+            .set(PropertyId::Units, BACnetValue::Enumerated(units as u32));
         self
     }
 
@@ -578,15 +575,13 @@ impl BACnetObject for AnalogValue {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::AnalogValue as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::AnalogValue as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Real(*self.present_value.read())),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::CovIncrement => Ok(BACnetValue::Real(*self.cov_increment.read())),
             _ => self
                 .properties
@@ -772,9 +767,7 @@ impl BACnetObject for BinaryInput {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::BinaryInput as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::BinaryInput as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => {
                 // Binary PV is enumerated: 0=inactive, 1=active
@@ -786,9 +779,9 @@ impl BACnetObject for BinaryInput {
                 Ok(BACnetValue::Enumerated(value))
             }
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             _ => self
                 .properties
                 .get(property_id)
@@ -802,9 +795,9 @@ impl BACnetObject for BinaryInput {
         value: BACnetValue,
     ) -> Result<(), PropertyError> {
         match property_id {
-            PropertyId::ObjectIdentifier
-            | PropertyId::ObjectType
-            | PropertyId::PresentValue => Err(PropertyError::ReadOnly(property_id)),
+            PropertyId::ObjectIdentifier | PropertyId::ObjectType | PropertyId::PresentValue => {
+                Err(PropertyError::ReadOnly(property_id))
+            }
             PropertyId::OutOfService => {
                 if let Some(v) = value.as_bool() {
                     self.out_of_service.store(v, Ordering::Release);
@@ -856,8 +849,10 @@ impl CovSupport for BinaryInput {
     }
 
     fn reset_cov(&self) {
-        self.last_cov_value
-            .store(self.present_value.load(Ordering::Acquire), Ordering::Release);
+        self.last_cov_value.store(
+            self.present_value.load(Ordering::Acquire),
+            Ordering::Release,
+        );
         self.cov_changed.store(false, Ordering::Release);
     }
 }
@@ -957,9 +952,7 @@ impl BACnetObject for BinaryOutput {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::BinaryOutput as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::BinaryOutput as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => {
                 let value = if self.present_value.load(Ordering::Acquire) {
@@ -970,9 +963,9 @@ impl BACnetObject for BinaryOutput {
                 Ok(BACnetValue::Enumerated(value))
             }
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::RelinquishDefault => {
                 let value = if self.relinquish_default.load(Ordering::Acquire) {
                     1
@@ -1080,8 +1073,10 @@ impl CovSupport for BinaryOutput {
     }
 
     fn reset_cov(&self) {
-        self.last_cov_value
-            .store(self.present_value.load(Ordering::Acquire), Ordering::Release);
+        self.last_cov_value.store(
+            self.present_value.load(Ordering::Acquire),
+            Ordering::Release,
+        );
         self.cov_changed.store(false, Ordering::Release);
     }
 }
@@ -1166,9 +1161,7 @@ impl BACnetObject for BinaryValue {
         match property_id {
             PropertyId::ObjectIdentifier => Ok(BACnetValue::ObjectIdentifier(self.id)),
             PropertyId::ObjectName => Ok(BACnetValue::CharacterString(self.name.clone())),
-            PropertyId::ObjectType => {
-                Ok(BACnetValue::Enumerated(ObjectType::BinaryValue as u32))
-            }
+            PropertyId::ObjectType => Ok(BACnetValue::Enumerated(ObjectType::BinaryValue as u32)),
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => {
                 let value = if self.present_value.load(Ordering::Acquire) {
@@ -1179,9 +1172,9 @@ impl BACnetObject for BinaryValue {
                 Ok(BACnetValue::Enumerated(value))
             }
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             _ => self
                 .properties
                 .get(property_id)
@@ -1267,8 +1260,10 @@ impl CovSupport for BinaryValue {
     }
 
     fn reset_cov(&self) {
-        self.last_cov_value
-            .store(self.present_value.load(Ordering::Acquire), Ordering::Release);
+        self.last_cov_value.store(
+            self.present_value.load(Ordering::Acquire),
+            Ordering::Release,
+        );
         self.cov_changed.store(false, Ordering::Release);
     }
 }
@@ -1377,9 +1372,9 @@ impl BACnetObject for MultiStateInput {
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Unsigned(*self.present_value.read())),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::NumberOfStates => Ok(BACnetValue::Unsigned(self.number_of_states)),
             _ => self
                 .properties
@@ -1549,9 +1544,9 @@ impl BACnetObject for MultiStateOutput {
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Unsigned(*self.present_value.read())),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::NumberOfStates => Ok(BACnetValue::Unsigned(self.number_of_states)),
             PropertyId::RelinquishDefault => {
                 Ok(BACnetValue::Unsigned(*self.relinquish_default.read()))
@@ -1747,9 +1742,9 @@ impl BACnetObject for MultiStateValue {
             PropertyId::Description => Ok(BACnetValue::CharacterString(self.description.clone())),
             PropertyId::PresentValue => Ok(BACnetValue::Unsigned(*self.present_value.read())),
             PropertyId::StatusFlags => Ok(BACnetValue::BitString(self.status_flags().to_bits())),
-            PropertyId::OutOfService => {
-                Ok(BACnetValue::Boolean(self.out_of_service.load(Ordering::Acquire)))
-            }
+            PropertyId::OutOfService => Ok(BACnetValue::Boolean(
+                self.out_of_service.load(Ordering::Acquire),
+            )),
             PropertyId::NumberOfStates => Ok(BACnetValue::Unsigned(self.number_of_states)),
             _ => self
                 .properties
@@ -1866,23 +1861,43 @@ mod tests {
 
     #[test]
     fn test_analog_output_priority() {
-        let ao = AnalogOutput::new(1, "Damper Position")
-            .with_relinquish_default(50.0);
+        let ao = AnalogOutput::new(1, "Damper Position").with_relinquish_default(50.0);
 
         // Initial value is relinquish default
-        assert_eq!(ao.read_property(PropertyId::PresentValue).unwrap().as_real(), Some(50.0));
+        assert_eq!(
+            ao.read_property(PropertyId::PresentValue)
+                .unwrap()
+                .as_real(),
+            Some(50.0)
+        );
 
         // Write at priority 16
         ao.set_present_value(BACnetValue::Real(75.0)).unwrap();
-        assert_eq!(ao.read_property(PropertyId::PresentValue).unwrap().as_real(), Some(75.0));
+        assert_eq!(
+            ao.read_property(PropertyId::PresentValue)
+                .unwrap()
+                .as_real(),
+            Some(75.0)
+        );
 
         // Write at higher priority (8)
-        ao.set_present_value_with_priority(BACnetValue::Real(90.0), 8).unwrap();
-        assert_eq!(ao.read_property(PropertyId::PresentValue).unwrap().as_real(), Some(90.0));
+        ao.set_present_value_with_priority(BACnetValue::Real(90.0), 8)
+            .unwrap();
+        assert_eq!(
+            ao.read_property(PropertyId::PresentValue)
+                .unwrap()
+                .as_real(),
+            Some(90.0)
+        );
 
         // Relinquish priority 8, should go back to priority 16 value
         ao.relinquish(8).unwrap();
-        assert_eq!(ao.read_property(PropertyId::PresentValue).unwrap().as_real(), Some(75.0));
+        assert_eq!(
+            ao.read_property(PropertyId::PresentValue)
+                .unwrap()
+                .as_real(),
+            Some(75.0)
+        );
     }
 
     #[test]
@@ -1898,18 +1913,28 @@ mod tests {
 
     #[test]
     fn test_multi_state_value() {
-        let msv = MultiStateValue::new(1, "Operating Mode", 4)
-            .with_initial_value(2);
+        let msv = MultiStateValue::new(1, "Operating Mode", 4).with_initial_value(2);
 
-        assert_eq!(msv.read_property(PropertyId::PresentValue).unwrap().as_unsigned(), Some(2));
+        assert_eq!(
+            msv.read_property(PropertyId::PresentValue)
+                .unwrap()
+                .as_unsigned(),
+            Some(2)
+        );
 
         // Try to set invalid state
         let result = msv.write_property(PropertyId::PresentValue, BACnetValue::Unsigned(5));
         assert!(result.is_err());
 
         // Set valid state
-        msv.write_property(PropertyId::PresentValue, BACnetValue::Unsigned(3)).unwrap();
-        assert_eq!(msv.read_property(PropertyId::PresentValue).unwrap().as_unsigned(), Some(3));
+        msv.write_property(PropertyId::PresentValue, BACnetValue::Unsigned(3))
+            .unwrap();
+        assert_eq!(
+            msv.read_property(PropertyId::PresentValue)
+                .unwrap()
+                .as_unsigned(),
+            Some(3)
+        );
     }
 
     #[test]

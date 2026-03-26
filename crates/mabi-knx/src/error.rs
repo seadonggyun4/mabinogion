@@ -27,7 +27,10 @@ pub enum KnxError {
 
     /// Address out of range.
     #[error("Address out of range: {address} (valid: {valid_range})")]
-    AddressOutOfRange { address: String, valid_range: String },
+    AddressOutOfRange {
+        address: String,
+        valid_range: String,
+    },
 
     // ========================================================================
     // DPT (Datapoint Type) Errors
@@ -346,8 +349,7 @@ impl KnxError {
     pub fn requires_tunnel_restart(&self) -> bool {
         matches!(
             self,
-            Self::FatalDesync { .. }
-                | Self::SendErrorThresholdExceeded { .. }
+            Self::FatalDesync { .. } | Self::SendErrorThresholdExceeded { .. }
         )
     }
 

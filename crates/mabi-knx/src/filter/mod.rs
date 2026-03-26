@@ -35,17 +35,13 @@ pub mod queue;
 pub mod retry;
 
 pub use chain::{
-    FilterChain, FilterChainConfig, FilterChainStats, FilterChainStatsSnapshot,
-    FilterDirection, FilterResult, FrameEnvelope,
+    FilterChain, FilterChainConfig, FilterChainStats, FilterChainStatsSnapshot, FilterDirection,
+    FilterResult, FrameEnvelope,
 };
-pub use pace::{
-    PaceFilter, PaceFilterConfig, PaceState, PaceFilterStats, PaceFilterStatsSnapshot,
-};
+pub use pace::{PaceFilter, PaceFilterConfig, PaceFilterStats, PaceFilterStatsSnapshot, PaceState};
 pub use queue::{
-    QueueFilter, QueueFilterConfig, QueuePriority, QueueFilterStats,
-    QueueFilterStatsSnapshot,
+    QueueFilter, QueueFilterConfig, QueueFilterStats, QueueFilterStatsSnapshot, QueuePriority,
 };
 pub use retry::{
-    RetryFilter, RetryFilterConfig, CircuitBreakerState, RetryFilterStats,
-    RetryFilterStatsSnapshot,
+    CircuitBreakerState, RetryFilter, RetryFilterConfig, RetryFilterStats, RetryFilterStatsSnapshot,
 };

@@ -7,8 +7,8 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use chrono::{DateTime, Utc};
 
-use crate::codec::encoder::BinaryEncodable;
 use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
 use crate::error::OpcUaResult;
 use crate::types::{DataValue, StatusCode, Variant};
 
@@ -23,12 +23,24 @@ const HAS_SERVER_PICOSECONDS: u8 = 0x20;
 impl BinaryEncodable for DataValue {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()> {
         let mut mask: u8 = 0;
-        if self.value().is_some() { mask |= HAS_VALUE; }
-        if self.status().raw() != 0 { mask |= HAS_STATUS; }
-        if self.source_timestamp().is_some() { mask |= HAS_SOURCE_TIMESTAMP; }
-        if self.server_timestamp().is_some() { mask |= HAS_SERVER_TIMESTAMP; }
-        if self.source_picoseconds() != 0 { mask |= HAS_SOURCE_PICOSECONDS; }
-        if self.server_picoseconds() != 0 { mask |= HAS_SERVER_PICOSECONDS; }
+        if self.value().is_some() {
+            mask |= HAS_VALUE;
+        }
+        if self.status().raw() != 0 {
+            mask |= HAS_STATUS;
+        }
+        if self.source_timestamp().is_some() {
+            mask |= HAS_SOURCE_TIMESTAMP;
+        }
+        if self.server_timestamp().is_some() {
+            mask |= HAS_SERVER_TIMESTAMP;
+        }
+        if self.source_picoseconds() != 0 {
+            mask |= HAS_SOURCE_PICOSECONDS;
+        }
+        if self.server_picoseconds() != 0 {
+            mask |= HAS_SERVER_PICOSECONDS;
+        }
 
         buf.put_u8(mask);
 
@@ -56,12 +68,24 @@ impl BinaryEncodable for DataValue {
 
     fn encoded_size(&self) -> usize {
         let mut size = 1; // mask byte
-        if let Some(v) = self.value() { size += v.encoded_size(); }
-        if self.status().raw() != 0 { size += 4; }
-        if self.source_timestamp().is_some() { size += 8; }
-        if self.source_picoseconds() != 0 { size += 2; }
-        if self.server_timestamp().is_some() { size += 8; }
-        if self.server_picoseconds() != 0 { size += 2; }
+        if let Some(v) = self.value() {
+            size += v.encoded_size();
+        }
+        if self.status().raw() != 0 {
+            size += 4;
+        }
+        if self.source_timestamp().is_some() {
+            size += 8;
+        }
+        if self.source_picoseconds() != 0 {
+            size += 2;
+        }
+        if self.server_timestamp().is_some() {
+            size += 8;
+        }
+        if self.server_picoseconds() != 0 {
+            size += 2;
+        }
         size
     }
 }
@@ -136,7 +160,7 @@ impl BinaryDecodable for DataValue {
 // QualifiedName and LocalizedText encoding
 // =========================================================================
 
-use crate::nodes::{QualifiedName, LocalizedText};
+use crate::nodes::{LocalizedText, QualifiedName};
 
 impl BinaryEncodable for QualifiedName {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()> {
@@ -144,7 +168,9 @@ impl BinaryEncodable for QualifiedName {
         self.name.encode(buf)?;
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 2 + 4 + self.name.len() }
+    fn encoded_size(&self) -> usize {
+        2 + 4 + self.name.len()
+    }
 }
 
 impl BinaryDecodable for QualifiedName {
@@ -158,17 +184,29 @@ impl BinaryDecodable for QualifiedName {
 impl BinaryEncodable for LocalizedText {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()> {
         let mut mask: u8 = 0;
-        if !self.locale.is_empty() { mask |= 0x01; }
-        if !self.text.is_empty() { mask |= 0x02; }
+        if !self.locale.is_empty() {
+            mask |= 0x01;
+        }
+        if !self.text.is_empty() {
+            mask |= 0x02;
+        }
         buf.put_u8(mask);
-        if (mask & 0x01) != 0 { self.locale.encode(buf)?; }
-        if (mask & 0x02) != 0 { self.text.encode(buf)?; }
+        if (mask & 0x01) != 0 {
+            self.locale.encode(buf)?;
+        }
+        if (mask & 0x02) != 0 {
+            self.text.encode(buf)?;
+        }
         Ok(())
     }
     fn encoded_size(&self) -> usize {
         let mut size = 1; // mask
-        if !self.locale.is_empty() { size += 4 + self.locale.len(); }
-        if !self.text.is_empty() { size += 4 + self.text.len(); }
+        if !self.locale.is_empty() {
+            size += 4 + self.locale.len();
+        }
+        if !self.text.is_empty() {
+            size += 4 + self.text.len();
+        }
         size
     }
 }
@@ -176,8 +214,16 @@ impl BinaryEncodable for LocalizedText {
 impl BinaryDecodable for LocalizedText {
     fn decode(buf: &mut Bytes) -> OpcUaResult<Self> {
         let mask = u8::decode(buf)?;
-        let locale = if (mask & 0x01) != 0 { String::decode(buf)? } else { String::new() };
-        let text = if (mask & 0x02) != 0 { String::decode(buf)? } else { String::new() };
+        let locale = if (mask & 0x01) != 0 {
+            String::decode(buf)?
+        } else {
+            String::new()
+        };
+        let text = if (mask & 0x02) != 0 {
+            String::decode(buf)?
+        } else {
+            String::new()
+        };
         Ok(LocalizedText::new(locale, text))
     }
 }
@@ -191,7 +237,9 @@ impl BinaryEncodable for StatusCode {
         buf.put_u32_le(self.raw());
         Ok(())
     }
-    fn encoded_size(&self) -> usize { 4 }
+    fn encoded_size(&self) -> usize {
+        4
+    }
 }
 
 impl BinaryDecodable for StatusCode {
@@ -234,10 +282,12 @@ impl BinaryEncodable for ExtensionObject {
         Ok(())
     }
     fn encoded_size(&self) -> usize {
-        self.type_id.encoded_size() + 1 + match &self.body {
-            Some(body) => 4 + body.len(),
-            None => 0,
-        }
+        self.type_id.encoded_size()
+            + 1
+            + match &self.body {
+                Some(body) => 4 + body.len(),
+                None => 0,
+            }
     }
 }
 
@@ -257,9 +307,10 @@ impl BinaryDecodable for ExtensionObject {
                 Some(xml.into_bytes())
             }
             _ => {
-                return Err(crate::error::OpcUaError::Codec(
-                    format!("Unknown ExtensionObject encoding: 0x{:02X}", encoding),
-                ));
+                return Err(crate::error::OpcUaError::Codec(format!(
+                    "Unknown ExtensionObject encoding: 0x{:02X}",
+                    encoding
+                )));
             }
         };
         Ok(ExtensionObject { type_id, body })
@@ -285,33 +336,75 @@ pub struct DiagnosticInfo {
 impl BinaryEncodable for DiagnosticInfo {
     fn encode(&self, buf: &mut BytesMut) -> OpcUaResult<()> {
         let mut mask: u8 = 0;
-        if self.symbolic_id.is_some() { mask |= 0x01; }
-        if self.namespace_uri.is_some() { mask |= 0x02; }
-        if self.localized_text.is_some() { mask |= 0x04; }
-        if self.locale.is_some() { mask |= 0x08; }
-        if self.additional_info.is_some() { mask |= 0x10; }
-        if self.inner_status_code.is_some() { mask |= 0x20; }
-        if self.inner_diagnostic_info.is_some() { mask |= 0x40; }
+        if self.symbolic_id.is_some() {
+            mask |= 0x01;
+        }
+        if self.namespace_uri.is_some() {
+            mask |= 0x02;
+        }
+        if self.localized_text.is_some() {
+            mask |= 0x04;
+        }
+        if self.locale.is_some() {
+            mask |= 0x08;
+        }
+        if self.additional_info.is_some() {
+            mask |= 0x10;
+        }
+        if self.inner_status_code.is_some() {
+            mask |= 0x20;
+        }
+        if self.inner_diagnostic_info.is_some() {
+            mask |= 0x40;
+        }
 
         buf.put_u8(mask);
-        if let Some(v) = self.symbolic_id { v.encode(buf)?; }
-        if let Some(v) = self.namespace_uri { v.encode(buf)?; }
-        if let Some(v) = self.localized_text { v.encode(buf)?; }
-        if let Some(v) = self.locale { v.encode(buf)?; }
-        if let Some(v) = &self.additional_info { v.encode(buf)?; }
-        if let Some(v) = &self.inner_status_code { v.encode(buf)?; }
-        if let Some(v) = &self.inner_diagnostic_info { v.encode(buf)?; }
+        if let Some(v) = self.symbolic_id {
+            v.encode(buf)?;
+        }
+        if let Some(v) = self.namespace_uri {
+            v.encode(buf)?;
+        }
+        if let Some(v) = self.localized_text {
+            v.encode(buf)?;
+        }
+        if let Some(v) = self.locale {
+            v.encode(buf)?;
+        }
+        if let Some(v) = &self.additional_info {
+            v.encode(buf)?;
+        }
+        if let Some(v) = &self.inner_status_code {
+            v.encode(buf)?;
+        }
+        if let Some(v) = &self.inner_diagnostic_info {
+            v.encode(buf)?;
+        }
         Ok(())
     }
     fn encoded_size(&self) -> usize {
         let mut size = 1;
-        if self.symbolic_id.is_some() { size += 4; }
-        if self.namespace_uri.is_some() { size += 4; }
-        if self.localized_text.is_some() { size += 4; }
-        if self.locale.is_some() { size += 4; }
-        if let Some(s) = &self.additional_info { size += 4 + s.len(); }
-        if self.inner_status_code.is_some() { size += 4; }
-        if let Some(d) = &self.inner_diagnostic_info { size += d.encoded_size(); }
+        if self.symbolic_id.is_some() {
+            size += 4;
+        }
+        if self.namespace_uri.is_some() {
+            size += 4;
+        }
+        if self.localized_text.is_some() {
+            size += 4;
+        }
+        if self.locale.is_some() {
+            size += 4;
+        }
+        if let Some(s) = &self.additional_info {
+            size += 4 + s.len();
+        }
+        if self.inner_status_code.is_some() {
+            size += 4;
+        }
+        if let Some(d) = &self.inner_diagnostic_info {
+            size += d.encoded_size();
+        }
         size
     }
 }
@@ -320,13 +413,41 @@ impl BinaryDecodable for DiagnosticInfo {
     fn decode(buf: &mut Bytes) -> OpcUaResult<Self> {
         let mask = u8::decode(buf)?;
         Ok(DiagnosticInfo {
-            symbolic_id: if (mask & 0x01) != 0 { Some(i32::decode(buf)?) } else { None },
-            namespace_uri: if (mask & 0x02) != 0 { Some(i32::decode(buf)?) } else { None },
-            localized_text: if (mask & 0x04) != 0 { Some(i32::decode(buf)?) } else { None },
-            locale: if (mask & 0x08) != 0 { Some(i32::decode(buf)?) } else { None },
-            additional_info: if (mask & 0x10) != 0 { Some(String::decode(buf)?) } else { None },
-            inner_status_code: if (mask & 0x20) != 0 { Some(StatusCode::decode(buf)?) } else { None },
-            inner_diagnostic_info: if (mask & 0x40) != 0 { Some(Box::new(DiagnosticInfo::decode(buf)?)) } else { None },
+            symbolic_id: if (mask & 0x01) != 0 {
+                Some(i32::decode(buf)?)
+            } else {
+                None
+            },
+            namespace_uri: if (mask & 0x02) != 0 {
+                Some(i32::decode(buf)?)
+            } else {
+                None
+            },
+            localized_text: if (mask & 0x04) != 0 {
+                Some(i32::decode(buf)?)
+            } else {
+                None
+            },
+            locale: if (mask & 0x08) != 0 {
+                Some(i32::decode(buf)?)
+            } else {
+                None
+            },
+            additional_info: if (mask & 0x10) != 0 {
+                Some(String::decode(buf)?)
+            } else {
+                None
+            },
+            inner_status_code: if (mask & 0x20) != 0 {
+                Some(StatusCode::decode(buf)?)
+            } else {
+                None
+            },
+            inner_diagnostic_info: if (mask & 0x40) != 0 {
+                Some(Box::new(DiagnosticInfo::decode(buf)?))
+            } else {
+                None
+            },
         })
     }
 }

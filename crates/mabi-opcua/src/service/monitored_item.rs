@@ -8,18 +8,18 @@ use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 use tracing::debug;
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::nodes::QualifiedName;
-use crate::types::{NodeId, StatusCode, AttributeId};
-use crate::services::{MonitoredItemConfig, MonitoredItemKind};
-use crate::services::event::{
-    EventFilter, SimpleAttributeOperand, ContentFilterElement, FilterOperator, FilterOperand,
-};
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::nodes::QualifiedName;
+use crate::services::event::{
+    ContentFilterElement, EventFilter, FilterOperand, FilterOperator, SimpleAttributeOperand,
+};
+use crate::services::{MonitoredItemConfig, MonitoredItemKind};
+use crate::types::{AttributeId, NodeId, StatusCode};
 
 const CREATE_MONITORED_ITEMS_REQUEST_ID: u32 = 751;
 const CREATE_MONITORED_ITEMS_RESPONSE_ID: u32 = 754;
@@ -76,8 +76,8 @@ impl ServiceHandler for CreateMonitoredItemsHandler {
             let queue_size = u32::decode(&mut buf)?;
             let discard_oldest = bool::decode(&mut buf)?;
 
-            let attribute_id = AttributeId::from_u32(attribute_id_val)
-                .unwrap_or(AttributeId::Value);
+            let attribute_id =
+                AttributeId::from_u32(attribute_id_val).unwrap_or(AttributeId::Value);
 
             // Determine if this is an event-monitoring item based on:
             // 1. The filter is an EventFilter (encoding_id = i=725)
@@ -92,7 +92,11 @@ impl ServiceHandler for CreateMonitoredItemsHandler {
                 queue_size,
                 discard_oldest,
                 filter: None,
-                kind: if is_event { MonitoredItemKind::Event } else { MonitoredItemKind::DataChange },
+                kind: if is_event {
+                    MonitoredItemKind::Event
+                } else {
+                    MonitoredItemKind::DataChange
+                },
                 event_filter,
             };
 
@@ -104,7 +108,10 @@ impl ServiceHandler for CreateMonitoredItemsHandler {
                 );
             }
 
-            match context.subscription_manager.create_monitored_item(subscription_id, config) {
+            match context
+                .subscription_manager
+                .create_monitored_item(subscription_id, config)
+            {
                 Ok(item_id) => {
                     results.push((StatusCode::GOOD, item_id, sampling_interval, queue_size));
                 }
@@ -124,7 +131,11 @@ impl ServiceHandler for CreateMonitoredItemsHandler {
             out.put_f64_le(*revised_interval);
             out.put_u32_le(*revised_queue);
             // Filter result (null ExtensionObject)
-            (ExtensionObject { type_id: NodeId::numeric(0, 0), body: None }).encode(&mut out)?;
+            (ExtensionObject {
+                type_id: NodeId::numeric(0, 0),
+                body: None,
+            })
+            .encode(&mut out)?;
         }
         // DiagnosticInfos
         out.put_i32_le(0);
@@ -202,8 +213,7 @@ fn decode_simple_attribute_operand(buf: &mut Bytes) -> Option<SimpleAttributeOpe
 
     // AttributeId (u32)
     let attribute_id_val = u32::decode(buf).ok()?;
-    let attribute_id = AttributeId::from_u32(attribute_id_val)
-        .unwrap_or(AttributeId::Value);
+    let attribute_id = AttributeId::from_u32(attribute_id_val).unwrap_or(AttributeId::Value);
 
     // IndexRange (String)
     let index_range = String::decode(buf).ok().unwrap_or_default();
@@ -298,8 +308,14 @@ impl ServiceHandler for DeleteMonitoredItemsHandler {
         let mut results = Vec::new();
         for _ in 0..count.max(0) {
             let item_id = u32::decode(&mut buf)?;
-            let ok = context.subscription_manager.delete_monitored_item(subscription_id, item_id);
-            results.push(if ok.is_ok() { StatusCode::GOOD } else { StatusCode::BAD_MONITORED_ITEM_ID_INVALID });
+            let ok = context
+                .subscription_manager
+                .delete_monitored_item(subscription_id, item_id);
+            results.push(if ok.is_ok() {
+                StatusCode::GOOD
+            } else {
+                StatusCode::BAD_MONITORED_ITEM_ID_INVALID
+            });
         }
 
         let mut out = BytesMut::new();
@@ -382,10 +398,14 @@ impl ServiceHandler for ModifyMonitoredItemsHandler {
         out.put_i32_le(results.len() as i32);
         for (status, revised_interval, revised_queue) in &results {
             status.encode(&mut out)?;
-            out.put_f64_le(*revised_interval);    // RevisedSamplingInterval
-            out.put_u32_le(*revised_queue);       // RevisedQueueSize
-            // FilterResult (null ExtensionObject)
-            (ExtensionObject { type_id: NodeId::numeric(0, 0), body: None }).encode(&mut out)?;
+            out.put_f64_le(*revised_interval); // RevisedSamplingInterval
+            out.put_u32_le(*revised_queue); // RevisedQueueSize
+                                            // FilterResult (null ExtensionObject)
+            (ExtensionObject {
+                type_id: NodeId::numeric(0, 0),
+                body: None,
+            })
+            .encode(&mut out)?;
         }
         // DiagnosticInfos
         out.put_i32_le(0);

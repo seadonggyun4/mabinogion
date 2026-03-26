@@ -261,7 +261,10 @@ impl DevicePort for ChaosDevicePort {
             .map_err(Self::middleware_error)?
         {
             MiddlewareResult::Proceed(ctx) => ctx,
-            MiddlewareResult::Delayed { delay_ms, result: ctx } => {
+            MiddlewareResult::Delayed {
+                delay_ms,
+                result: ctx,
+            } => {
                 Self::apply_delay(delay_ms).await;
                 ctx
             }
@@ -316,7 +319,10 @@ impl DevicePort for ChaosDevicePort {
             .map_err(Self::middleware_error)?
         {
             MiddlewareResult::Proceed(ctx) => ctx,
-            MiddlewareResult::Delayed { delay_ms, result: ctx } => {
+            MiddlewareResult::Delayed {
+                delay_ms,
+                result: ctx,
+            } => {
                 Self::apply_delay(delay_ms).await;
                 ctx
             }

@@ -183,7 +183,11 @@ impl ChaosEntryBuilder {
             duration_secs: self.duration_secs,
             chaos_type: self.chaos_type.unwrap_or(ChaosType::DeviceOffline),
             targets: self.targets,
-            intensity: if self.intensity == 0.0 { 1.0 } else { self.intensity },
+            intensity: if self.intensity == 0.0 {
+                1.0
+            } else {
+                self.intensity
+            },
             description: self.description,
         }
     }
@@ -235,9 +239,8 @@ impl ChaosSchedule {
     /// Add an entry.
     pub fn add_entry(&mut self, entry: ChaosEntry) {
         self.entries.push(entry);
-        self.entries.sort_by(|a, b| {
-            a.start_secs.partial_cmp(&b.start_secs).unwrap()
-        });
+        self.entries
+            .sort_by(|a, b| a.start_secs.partial_cmp(&b.start_secs).unwrap());
     }
 }
 
@@ -279,9 +282,8 @@ impl ChaosScheduleBuilder {
 
     /// Build the schedule.
     pub fn build(mut self) -> ChaosSchedule {
-        self.entries.sort_by(|a, b| {
-            a.start_secs.partial_cmp(&b.start_secs).unwrap()
-        });
+        self.entries
+            .sort_by(|a, b| a.start_secs.partial_cmp(&b.start_secs).unwrap());
 
         ChaosSchedule {
             name: self.name.unwrap_or_else(|| "unnamed".to_string()),

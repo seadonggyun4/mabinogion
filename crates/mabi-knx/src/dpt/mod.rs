@@ -39,7 +39,7 @@ mod registry;
 mod types;
 mod value;
 
-pub use codec::{DptCodec, DptId, BoxedDptCodec};
+pub use codec::{BoxedDptCodec, DptCodec, DptId};
 pub use registry::DptRegistry;
 pub use types::*;
 pub use value::DptValue;
@@ -75,11 +75,7 @@ pub fn decode_dpt9(raw: u16) -> f32 {
     let exp = ((raw >> 11) & 0x0F) as i32;
     let mantissa = (raw & 0x07FF) as i32;
 
-    let mantissa = if sign == 1 {
-        mantissa - 2048
-    } else {
-        mantissa
-    };
+    let mantissa = if sign == 1 { mantissa - 2048 } else { mantissa };
 
     0.01 * (mantissa as f32) * 2.0_f32.powi(exp)
 }

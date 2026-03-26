@@ -219,7 +219,9 @@ impl std::str::FromStr for NodeId {
                 return Err(NodeIdParseError::InvalidFormat);
             }
             let ns_str = parts[0].strip_prefix("ns=").unwrap();
-            let ns: u16 = ns_str.parse().map_err(|_| NodeIdParseError::InvalidNamespace)?;
+            let ns: u16 = ns_str
+                .parse()
+                .map_err(|_| NodeIdParseError::InvalidNamespace)?;
             (ns, parts[1])
         } else {
             (0, s)
@@ -227,7 +229,9 @@ impl std::str::FromStr for NodeId {
 
         // Parse identifier
         let identifier = if let Some(id_str) = rest.strip_prefix("i=") {
-            let id: u32 = id_str.parse().map_err(|_| NodeIdParseError::InvalidIdentifier)?;
+            let id: u32 = id_str
+                .parse()
+                .map_err(|_| NodeIdParseError::InvalidIdentifier)?;
             NodeIdType::Numeric(id)
         } else if let Some(id_str) = rest.strip_prefix("s=") {
             NodeIdType::String(id_str.to_string())
@@ -246,7 +250,10 @@ impl std::str::FromStr for NodeId {
             }
         };
 
-        Ok(Self { namespace, identifier })
+        Ok(Self {
+            namespace,
+            identifier,
+        })
     }
 }
 

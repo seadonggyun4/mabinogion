@@ -194,12 +194,11 @@ pub struct ServiceFault {
 impl ServiceFault {
     pub fn new(id: impl Into<String>, config: ServiceFaultConfig) -> Self {
         let id = id.into();
-        let metadata =
-            FaultMetadata::new(&id, "BACnet Service Fault", FaultCategory::Protocol)
-                .with_description("Injects BACnet service-level failures")
-                .with_severity(FaultSeverity::Medium)
-                .with_tag("bacnet")
-                .with_tag("service");
+        let metadata = FaultMetadata::new(&id, "BACnet Service Fault", FaultCategory::Protocol)
+            .with_description("Injects BACnet service-level failures")
+            .with_severity(FaultSeverity::Medium)
+            .with_tag("bacnet")
+            .with_tag("service");
 
         Self {
             base: BaseFault::new(metadata),
@@ -234,10 +233,7 @@ impl ServiceFault {
                 error_code,
             } => FaultBehavior::ReturnError {
                 error_code: *error_code as i32,
-                message: format!(
-                    "BACnet ERROR: class={}, code={}",
-                    error_class, error_code
-                ),
+                message: format!("BACnet ERROR: class={}, code={}", error_class, error_code),
             },
             ServiceFaultType::DropRequest => FaultBehavior::Skip,
             ServiceFaultType::WrongServiceResponse { .. } => FaultBehavior::Modify,
@@ -287,7 +283,10 @@ impl Fault for ServiceFault {
             return Ok(FaultBehavior::Continue);
         }
 
-        ctx.set_metadata("bacnet_service_fault", &format!("{:?}", self.config.fault_type));
+        ctx.set_metadata(
+            "bacnet_service_fault",
+            &format!("{:?}", self.config.fault_type),
+        );
         ctx.record_applied_fault(self.id(), "service_fault");
 
         tracing::debug!(
@@ -443,7 +442,10 @@ mod tests {
         let fault = ServiceFault::new("test", config);
 
         match fault.behavior() {
-            FaultBehavior::ReturnError { error_code, message } => {
+            FaultBehavior::ReturnError {
+                error_code,
+                message,
+            } => {
                 assert_eq!(error_code, 9);
                 assert!(message.contains("REJECT"));
             }
@@ -471,7 +473,10 @@ mod tests {
         let fault = ServiceFault::new("test", config);
 
         match fault.behavior() {
-            FaultBehavior::ReturnError { error_code, message } => {
+            FaultBehavior::ReturnError {
+                error_code,
+                message,
+            } => {
                 assert_eq!(error_code, 31);
                 assert!(message.contains("ERROR"));
             }
@@ -491,9 +496,9 @@ mod tests {
         let config = ServiceFaultConfig::reject(9).for_services(vec![12, 14, 15]);
         let fault = ServiceFault::new("test", config);
 
-        assert!(fault.matches_service(12));  // ReadProperty
-        assert!(fault.matches_service(14));  // ReadPropertyMultiple
-        assert!(!fault.matches_service(6));  // WriteProperty
+        assert!(fault.matches_service(12)); // ReadProperty
+        assert!(fault.matches_service(14)); // ReadPropertyMultiple
+        assert!(!fault.matches_service(6)); // WriteProperty
     }
 
     #[test]

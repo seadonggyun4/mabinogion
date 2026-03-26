@@ -70,6 +70,11 @@ pub trait ProtocolDriver: Send + Sync {
         &[]
     }
 
+    /// Returns an optional schema summary for CLI inspection surfaces.
+    fn schema(&self) -> Option<JsonValue> {
+        None
+    }
+
     /// Builds a managed service from the generic launch request.
     async fn build(
         &self,
@@ -133,6 +138,11 @@ impl ProtocolDriverRegistry {
                 features: driver.features().to_vec(),
             })
             .collect()
+    }
+
+    /// Returns a schema summary for the provided protocol key, if available.
+    pub fn schema(&self, key: &str) -> Option<JsonValue> {
+        self.get(key).and_then(|driver| driver.schema())
     }
 
     /// Returns the number of registered drivers.

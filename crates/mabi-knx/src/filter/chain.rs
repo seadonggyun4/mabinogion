@@ -62,11 +62,7 @@ pub struct FrameEnvelope {
 
 impl FrameEnvelope {
     /// Create a new frame envelope.
-    pub fn new(
-        cemi: CemiFrame,
-        channel_id: u8,
-        target_addr: SocketAddr,
-    ) -> Self {
+    pub fn new(cemi: CemiFrame, channel_id: u8, target_addr: SocketAddr) -> Self {
         let frame_size_bytes = cemi.encode().len();
         Self {
             cemi,
@@ -457,11 +453,7 @@ impl FilterChain {
         self.retry_filter.on_failure();
         self.queue_filter.on_send_error(channel_id);
 
-        debug!(
-            channel_id,
-            error,
-            "Filter chain: send failure"
-        );
+        debug!(channel_id, error, "Filter chain: send failure");
     }
 
     /// Drain pending frames from the QueueFilter for a specific channel.
@@ -557,11 +549,7 @@ mod tests {
             GroupAddress::three_level(1, 0, 1),
             vec![0x01],
         );
-        FrameEnvelope::new(
-            cemi,
-            1,
-            "192.168.1.100:3671".parse().unwrap(),
-        )
+        FrameEnvelope::new(cemi, 1, "192.168.1.100:3671".parse().unwrap())
     }
 
     #[test]

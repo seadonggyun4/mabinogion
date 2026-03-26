@@ -426,13 +426,10 @@ mod tests {
         let source = ConfigSource::Main(PathBuf::from("/etc/config.yaml"));
         watcher.emit_modified(source.clone());
 
-        let event = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            rx.recv(),
-        )
-        .await
-        .expect("Timeout")
-        .expect("Channel closed");
+        let event = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+            .await
+            .expect("Timeout")
+            .expect("Channel closed");
 
         assert!(matches!(event, ConfigEvent::Modified { .. }));
     }

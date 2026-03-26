@@ -1,7 +1,7 @@
 //! OPC UA error types.
 
-use thiserror::Error;
 use mabi_core::Error as CoreError;
+use thiserror::Error;
 
 /// OPC UA result type.
 pub type OpcUaResult<T> = Result<T, OpcUaError>;
@@ -67,7 +67,10 @@ pub enum OpcUaError {
 
     /// Bind error.
     #[error("Failed to bind {address}: {reason}")]
-    Bind { address: std::net::SocketAddr, reason: String },
+    Bind {
+        address: std::net::SocketAddr,
+        reason: String,
+    },
 
     /// I/O error.
     #[error("I/O error: {0}")]

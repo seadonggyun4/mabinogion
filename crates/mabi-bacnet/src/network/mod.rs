@@ -25,9 +25,7 @@ pub mod npdu;
 pub mod udp;
 
 pub use bbmd::{
-    Bbmd, BbmdConfig, BbmdError,
-    BroadcastDistributionTable, BdtEntry,
-    ForeignDeviceTable, FdtEntry,
+    Bbmd, BbmdConfig, BbmdError, BdtEntry, BroadcastDistributionTable, FdtEntry, ForeignDeviceTable,
 };
 pub use bvlc::{BvlcError, BvlcFunction, BvlcMessage, BvlcResultCode, BVLC_TYPE};
 pub use npdu::{BACnetAddress, Npdu, NpduControl, NpduError, Priority, NPDU_VERSION};

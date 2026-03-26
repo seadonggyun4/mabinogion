@@ -7,14 +7,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
 
-use crate::codec::encoder::BinaryEncodable;
-use crate::codec::decoder::BinaryDecodable;
-use crate::codec::data_value::ExtensionObject;
-use crate::error::OpcUaResult;
-use crate::types::{NodeId, StatusCode};
-use crate::services::SubscriptionConfig;
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
+use crate::codec::data_value::ExtensionObject;
+use crate::codec::decoder::BinaryDecodable;
+use crate::codec::encoder::BinaryEncodable;
+use crate::error::OpcUaResult;
+use crate::services::SubscriptionConfig;
+use crate::types::{NodeId, StatusCode};
 
 const CREATE_SUBSCRIPTION_REQUEST_ID: u32 = 787;
 const CREATE_SUBSCRIPTION_RESPONSE_ID: u32 = 790;
@@ -61,14 +61,16 @@ impl ServiceHandler for CreateSubscriptionHandler {
             publishing_enabled: _publishing_enabled,
         };
 
-        let sub_id = context.subscription_manager.create_subscription(config)
+        let sub_id = context
+            .subscription_manager
+            .create_subscription(config)
             .map_err(|e| crate::error::OpcUaError::Subscription(format!("{:?}", e)))?;
 
         let mut out = BytesMut::new();
         ResponseHeader::good(header.request_handle).encode(&mut out)?;
         out.put_u32_le(sub_id);
         out.put_f64_le(publishing_interval); // RevisedPublishingInterval
-        out.put_u32_le(lifetime_count);      // RevisedLifetimeCount
+        out.put_u32_le(lifetime_count); // RevisedLifetimeCount
         out.put_u32_le(max_keep_alive_count); // RevisedMaxKeepAliveCount
 
         Ok(ServiceResponse {
@@ -104,7 +106,11 @@ impl ServiceHandler for DeleteSubscriptionsHandler {
         for _ in 0..count.max(0) {
             let sub_id = u32::decode(&mut buf)?;
             let ok = context.subscription_manager.delete_subscription(sub_id);
-            results.push(if ok { StatusCode::GOOD } else { StatusCode::BAD_SUBSCRIPTION_ID_INVALID });
+            results.push(if ok {
+                StatusCode::GOOD
+            } else {
+                StatusCode::BAD_SUBSCRIPTION_ID_INVALID
+            });
         }
 
         let mut out = BytesMut::new();
@@ -186,8 +192,12 @@ impl ServiceHandler for PublishHandler {
                     } else {
                         // Count NotificationData elements
                         let mut notification_count = 0i32;
-                        if has_data_change { notification_count += 1; }
-                        if has_events { notification_count += 1; }
+                        if has_data_change {
+                            notification_count += 1;
+                        }
+                        if has_events {
+                            notification_count += 1;
+                        }
                         out.put_i32_le(notification_count);
 
                         // === DataChangeNotification (encoding_id i=811) ===
@@ -247,7 +257,7 @@ impl ServiceHandler for PublishHandler {
                 out.put_u32_le(sub_ids.first().copied().unwrap_or(0));
                 out.put_i32_le(0); // AvailableSequenceNumbers
                 out.put_u8(0); // MoreNotifications
-                // Empty NotificationMessage
+                               // Empty NotificationMessage
                 out.put_u32_le(0);
                 chrono::Utc::now().encode(&mut out)?;
                 out.put_i32_le(0);

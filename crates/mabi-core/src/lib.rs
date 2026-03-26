@@ -91,7 +91,9 @@ pub mod value;
 // =============================================================================
 
 // Error types
-pub use error::{Error, ErrorSeverity, Result, ResultExt, ValidationErrors, ValidationErrorsBuilder};
+pub use error::{
+    Error, ErrorSeverity, Result, ResultExt, ValidationErrors, ValidationErrorsBuilder,
+};
 
 // Protocol types
 pub use protocol::Protocol;
@@ -101,26 +103,40 @@ pub use value::Value;
 
 // Configuration types
 pub use config::{
-    DeviceConfig, EngineConfig,
-    // Loader
-    ConfigFormat, ConfigLoader, ConfigDiscovery,
-    // Environment
-    EnvOverrides, EnvConfigurable, EnvApplyResult,
-    // Validation
-    Validatable, Validator, ValidationContext,
+    ConfigDiscovery,
     // Watcher
-    ConfigEvent, ConfigSource, ConfigWatcher, SharedConfigWatcher, WatcherState,
+    ConfigEvent,
+    // Loader
+    ConfigFormat,
+    ConfigLoader,
+    ConfigSource,
+    ConfigWatcher,
+    DeviceConfig,
+    EngineConfig,
+    EnvApplyResult,
+    EnvConfigurable,
+    // Environment
+    EnvOverrides,
+    FileWatcherConfig,
     // File Watcher
-    FileWatcherService, FileWatcherConfig,
+    FileWatcherService,
     // Hot Reload
-    HotReloadManager, ReloadStrategy, ReloadEvent,
+    HotReloadManager,
+    ReloadEvent,
+    ReloadStrategy,
+    SharedConfigWatcher,
+    // Validation
+    Validatable,
+    ValidationContext,
+    Validator,
+    WatcherState,
 };
 
 // Device types
 pub use device::{Device, DeviceInfo, DeviceState};
 
 // Tags
-pub use tags::{Tags, TagsBuilder, Taggable, parse_tag_string, parse_tags};
+pub use tags::{parse_tag_string, parse_tags, Taggable, Tags, TagsBuilder};
 
 // Engine types
 pub use engine::{EnginePreset, SimulatorEngine, SimulatorEngineBuilder};
@@ -137,15 +153,30 @@ pub use types::{DataPoint, DataPointId, Quality};
 // Logging - expanded exports for new modular structure
 pub use logging::{
     // Initialization
-    init_logging, init_test_logging, is_logging_initialized,
+    init_logging,
+    init_test_logging,
+    is_logging_initialized,
+    shared_context,
+    DebugModeGuard,
+    DeviceContext,
     // Configuration
-    LogConfig, LogConfigBuilder, LogLevel, LogFormat, LogTarget,
-    // Rotation
-    RotationConfig, RotationStrategy, RetentionPolicy, LogFileStats,
+    LogConfig,
+    LogConfigBuilder,
+    LogFileStats,
+    LogFormat,
+    LogLevel,
     // Dynamic level control
-    LogLevelController, DebugModeGuard, ModuleTraceGuard,
+    LogLevelController,
+    LogTarget,
+    ModuleTraceGuard,
+    RequestContext,
+    RetentionPolicy,
+    // Rotation
+    RotationConfig,
+    RotationStrategy,
+    SharedTraceContext,
     // Context propagation
-    TraceContext, RequestContext, DeviceContext, SharedTraceContext, shared_context,
+    TraceContext,
 };
 
 // Capabilities
@@ -165,19 +196,17 @@ pub use typed_point::{
 
 // Profiling
 pub use profiling::{
-    Profiler, ProfilerConfig, ProfileReport,
-    MemoryProfiler, MemoryProfilerConfig, MemorySnapshot, MemoryReport, RegionSnapshot,
-    LeakDetector, LeakDetectorConfig, LeakWarning, LeakSeverity, RegionAnalysis,
-    ReportExporter, ReportFormat, ReportComparison, MemoryReportBuilder,
+    LeakDetector, LeakDetectorConfig, LeakSeverity, LeakWarning, MemoryProfiler,
+    MemoryProfilerConfig, MemoryReport, MemoryReportBuilder, MemorySnapshot, ProfileReport,
+    Profiler, ProfilerConfig, RegionAnalysis, RegionSnapshot, ReportComparison, ReportExporter,
+    ReportFormat,
 };
 
 // Simulation
 pub use simulation::{
-    Simulator, SimulationConfig, SimulationPhase, SimulationEvent, SimulationMetrics, SimulationResult,
-    ScaleConfig,
-    MemoryPattern, CustomMemoryPattern,
-    SawtoothPattern, SteppedPattern, BurstPattern, LeakPattern,
-    FailureConfig, FailureType, FailureSchedule, ScheduledFailure, FailureInjector,
-    LoadPattern, LoadPatternBuilder,
-    Scenario, ScenarioBuilder, ScenarioSuite,
+    BurstPattern, CustomMemoryPattern, FailureConfig, FailureInjector, FailureSchedule,
+    FailureType, LeakPattern, LoadPattern, LoadPatternBuilder, MemoryPattern, SawtoothPattern,
+    ScaleConfig, Scenario, ScenarioBuilder, ScenarioSuite, ScheduledFailure, SimulationConfig,
+    SimulationEvent, SimulationMetrics, SimulationPhase, SimulationResult, Simulator,
+    SteppedPattern,
 };

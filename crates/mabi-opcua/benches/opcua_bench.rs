@@ -1,17 +1,17 @@
 //! Benchmarks for OPC UA simulator.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::sync::Arc;
 
 use mabi_opcua::{
-    types::{NodeId, Variant, DataValue, variant::DataTypeId},
-    nodes::{AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig},
+    nodes::base::{LocalizedText, NodeClass, QualifiedName},
     nodes::cache::CachedNode,
-    nodes::base::{NodeClass, QualifiedName, LocalizedText},
+    nodes::{AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig},
     services::{
-        SubscriptionManager, SubscriptionManagerConfig, SubscriptionConfig,
-        HistoryStore, HistoryStoreConfig,
+        HistoryStore, HistoryStoreConfig, SubscriptionConfig, SubscriptionManager,
+        SubscriptionManagerConfig,
     },
+    types::{variant::DataTypeId, DataValue, NodeId, Variant},
 };
 
 fn bench_address_space_add_nodes(c: &mut Criterion) {
@@ -134,15 +134,11 @@ fn bench_subscription_manager(c: &mut Criterion) {
     }
 
     group.bench_function("create_subscription", |b| {
-        b.iter(|| {
-            black_box(manager.create(SubscriptionConfig::default()))
-        });
+        b.iter(|| black_box(manager.create(SubscriptionConfig::default())));
     });
 
     group.bench_function("get_subscription", |b| {
-        b.iter(|| {
-            black_box(manager.get(500))
-        });
+        b.iter(|| black_box(manager.get(500)));
     });
 
     group.finish();
@@ -174,15 +170,11 @@ fn bench_history_store(c: &mut Criterion) {
 
 fn bench_node_id_parsing(c: &mut Criterion) {
     c.bench_function("node_id_parse_numeric", |b| {
-        b.iter(|| {
-            black_box("ns=2;i=1001".parse::<NodeId>())
-        });
+        b.iter(|| black_box("ns=2;i=1001".parse::<NodeId>()));
     });
 
     c.bench_function("node_id_parse_string", |b| {
-        b.iter(|| {
-            black_box("ns=2;s=Temperature".parse::<NodeId>())
-        });
+        b.iter(|| black_box("ns=2;s=Temperature".parse::<NodeId>()));
     });
 }
 
