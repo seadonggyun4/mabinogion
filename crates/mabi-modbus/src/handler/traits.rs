@@ -1,9 +1,7 @@
 //! Core traits for Modbus function handlers.
 
-use std::sync::Arc;
-
+use crate::context::SharedAddressSpace;
 use crate::error::ModbusResult;
-use crate::register::RegisterStore;
 use crate::types::{RegisterConverter, WordOrder};
 
 use super::ExceptionCode;
@@ -21,7 +19,7 @@ pub struct HandlerContext {
     pub unit_id: u8,
 
     /// Register store for this unit.
-    pub registers: Arc<RegisterStore>,
+    pub registers: SharedAddressSpace,
 
     /// Transaction ID (for logging/tracing).
     pub transaction_id: u16,
@@ -38,7 +36,7 @@ pub struct HandlerContext {
 
 impl HandlerContext {
     /// Create a new handler context.
-    pub fn new(unit_id: u8, registers: Arc<RegisterStore>, transaction_id: u16) -> Self {
+    pub fn new(unit_id: u8, registers: SharedAddressSpace, transaction_id: u16) -> Self {
         let word_order = WordOrder::default();
         Self {
             unit_id,
@@ -53,7 +51,7 @@ impl HandlerContext {
     /// Create a new handler context with specific word order.
     pub fn with_word_order(
         unit_id: u8,
-        registers: Arc<RegisterStore>,
+        registers: SharedAddressSpace,
         transaction_id: u16,
         word_order: WordOrder,
     ) -> Self {
@@ -68,7 +66,7 @@ impl HandlerContext {
     }
 
     /// Create context for a broadcast request.
-    pub fn broadcast(registers: Arc<RegisterStore>, transaction_id: u16) -> Self {
+    pub fn broadcast(registers: SharedAddressSpace, transaction_id: u16) -> Self {
         Self::new(0, registers, transaction_id)
     }
 
@@ -231,8 +229,12 @@ mod tests {
     fn test_validate_pdu_length() {
         let handler = TestHandler;
 
-        assert!(handler.validate_pdu_length(&[0x99, 0x00, 0x00, 0x00, 0x00]).is_ok());
-        assert!(handler.validate_pdu_length(&[0x99, 0x00, 0x00, 0x00]).is_err());
+        assert!(handler
+            .validate_pdu_length(&[0x99, 0x00, 0x00, 0x00, 0x00])
+            .is_ok());
+        assert!(handler
+            .validate_pdu_length(&[0x99, 0x00, 0x00, 0x00])
+            .is_err());
     }
 
     #[test]

@@ -13,11 +13,13 @@ use std::sync::Arc;
 
 use tracing::{debug, warn};
 
+use crate::core::FunctionCode;
+
 use super::{
-    ExceptionCode, FunctionHandler, HandlerContext, MaskWriteRegisterHandler,
-    ReadCoilsHandler, ReadDiscreteInputsHandler, ReadHoldingRegistersHandler,
-    ReadInputRegistersHandler, ReadWriteMultipleRegistersHandler, WriteMultipleCoilsHandler,
-    WriteMultipleRegistersHandler, WriteSingleCoilHandler, WriteSingleRegisterHandler,
+    ExceptionCode, FunctionHandler, HandlerContext, MaskWriteRegisterHandler, ReadCoilsHandler,
+    ReadDiscreteInputsHandler, ReadHoldingRegistersHandler, ReadInputRegistersHandler,
+    ReadWriteMultipleRegistersHandler, WriteMultipleCoilsHandler, WriteMultipleRegistersHandler,
+    WriteSingleCoilHandler, WriteSingleRegisterHandler,
 };
 
 /// Registry for Modbus function handlers.
@@ -102,7 +104,11 @@ impl HandlerRegistry {
         handler: Box<dyn FunctionHandler>,
     ) -> Option<Arc<dyn FunctionHandler>> {
         let fc = handler.function_code();
-        debug!(function_code = fc, name = handler.name(), "Registering handler");
+        debug!(
+            function_code = fc,
+            name = handler.name(),
+            "Registering handler"
+        );
         self.handlers.insert(fc, Arc::from(handler))
     }
 
@@ -161,11 +167,10 @@ impl HandlerRegistry {
         match self.handlers.get(&function_code) {
             Some(handler) => {
                 // Check broadcast support
-                if ctx.unit_id == 0 && !handler.supports_broadcast() {
-                    warn!(
-                        function_code,
-                        "Broadcast not supported for this function"
-                    );
+                if ctx.unit_id == 0
+                    && !function_supports_broadcast(function_code, Some(handler.as_ref()))
+                {
+                    warn!(function_code, "Broadcast not supported for this function");
                     return Err(ExceptionCode::IllegalFunction);
                 }
 
@@ -198,6 +203,28 @@ impl HandlerRegistry {
     pub fn is_empty(&self) -> bool {
         self.handlers.is_empty()
     }
+}
+
+pub(crate) fn function_supports_broadcast(
+    function_code: u8,
+    handler: Option<&dyn FunctionHandler>,
+) -> bool {
+    if let Some(handler) = handler {
+        return handler.supports_broadcast();
+    }
+
+    FunctionCode::try_from(function_code)
+        .map(|function| {
+            matches!(
+                function,
+                FunctionCode::WriteSingleCoil
+                    | FunctionCode::WriteSingleRegister
+                    | FunctionCode::WriteMultipleCoils
+                    | FunctionCode::WriteMultipleRegisters
+                    | FunctionCode::MaskWriteRegister
+            )
+        })
+        .unwrap_or(false)
 }
 
 impl Default for HandlerRegistry {
@@ -249,7 +276,9 @@ mod tests {
         let ctx = create_context();
 
         // Set up test data
-        ctx.registers.write_holding_registers(0, &[100, 200, 300]).unwrap();
+        ctx.registers
+            .write_holding_registers(0, &[100, 200, 300])
+            .unwrap();
 
         // Read holding registers
         let pdu = [0x03, 0x00, 0x00, 0x00, 0x03];

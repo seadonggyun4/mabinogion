@@ -21,18 +21,17 @@ use mabi_core::{
 };
 
 use crate::config::ModbusDeviceConfig;
-use crate::register::RegisterStore;
+use crate::context::{DeviceContext, SharedAddressSpace};
+use crate::error::ModbusResult;
+use crate::profile::{DatastoreKind, PointProfile, UnitProfile};
 
 /// Modbus device implementation.
 pub struct ModbusDevice {
     /// Device info.
     info: DeviceInfo,
 
-    /// Unit ID.
-    unit_id: u8,
-
-    /// Register storage.
-    registers: Arc<RegisterStore>,
+    /// Shared low-level device context.
+    context: Arc<DeviceContext>,
 
     /// Data point definitions.
     point_defs: HashMap<String, DataPointDef>,
@@ -56,12 +55,21 @@ pub struct ModbusDevice {
 impl ModbusDevice {
     /// Create a new Modbus device.
     pub fn new(config: ModbusDeviceConfig) -> Self {
-        let registers = Arc::new(RegisterStore::new(
-            config.coils,
-            config.discrete_inputs,
-            config.holding_registers,
-            config.input_registers,
-        ));
+        let context = Arc::new(
+            DeviceContext::new(
+                config.unit_id,
+                config.name.clone(),
+                DatastoreKind::dense_from_counts(
+                    config.coils,
+                    config.discrete_inputs,
+                    config.holding_registers,
+                    config.input_registers,
+                )
+                .build_address_space(),
+                crate::types::WordOrder::default(),
+            )
+            .with_response_delay(Duration::from_millis(config.response_delay_ms)),
+        );
 
         let info = DeviceInfo::new(
             format!("modbus-{}", config.unit_id),
@@ -75,8 +83,7 @@ impl ModbusDevice {
 
         Self {
             info,
-            unit_id: config.unit_id,
-            registers,
+            context,
             point_defs: HashMap::new(),
             point_addresses: HashMap::new(),
             stats: RwLock::new(DeviceStatistics::default()),
@@ -86,14 +93,64 @@ impl ModbusDevice {
         }
     }
 
-    /// Get the unit ID.
-    pub fn unit_id(&self) -> u8 {
-        self.unit_id
+    /// Create a device from a profile-defined unit.
+    pub fn from_profile(profile: &UnitProfile) -> ModbusResult<Self> {
+        let context = Arc::new(
+            DeviceContext::new(
+                profile.unit_id,
+                profile.name.clone(),
+                profile.datastore.build_address_space(),
+                profile.word_order,
+            )
+            .with_broadcast(profile.broadcast_enabled)
+            .with_response_delay(Duration::from_millis(profile.response_delay_ms)),
+        );
+
+        let info = DeviceInfo::new(
+            format!("modbus-{}", profile.unit_id),
+            &profile.name,
+            Protocol::ModbusTcp,
+        )
+        .with_metadata("unit_id", profile.unit_id.to_string())
+        .with_tags(profile.tags.clone());
+
+        let (event_tx, _) = broadcast::channel(1000);
+        let mut device = Self {
+            info,
+            context,
+            point_defs: HashMap::new(),
+            point_addresses: HashMap::new(),
+            stats: RwLock::new(DeviceStatistics::default()),
+            event_tx,
+            response_delay: Duration::from_millis(profile.response_delay_ms),
+            start_time: RwLock::new(None),
+        };
+
+        for point in &profile.points {
+            device.apply_point_profile(point);
+        }
+
+        Ok(device)
     }
 
-    /// Get the register store.
-    pub fn registers(&self) -> &Arc<RegisterStore> {
-        &self.registers
+    /// Get the unit ID.
+    pub fn unit_id(&self) -> u8 {
+        self.context.unit_id()
+    }
+
+    /// Get the low-level device context.
+    pub fn context(&self) -> &Arc<DeviceContext> {
+        &self.context
+    }
+
+    /// Get the underlying address space for this device.
+    pub fn address_space(&self) -> SharedAddressSpace {
+        self.context.address_space()
+    }
+
+    /// Backward-compatible accessor for the unit register space.
+    pub fn registers(&self) -> SharedAddressSpace {
+        self.address_space()
     }
 
     /// Add a data point definition.
@@ -101,6 +158,29 @@ impl ModbusDevice {
         self.point_addresses.insert(def.id.clone(), address);
         self.point_defs.insert(def.id.clone(), def);
         self.info.point_count = self.point_defs.len();
+    }
+
+    fn apply_point_profile(&mut self, profile: &PointProfile) {
+        match profile.register_type {
+            ModbusRegisterType::HoldingRegister => self.add_holding_register(
+                profile.id.clone(),
+                profile.name.clone(),
+                profile.address,
+                profile.data_type,
+            ),
+            ModbusRegisterType::InputRegister => self.add_input_register(
+                profile.id.clone(),
+                profile.name.clone(),
+                profile.address,
+                profile.data_type,
+            ),
+            ModbusRegisterType::Coil => {
+                self.add_coil(profile.id.clone(), profile.name.clone(), profile.address)
+            }
+            ModbusRegisterType::DiscreteInput => {
+                self.add_discrete_input(profile.id.clone(), profile.name.clone(), profile.address)
+            }
+        }
     }
 
     /// Add a holding register point.
@@ -212,11 +292,11 @@ impl ModbusDevice {
 
         match addr.register_type {
             ModbusRegisterType::Coil => {
-                let values = self.registers.read_coils(addr.address, 1)?;
+                let values = self.address_space().read_coils(addr.address, 1)?;
                 Ok(Value::Bool(values[0]))
             }
             ModbusRegisterType::DiscreteInput => {
-                let values = self.registers.read_discrete_inputs(addr.address, 1)?;
+                let values = self.address_space().read_discrete_inputs(addr.address, 1)?;
                 Ok(Value::Bool(values[0]))
             }
             ModbusRegisterType::HoldingRegister => {
@@ -236,9 +316,10 @@ impl ModbusDevice {
         is_holding: bool,
     ) -> Result<Value> {
         let registers = if is_holding {
-            self.registers.read_holding_registers(address, count)?
+            self.address_space()
+                .read_holding_registers(address, count)?
         } else {
-            self.registers.read_input_registers(address, count)?
+            self.address_space().read_input_registers(address, count)?
         };
 
         let value = match data_type {
@@ -312,7 +393,7 @@ impl ModbusDevice {
                     expected: "bool".to_string(),
                     actual: value.type_name().to_string(),
                 })?;
-                self.registers.write_coil(addr.address, bool_value)?;
+                self.address_space().write_coil(addr.address, bool_value)?;
             }
             ModbusRegisterType::HoldingRegister => {
                 let registers = value.to_registers();
@@ -322,7 +403,7 @@ impl ModbusDevice {
                         reason: "Cannot convert value to registers".to_string(),
                     });
                 }
-                self.registers
+                self.address_space()
                     .write_holding_registers(addr.address, &registers)?;
             }
             ModbusRegisterType::DiscreteInput | ModbusRegisterType::InputRegister => {
@@ -366,6 +447,11 @@ impl ModbusDevice {
         let _ = self.event_tx.send(DataPoint::new(id, value));
 
         Ok(())
+    }
+
+    /// Returns cloned point definitions for control-plane catalog queries.
+    pub fn point_definitions_owned(&self) -> Vec<DataPointDef> {
+        self.point_defs.values().cloned().collect()
     }
 }
 

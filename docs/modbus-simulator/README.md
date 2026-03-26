@@ -4,76 +4,107 @@ Modbus TCP/RTU protocol simulator for the Mabinogion industrial protocol simulat
 
 ## Overview
 
-The `mabi-modbus` crate provides a comprehensive Modbus protocol simulation environment supporting both TCP and RTU (serial) communication modes. The implementation adheres to the Modbus Application Protocol Specification V1.1b3 and provides extensible handler architecture for custom function code implementations.
+The `mabi-modbus` crate provides a Modbus protocol simulation environment supporting both TCP and RTU (serial) communication modes. The current architecture is organized around a shared protocol core, a shared datastore/context layer, transport adapters, and profile-driven simulator construction.
+
+The implementation adheres to the Modbus Application Protocol Specification V1.1b3 and keeps protocol semantics, address validation, and exception behavior consistent across dense and sparse backends.
+
+## DX Documents
+
+The following documents define the current DX-oriented source of truth for `mabi-modbus`:
+
+- [simulator DX plan](./simulator-dx-plan.md)
+- [simulator config spec](./simulator-config-spec.md)
+- [simulator control-plane spec](./simulator-control-plane-spec.md)
+- [DX reference matrix](./dx-reference-matrix.yaml)
+
+## Canonical Operator Flow
+
+The recommended path is now session-centric:
+
+1. Author a `ModbusSimulatorConfig` file.
+2. Validate it with `mabi validate modbus-config <file>`.
+3. Inspect the typed schema with `mabi inspect modbus-schema`.
+4. Inspect the config with `mabi inspect modbus-config <file>`.
+5. Start a named session with `mabi serve modbus --config <file> --session <name>`.
+6. Use `mabi control modbus ...` for session, point, trace, and fault operations.
 
 ## Architecture
 
-### TCP Server
+### Layered Runtime
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                    ModbusTcpServerV2                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ TcpListener  │──│ConnectionPool│──│  HandlerRegistry │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-│                                              │              │
-│                        ┌─────────────────────┴───────────┐  │
-│                        │     FunctionHandler Trait       │  │
-│                        │  FC01  FC02  FC03  ...  Custom  │  │
-│                        └─────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────┐    ┌────────────────────┐    ┌────────────────────┐
+│ tcp / rtu    │───▶│ ModbusService      │───▶│ ServerContext      │
+│ adapters     │    │ request execution  │    │ DeviceContext      │
+└──────────────┘    └────────────────────┘    │ AddressSpace       │
+                                               └────────────────────┘
+                                                         │
+                                               ┌────────────────────┐
+                                               │ dense / sparse     │
+                                               │ datastore backends │
+                                               └────────────────────┘
 ```
 
-### RTU Server
+### Canonical Surfaces
+
+- `Builder`, `Config`, `Profile`, `Server`, `Device`, `Stats`, `Error`, `Result`
+- `DeviceContext`, `ServerContext`, `AddressSpace`
+- `driver()` and `descriptor()` for runtime integration
+
+Low-level modules such as `tcp`, `rtu`, `handler`, `register`, and `registers` are still available for specialized integrations, but the recommended entry point is the root builder/profile surface.
+
+### Session-Centric Construction
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                     ModbusRtuServer                         │
-│  ┌──────────────────┐  ┌────────────────┐                  │
-│  │ TransportManager │──│ HandlerRegistry│                  │
-│  └────────┬─────────┘  └────────────────┘                  │
-│           │                                                 │
-│  ┌────────┴─────────────────────────────────┐              │
-│  │           Transport Trait                 │              │
-│  │  VirtualSerial  │  TcpBridge  │  Channel │              │
-│  └──────────────────────────────────────────┘              │
-│                           │                                 │
-│           ┌───────────────┴───────────────────┐            │
-│           │          RtuCodec                  │            │
-│           │  Frame Detection │ CRC Validation │            │
-│           └────────────────────────────────────┘            │
-└─────────────────────────────────────────────────────────────┘
+ModbusSimulatorConfig
+├── transports
+├── devices
+├── sessions
+└── presets
+    │
+    ▼
+CompiledModbusSession
+├── ProtocolLaunchSpec
+├── SimulatorProfile
+├── trace policy
+└── fault preset metadata
 ```
 
 ## Modules
 
 | Module | Description |
 |--------|-------------|
-| [`tcp`](#tcp-server) | Modbus TCP server implementation with MBAP framing |
-| [`rtu`](#rtu-server) | Modbus RTU serial simulation with CRC-16 validation |
+| [`core`](#architecture) | Protocol-facing request/response types and shared semantics |
+| [`context`](#architecture) | Shared `AddressSpace`, `DeviceContext`, and `ServerContext` abstractions |
+| [`profile`](#profile-driven-construction) | Profile-driven unit and point modeling |
+| [`tcp`](#tcp-server) | Modbus TCP transport adapter with MBAP framing |
+| [`rtu`](#rtu-server) | Modbus RTU transport adapter with CRC-16 validation |
 | [`handler`](#function-handlers) | Function code handler registry and implementations |
-| [`register`](#register-storage) | Standard register storage for all register types |
-| [`registers`](#sparse-register-storage) | Sparse register storage with callback support |
+| [`register`](#register-storage) | Dense register store implementation |
+| [`registers`](#sparse-register-storage) | Sparse register store implementation with callbacks |
 | [`types`](#data-types) | Data type definitions and register conversion utilities |
 | [`unit`](#multi-unit-management) | Multi-unit (slave) management and broadcast handling |
 | [`runtime`](#runtime-configuration) | Dynamic runtime configuration management |
-| [`fault_injection`](#fault-injection-framework) | Protocol-aware fault injection pipeline with 11 fault types |
-| [`testing`](#testing-utilities) | Load generation, performance validation, and profiling |
-| [`scalability`](#scalability) | High-volume connection and request handling |
+| [`fault_injection`](#fault-injection-framework) | Optional protocol-aware fault injection pipeline |
+| [`testing`](#testing-utilities) | Optional load generation and profiling helpers |
+| [`scalability`](#scalability) | Optional high-volume connection and request handling |
 
 ## Protocols
 
 ### TCP Server
 
-The TCP server implements the Modbus TCP protocol with MBAP (Modbus Application Protocol) header framing. The server integrates a fault injection pipeline, event broadcasting system, and per-connection statistics collection.
+The TCP server implements the Modbus TCP protocol with MBAP framing. It now sits on top of the shared `ModbusService + ServerContext` stack, so request execution semantics are shared with RTU while the adapter owns transport lifecycle, listener state, and connection management.
 
 ```rust
-use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2};
+use mabi_modbus::{Builder, Config};
 
-let config = ServerConfigV2::default();
-let server = ModbusTcpServerV2::new(config);
-server.run().await?;
+let server = Builder::new()
+    .config(Config::default())
+    .generated_profile(2, 8)
+    .build()?;
 ```
+
+If you need low-level TCP control, `mabi_modbus::tcp::ModbusTcpServerV2` is still available.
 
 #### TCP Configuration
 
@@ -713,9 +744,15 @@ pub use mabi_modbus::{
 # Run all tests
 cargo test --package mabi-modbus
 
+# Enable load/profiling helpers
+cargo test --package mabi-modbus --features testing
+
 # Run specific module tests
 cargo test --package mabi-modbus handler::
 cargo test --package mabi-modbus register::
+
+# Enable explicit performance threshold suites
+cargo test --package mabi-modbus --features performance-tests --test performance_validation
 
 # Run with output
 cargo test --package mabi-modbus -- --nocapture

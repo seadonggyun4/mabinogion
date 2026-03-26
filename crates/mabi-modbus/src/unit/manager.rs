@@ -415,12 +415,7 @@ impl MultiUnitManager {
 
     /// Read coils from a unit.
     #[instrument(skip(self), level = "trace")]
-    pub fn read_coils(
-        &self,
-        unit_id: u8,
-        address: u16,
-        quantity: u16,
-    ) -> ModbusResult<Vec<bool>> {
+    pub fn read_coils(&self, unit_id: u8, address: u16, quantity: u16) -> ModbusResult<Vec<bool>> {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
 
         let unit = self
@@ -540,12 +535,7 @@ impl MultiUnitManager {
 
     /// Write multiple coils to a unit.
     #[instrument(skip(self, values), level = "trace")]
-    pub fn write_coils(
-        &self,
-        unit_id: u8,
-        address: u16,
-        values: &[bool],
-    ) -> ModbusResult<()> {
+    pub fn write_coils(&self, unit_id: u8, address: u16, values: &[bool]) -> ModbusResult<()> {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
 
         // Handle broadcast
@@ -576,7 +566,12 @@ impl MultiUnitManager {
         self.broadcast_count.fetch_add(1, Ordering::Relaxed);
         let units = self.get_broadcast_targets();
 
-        trace!(address, value, unit_count = units.len(), "Broadcasting write holding register");
+        trace!(
+            address,
+            value,
+            unit_count = units.len(),
+            "Broadcasting write holding register"
+        );
 
         for unit_id in units {
             if let Some(unit) = self.units.get(&unit_id) {
@@ -625,7 +620,12 @@ impl MultiUnitManager {
         self.broadcast_count.fetch_add(1, Ordering::Relaxed);
         let units = self.get_broadcast_targets();
 
-        trace!(address, value, unit_count = units.len(), "Broadcasting write coil");
+        trace!(
+            address,
+            value,
+            unit_count = units.len(),
+            "Broadcasting write coil"
+        );
 
         for unit_id in units {
             if let Some(unit) = self.units.get(&unit_id) {
@@ -759,9 +759,7 @@ mod tests {
     fn test_add_and_get_unit() {
         let manager = MultiUnitManager::with_defaults();
 
-        manager
-            .add_unit(1, UnitConfig::new("Test Unit"))
-            .unwrap();
+        manager.add_unit(1, UnitConfig::new("Test Unit")).unwrap();
 
         assert!(manager.has_unit(1));
         assert!(!manager.has_unit(2));
@@ -887,7 +885,10 @@ mod tests {
         let manager = MultiUnitManager::with_defaults();
 
         manager
-            .add_unit(1, UnitConfig::with_word_order("BE Unit", WordOrder::BigEndian))
+            .add_unit(
+                1,
+                UnitConfig::with_word_order("BE Unit", WordOrder::BigEndian),
+            )
             .unwrap();
         manager
             .add_unit(

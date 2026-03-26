@@ -53,5 +53,6 @@
 mod config;
 mod manager;
 
+pub use crate::context::BroadcastPolicy;
 pub use config::{BroadcastMode, UnitConfig, UnitManagerConfig};
 pub use manager::{MultiUnitManager, UnitInfo};

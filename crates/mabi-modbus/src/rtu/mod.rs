@@ -75,7 +75,12 @@ pub mod transport;
 
 // Re-exports
 pub use codec::{RtuCodec, RtuTiming, StreamingRtuCodec};
-pub use frame::{RtuFrame, RtuFrameError, calculate_crc, verify_crc, pack_bits, unpack_bits};
-pub use serial::{VirtualSerialConfig, VirtualSerial, SerialConfig, Parity, StopBits, DataBits};
-pub use server::{ModbusRtuServer, RtuServerConfig, RtuServerEvent, RtuServerState, RtuServerStats};
-pub use transport::{RtuTransport, TransportConfig, TransportType, ChannelTransport, TransportMetrics};
+pub use frame::{calculate_crc, pack_bits, unpack_bits, verify_crc, RtuFrame, RtuFrameError};
+pub use serial::{DataBits, Parity, SerialConfig, StopBits, VirtualSerial, VirtualSerialConfig};
+pub use server::{
+    ModbusRtuServer, PerformancePreset, RtuServerConfig, RtuServerEvent, RtuServerState,
+    RtuServerStats,
+};
+pub use transport::{
+    ChannelTransport, RtuTransport, TransportConfig, TransportMetrics, TransportType,
+};

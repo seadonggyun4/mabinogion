@@ -1,8 +1,8 @@
 //! Configuration types for multi-unit management.
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
+use crate::context::BroadcastPolicy;
 use crate::registers::RegisterStoreConfig;
 use crate::types::WordOrder;
 
@@ -20,7 +20,7 @@ pub struct UnitManagerConfig {
     pub default_word_order: WordOrder,
 
     /// Broadcast handling mode for Unit ID 0.
-    pub broadcast_mode: BroadcastMode,
+    pub broadcast_mode: BroadcastPolicy,
 
     /// Whether to allow creating units on-demand.
     ///
@@ -41,7 +41,7 @@ impl Default for UnitManagerConfig {
         Self {
             max_units: 247,
             default_word_order: WordOrder::BigEndian,
-            broadcast_mode: BroadcastMode::WriteAll,
+            broadcast_mode: BroadcastPolicy::WriteAll,
             auto_create_units: false,
             default_register_config: RegisterStoreConfig::default(),
             enable_unit_metrics: true,
@@ -63,7 +63,7 @@ impl UnitManagerConfig {
     }
 
     /// Set the broadcast mode.
-    pub fn with_broadcast_mode(mut self, mode: BroadcastMode) -> Self {
+    pub fn with_broadcast_mode(mut self, mode: BroadcastPolicy) -> Self {
         self.broadcast_mode = mode;
         self
     }
@@ -85,7 +85,7 @@ impl UnitManagerConfig {
         Self {
             max_units: 10,
             default_word_order: WordOrder::BigEndian,
-            broadcast_mode: BroadcastMode::WriteAll,
+            broadcast_mode: BroadcastPolicy::WriteAll,
             auto_create_units: true,
             default_register_config: RegisterStoreConfig::minimal(),
             enable_unit_metrics: false,
@@ -97,7 +97,7 @@ impl UnitManagerConfig {
         Self {
             max_units: 247,
             default_word_order: WordOrder::BigEndian,
-            broadcast_mode: BroadcastMode::WriteAll,
+            broadcast_mode: BroadcastPolicy::WriteAll,
             auto_create_units: false,
             default_register_config: RegisterStoreConfig::large_scale(),
             enable_unit_metrics: true,
@@ -105,52 +105,8 @@ impl UnitManagerConfig {
     }
 }
 
-/// Broadcast handling mode for Unit ID 0.
-///
-/// In Modbus, Unit ID 0 is the broadcast address. Different systems
-/// handle broadcasts differently.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BroadcastMode {
-    /// Broadcast writes are sent to all units.
-    ///
-    /// No response is generated (per Modbus spec).
-    /// This is the most common behavior.
-    WriteAll,
-
-    /// Broadcast writes are ignored.
-    ///
-    /// Some systems disable broadcast for security.
-    Disabled,
-
-    /// Broadcast writes are sent only to units in a specific list.
-    ///
-    /// Useful for selective broadcasting.
-    #[serde(skip)]
-    SelectiveList(Vec<u8>),
-
-    /// Broadcast writes are echoed to a single designated unit.
-    ///
-    /// Some systems route broadcast to a primary controller.
-    EchoToUnit(u8),
-}
-
-impl Default for BroadcastMode {
-    fn default() -> Self {
-        Self::WriteAll
-    }
-}
-
-impl fmt::Display for BroadcastMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::WriteAll => write!(f, "Write to all units"),
-            Self::Disabled => write!(f, "Disabled"),
-            Self::SelectiveList(units) => write!(f, "Selective ({} units)", units.len()),
-            Self::EchoToUnit(id) => write!(f, "Echo to unit {}", id),
-        }
-    }
-}
+/// Backward-compatible alias for the canonical broadcast policy type.
+pub type BroadcastMode = BroadcastPolicy;
 
 /// Configuration for a single Modbus unit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,7 +266,10 @@ mod tests {
         assert_eq!(config.name, "Pump #1");
         assert_eq!(config.description, "Main circulation pump");
         assert_eq!(config.response_delay_us, 1000);
-        assert_eq!(config.metadata.get("location"), Some(&"Building A".to_string()));
+        assert_eq!(
+            config.metadata.get("location"),
+            Some(&"Building A".to_string())
+        );
     }
 
     #[test]
@@ -318,8 +277,14 @@ mod tests {
         let config1 = UnitConfig::new("Test1");
         let config2 = UnitConfig::with_word_order("Test2", WordOrder::LittleEndian);
 
-        assert_eq!(config1.effective_word_order(WordOrder::BigEndian), WordOrder::BigEndian);
-        assert_eq!(config2.effective_word_order(WordOrder::BigEndian), WordOrder::LittleEndian);
+        assert_eq!(
+            config1.effective_word_order(WordOrder::BigEndian),
+            WordOrder::BigEndian
+        );
+        assert_eq!(
+            config2.effective_word_order(WordOrder::BigEndian),
+            WordOrder::LittleEndian
+        );
     }
 
     #[test]

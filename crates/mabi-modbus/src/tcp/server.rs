@@ -15,24 +15,137 @@ use std::time::Duration;
 
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::config::ModbusServerConfig;
+use crate::context::{BroadcastPolicy, ServerContext, SharedAddressSpace};
 use crate::device::ModbusDevice;
 use crate::error::ModbusResult;
 use crate::fault_injection::connection_disruption::{
     ConnectionDisruptionConfig, ConnectionDisruptionState, DisruptionAction,
 };
 use crate::fault_injection::{FaultAction, FaultPipeline, ModbusFaultContext};
-use crate::handler::{build_exception_pdu, ExceptionCode, HandlerContext, HandlerRegistry};
+use crate::handler::{ExceptionCode, HandlerRegistry};
 use crate::register::RegisterStore;
+use crate::service::{
+    execute_transport_request, ExtensionRegistry, StandardModbusService, TransportDisposition,
+    TransportServicePolicy, UnknownUnitBehavior,
+};
 
 use super::codec::{MbapCodec, MbapFrame};
-use super::connection::ConnectionPool;
+use super::connection::{ConnectionPool, LifecycleEventOptions, RequestRecordOptions};
 use super::metrics::{LatencyTimer, ServerMetrics};
+
+/// Performance preset for the TCP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PerformancePreset {
+    /// Full observability and compatibility behavior.
+    #[default]
+    Default,
+    /// Lower-overhead request processing for high-throughput workloads.
+    HighThroughput,
+}
+
+impl PerformancePreset {
+    #[inline]
+    fn runtime_policy(self) -> TcpRuntimePolicy {
+        TcpRuntimePolicy::resolve(self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventEmissionMode {
+    SubscriberAware,
+}
+
+impl EventEmissionMode {
+    #[inline]
+    fn should_emit(self, subscriber_count: usize) -> bool {
+        subscriber_count > 0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TcpRuntimePolicy {
+    enforce_request_timeout: bool,
+    detailed_metrics: bool,
+    latency_sample_mask: u64,
+    connection_metadata_sample_mask: u64,
+    server_event_mode: EventEmissionMode,
+    lifecycle_event_mode: EventEmissionMode,
+}
+
+impl TcpRuntimePolicy {
+    fn resolve(preset: PerformancePreset) -> Self {
+        match preset {
+            PerformancePreset::Default => Self {
+                enforce_request_timeout: true,
+                detailed_metrics: true,
+                latency_sample_mask: 0,
+                connection_metadata_sample_mask: 0,
+                server_event_mode: EventEmissionMode::SubscriberAware,
+                lifecycle_event_mode: EventEmissionMode::SubscriberAware,
+            },
+            PerformancePreset::HighThroughput => Self {
+                enforce_request_timeout: true,
+                detailed_metrics: true,
+                latency_sample_mask: 0,
+                // Sample connection metadata updates so short-lived connections do
+                // not pay a full wall-clock/update-unit-access cost per request.
+                connection_metadata_sample_mask: 0x0f,
+                server_event_mode: EventEmissionMode::SubscriberAware,
+                lifecycle_event_mode: EventEmissionMode::SubscriberAware,
+            },
+        }
+    }
+
+    #[inline]
+    fn request_timeout(self, request_timeout: Duration) -> Option<Duration> {
+        self.enforce_request_timeout.then_some(request_timeout)
+    }
+
+    #[inline]
+    fn detailed_metrics(self) -> bool {
+        self.detailed_metrics
+    }
+
+    #[inline]
+    fn should_record_latency(self, request_number: u64) -> bool {
+        request_number & self.latency_sample_mask == 0
+    }
+
+    #[inline]
+    fn should_emit_server_events(self, subscriber_count: usize) -> bool {
+        self.server_event_mode.should_emit(subscriber_count)
+    }
+
+    #[inline]
+    fn lifecycle_event_options(self, subscriber_count: usize) -> LifecycleEventOptions {
+        if self.lifecycle_event_mode.should_emit(subscriber_count) {
+            LifecycleEventOptions::enabled()
+        } else {
+            LifecycleEventOptions::disabled()
+        }
+    }
+
+    #[inline]
+    fn connection_record_options(self, request_number: u64) -> RequestRecordOptions {
+        if self.connection_metadata_sample_mask == 0 {
+            RequestRecordOptions::default()
+        } else {
+            RequestRecordOptions {
+                update_last_activity: request_number & self.connection_metadata_sample_mask == 0,
+                track_unit_access: false,
+                emit_event: false,
+            }
+        }
+    }
+}
 
 /// Configuration for the Modbus TCP server v2.
 #[derive(Debug, Clone)]
@@ -57,6 +170,9 @@ pub struct ServerConfigV2 {
 
     /// Shutdown timeout (time to wait for connections to close).
     pub shutdown_timeout: Duration,
+
+    /// Performance tuning preset for request processing.
+    pub performance_preset: PerformancePreset,
 }
 
 impl Default for ServerConfigV2 {
@@ -69,6 +185,7 @@ impl Default for ServerConfigV2 {
             tcp_keepalive: Some(Duration::from_secs(60)),
             tcp_nodelay: true,
             shutdown_timeout: Duration::from_secs(30),
+            performance_preset: PerformancePreset::Default,
         }
     }
 }
@@ -87,6 +204,7 @@ impl From<ModbusServerConfig> for ServerConfigV2 {
             },
             tcp_nodelay: config.tcp_nodelay,
             shutdown_timeout: Duration::from_secs(30),
+            performance_preset: PerformancePreset::Default,
         }
     }
 }
@@ -115,14 +233,14 @@ pub struct ModbusTcpServerV2 {
     /// Server configuration.
     config: ServerConfigV2,
 
-    /// Handler registry for function codes.
-    handlers: Arc<HandlerRegistry>,
+    /// Request execution service.
+    service: Arc<StandardModbusService>,
 
     /// Devices by unit ID.
     devices: DashMap<u8, Arc<ModbusDevice>>,
 
-    /// Default register store (for unit ID 0 / unknown units).
-    default_registers: Arc<RegisterStore>,
+    /// Shared server context for request routing.
+    server_context: Arc<ServerContext>,
 
     /// Connection pool.
     connections: Arc<ConnectionPool>,
@@ -159,9 +277,9 @@ impl ModbusTcpServerV2 {
             connection_semaphore: Arc::new(Semaphore::new(config.max_connections)),
             connections: Arc::new(ConnectionPool::new(config.max_connections)),
             config,
-            handlers: Arc::new(HandlerRegistry::with_defaults()),
+            service: Arc::new(StandardModbusService::default()),
             devices: DashMap::new(),
-            default_registers: Arc::new(RegisterStore::with_defaults()),
+            server_context: Arc::new(ServerContext::new(Arc::new(RegisterStore::with_defaults()))),
             metrics: Arc::new(ServerMetrics::new()),
             shutdown: Arc::new(AtomicBool::new(false)),
             shutdown_tx,
@@ -178,7 +296,13 @@ impl ModbusTcpServerV2 {
 
     /// Set custom handler registry.
     pub fn with_handlers(mut self, handlers: HandlerRegistry) -> Self {
-        self.handlers = Arc::new(handlers);
+        self.service = Arc::new(StandardModbusService::new(handlers));
+        self
+    }
+
+    /// Set a typed extension registry.
+    pub fn with_extensions(mut self, extensions: ExtensionRegistry) -> Self {
+        self.service = Arc::new(StandardModbusService::with_extensions(extensions));
         self
     }
 
@@ -195,19 +319,22 @@ impl ModbusTcpServerV2 {
     }
 
     /// Set default register store.
-    pub fn with_default_registers(mut self, registers: RegisterStore) -> Self {
-        self.default_registers = Arc::new(registers);
+    pub fn with_default_registers(self, registers: RegisterStore) -> Self {
+        self.server_context.set_default_space(Arc::new(registers));
         self
     }
 
     /// Add a device to the server.
     pub fn add_device(&self, device: ModbusDevice) {
         let unit_id = device.unit_id();
-        self.devices.insert(unit_id, Arc::new(device));
+        let device = Arc::new(device);
+        self.server_context.register(device.context().clone());
+        self.devices.insert(unit_id, device);
     }
 
     /// Remove a device from the server.
     pub fn remove_device(&self, unit_id: u8) -> Option<Arc<ModbusDevice>> {
+        self.server_context.remove(unit_id);
         self.devices.remove(&unit_id).map(|(_, d)| d)
     }
 
@@ -216,9 +343,24 @@ impl ModbusTcpServerV2 {
         self.devices.get(&unit_id).map(|d| d.clone())
     }
 
-    /// Get the default register store.
-    pub fn default_registers(&self) -> &Arc<RegisterStore> {
-        &self.default_registers
+    /// Get all configured unit IDs.
+    pub fn device_ids(&self) -> Vec<u8> {
+        self.devices.iter().map(|entry| *entry.key()).collect()
+    }
+
+    /// Get the default register space.
+    pub fn default_registers(&self) -> SharedAddressSpace {
+        self.server_context.default_space()
+    }
+
+    /// Set whether broadcast requests are accepted.
+    pub fn set_broadcast_enabled(&self, enabled: bool) {
+        self.server_context.set_broadcast_enabled(enabled);
+    }
+
+    /// Set the canonical broadcast routing policy.
+    pub fn set_broadcast_policy(&self, policy: BroadcastPolicy) {
+        self.server_context.set_broadcast_policy(policy);
     }
 
     /// Get server metrics.
@@ -253,11 +395,14 @@ impl ModbusTcpServerV2 {
     #[instrument(skip(self))]
     pub async fn run(&self) -> ModbusResult<()> {
         let listener = TcpListener::bind(self.config.bind_address).await?;
+        let runtime_policy = self.config.performance_preset.runtime_policy();
         info!(address = %self.config.bind_address, "Modbus TCP server started");
 
-        let _ = self.event_tx.send(ServerEvent::Started {
-            address: self.config.bind_address,
-        });
+        if runtime_policy.should_emit_server_events(self.event_tx.receiver_count()) {
+            let _ = self.event_tx.send(ServerEvent::Started {
+                address: self.config.bind_address,
+            });
+        }
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
@@ -287,7 +432,9 @@ impl ModbusTcpServerV2 {
         // Graceful shutdown
         self.graceful_shutdown().await;
 
-        let _ = self.event_tx.send(ServerEvent::Stopped);
+        if runtime_policy.should_emit_server_events(self.event_tx.receiver_count()) {
+            let _ = self.event_tx.send(ServerEvent::Stopped);
+        }
         info!("Modbus TCP server stopped");
 
         Ok(())
@@ -295,6 +442,8 @@ impl ModbusTcpServerV2 {
 
     /// Handle a new incoming connection.
     async fn handle_new_connection(&self, stream: TcpStream, peer_addr: SocketAddr) {
+        let runtime_policy = self.config.performance_preset.runtime_policy();
+
         // Try to acquire connection permit
         let permit = match self.connection_semaphore.clone().try_acquire_owned() {
             Ok(permit) => permit,
@@ -306,7 +455,10 @@ impl ModbusTcpServerV2 {
         };
 
         // Register connection
-        let connection_id = match self.connections.try_register(peer_addr) {
+        let connection_id = match self.connections.try_register_with_options(
+            peer_addr,
+            runtime_policy.lifecycle_event_options(self.connections.subscriber_count()),
+        ) {
             Some(id) => id,
             None => {
                 warn!(peer = %peer_addr, "Connection pool full, rejecting");
@@ -318,24 +470,23 @@ impl ModbusTcpServerV2 {
         self.metrics.record_connection();
 
         // Spawn connection handler
-        let handlers = self.handlers.clone();
-        let devices = self.devices.clone();
-        let default_registers = self.default_registers.clone();
+        let service = self.service.clone();
+        let server_context = self.server_context.clone();
         let connections = self.connections.clone();
         let metrics = self.metrics.clone();
         let shutdown = self.shutdown.clone();
         let config = self.config.clone();
         let fault_pipeline = self.fault_pipeline.clone();
         let connection_disruption = self.connection_disruption.clone();
+        let lifecycle_policy = runtime_policy;
 
         tokio::spawn(async move {
             let result = handle_connection(
                 stream,
                 peer_addr,
                 connection_id,
-                handlers,
-                devices,
-                default_registers,
+                service,
+                server_context,
                 connections.clone(),
                 metrics.clone(),
                 shutdown,
@@ -349,7 +500,10 @@ impl ModbusTcpServerV2 {
                 debug!(peer = %peer_addr, error = %e, "Connection handler error");
             }
 
-            connections.unregister(connection_id);
+            connections.unregister_with_options(
+                connection_id,
+                lifecycle_policy.lifecycle_event_options(connections.subscriber_count()),
+            );
             metrics.record_disconnection();
             drop(permit);
         });
@@ -376,7 +530,10 @@ impl ModbusTcpServerV2 {
                 break;
             }
 
-            debug!(active_connections = active, "Waiting for connections to close");
+            debug!(
+                active_connections = active,
+                "Waiting for connections to close"
+            );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
@@ -387,9 +544,8 @@ async fn handle_connection(
     stream: TcpStream,
     peer_addr: SocketAddr,
     connection_id: u64,
-    handlers: Arc<HandlerRegistry>,
-    devices: DashMap<u8, Arc<ModbusDevice>>,
-    default_registers: Arc<RegisterStore>,
+    service: Arc<StandardModbusService>,
+    server_context: Arc<ServerContext>,
     connections: Arc<ConnectionPool>,
     metrics: Arc<ServerMetrics>,
     shutdown: Arc<AtomicBool>,
@@ -398,6 +554,7 @@ async fn handle_connection(
     connection_disruption: Option<Arc<ConnectionDisruptionConfig>>,
 ) -> ModbusResult<()> {
     debug!(peer = %peer_addr, connection_id, "Connection established");
+    let runtime_policy = config.performance_preset.runtime_policy();
 
     // Configure TCP socket
     if config.tcp_nodelay {
@@ -447,68 +604,81 @@ async fn handle_connection(
         let unit_id = frame.header.unit_id;
         let function_code = frame.function_code().unwrap_or(0);
 
-        metrics.record_request(function_code);
+        metrics.record_request_with_options(function_code, runtime_policy.detailed_metrics());
 
-        // Get registers for this unit
-        let registers = if let Some(device) = devices.get(&unit_id) {
-            device.registers().clone()
-        } else if unit_id == 0 {
-            default_registers.clone()
-        } else {
-            // Unknown unit - send exception
-            let exception_pdu = build_exception_pdu(
-                function_code,
+        request_number += 1;
+        let record_latency = runtime_policy.should_record_latency(request_number);
+        let connection_record_options = runtime_policy.connection_record_options(request_number);
+
+        let execution = execute_transport_request(
+            service.as_ref(),
+            server_context.as_ref(),
+            unit_id,
+            frame.header.transaction_id,
+            frame.pdu.as_slice(),
+            TransportServicePolicy::new(UnknownUnitBehavior::Exception(
                 ExceptionCode::GatewayTargetDeviceFailedToRespond,
-            );
+            ))
+            .with_request_timeout(runtime_policy.request_timeout(config.request_timeout)),
+        )
+        .await;
 
-            let response = MbapFrame::response(&frame, exception_pdu);
-            let response_bytes = response.frame_size() as u64;
+        if execution.timed_out {
+            warn!(peer = %peer_addr, "Request processing timeout");
+            metrics.record_timeout();
+        }
 
-            if let Err(e) = framed.send(response).await {
-                warn!(peer = %peer_addr, error = %e, "Failed to send exception response");
-                break;
+        let is_broadcast = execution.is_broadcast();
+        let response_pdu = match execution.disposition {
+            TransportDisposition::Ignore => continue,
+            TransportDisposition::BroadcastSuppressed(response) => {
+                let is_exception = response.is_exception();
+                let latency = timer.elapsed_us();
+                if is_exception {
+                    metrics.record_exception(latency, request_bytes, 0);
+                } else {
+                    metrics.record_success_with_options(latency, request_bytes, 0, record_latency);
+                }
+                connections.record_request_with_options(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    !is_exception,
+                    latency,
+                    request_bytes,
+                    0,
+                    connection_record_options,
+                );
+                continue;
             }
+            TransportDisposition::Reply(response) => response.into_bytes(),
+        };
 
+        if is_broadcast {
+            let is_exception = response_pdu
+                .first()
+                .map(|fc| fc & 0x80 != 0)
+                .unwrap_or(false);
             let latency = timer.elapsed_us();
-            metrics.record_exception(latency, request_bytes, response_bytes);
-            connections.record_request(
+            if is_exception {
+                metrics.record_exception(latency, request_bytes, 0);
+            } else {
+                metrics.record_success_with_options(latency, request_bytes, 0, record_latency);
+            }
+            connections.record_request_with_options(
                 connection_id,
                 unit_id,
                 function_code,
-                false,
+                !is_exception,
                 latency,
                 request_bytes,
-                response_bytes,
+                0,
+                connection_record_options,
             );
-
             continue;
-        };
-
-        // Create handler context
-        let ctx = HandlerContext::new(unit_id, registers, frame.header.transaction_id);
-
-        // Process request with timeout
-        let process_result = tokio::time::timeout(
-            config.request_timeout,
-            async {
-                handlers.dispatch(&frame.pdu, &ctx)
-            }
-        ).await;
-
-        let response_pdu = match process_result {
-            Ok(Ok(pdu)) => pdu,
-            Ok(Err(exception_code)) => {
-                build_exception_pdu(function_code, exception_code)
-            }
-            Err(_) => {
-                warn!(peer = %peer_addr, "Request processing timeout");
-                metrics.record_timeout();
-                build_exception_pdu(function_code, ExceptionCode::SlaveDeviceBusy)
-            }
-        };
+        }
 
         // Apply fault injection pipeline (if configured)
-        request_number += 1;
         let fault_action = if let Some(ref pipeline) = fault_pipeline {
             let fault_ctx = ModbusFaultContext::tcp(
                 unit_id,
@@ -528,10 +698,13 @@ async fn handle_connection(
                 // Silent drop - no response sent
                 debug!(peer = %peer_addr, unit_id, fc = function_code, "Fault: dropping response");
                 let latency = timer.elapsed_us();
-                metrics.record_success(latency, request_bytes, 0);
+                metrics.record_success_with_options(latency, request_bytes, 0, record_latency);
                 continue;
             }
-            Some(FaultAction::DelayThenSend { delay, response: fault_pdu }) => {
+            Some(FaultAction::DelayThenSend {
+                delay,
+                response: fault_pdu,
+            }) => {
                 tokio::time::sleep(delay).await;
                 let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
                 let response = MbapFrame::response(&frame, fault_pdu);
@@ -542,13 +715,35 @@ async fn handle_connection(
                 }
                 let latency = timer.elapsed_us();
                 if is_exception {
-                    metrics.record_exception(latency, request_bytes, response_bytes);
+                    metrics.record_exception_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 } else {
-                    metrics.record_success(latency, request_bytes, response_bytes);
+                    metrics.record_success_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 }
-                connections.record_request(connection_id, unit_id, function_code, !is_exception, latency, request_bytes, response_bytes);
+                connections.record_request_with_options(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    !is_exception,
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    connection_record_options,
+                );
             }
-            Some(FaultAction::OverrideTransactionId { transaction_id, response: fault_pdu }) => {
+            Some(FaultAction::OverrideTransactionId {
+                transaction_id,
+                response: fault_pdu,
+            }) => {
                 let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
                 let mut response = MbapFrame::response(&frame, fault_pdu);
                 response.header.transaction_id = transaction_id;
@@ -559,11 +754,30 @@ async fn handle_connection(
                 }
                 let latency = timer.elapsed_us();
                 if is_exception {
-                    metrics.record_exception(latency, request_bytes, response_bytes);
+                    metrics.record_exception_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 } else {
-                    metrics.record_success(latency, request_bytes, response_bytes);
+                    metrics.record_success_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 }
-                connections.record_request(connection_id, unit_id, function_code, !is_exception, latency, request_bytes, response_bytes);
+                connections.record_request_with_options(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    !is_exception,
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    connection_record_options,
+                );
             }
             Some(FaultAction::SendRawBytes(raw_bytes)) => {
                 // For TCP: raw bytes include the complete MBAP frame, send directly
@@ -576,8 +790,22 @@ async fn handle_connection(
                 }
                 let _ = inner.flush().await;
                 let latency = timer.elapsed_us();
-                metrics.record_success(latency, request_bytes, response_bytes);
-                connections.record_request(connection_id, unit_id, function_code, true, latency, request_bytes, response_bytes);
+                metrics.record_success_with_options(
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    record_latency,
+                );
+                connections.record_request_with_options(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    true,
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    connection_record_options,
+                );
             }
             Some(FaultAction::SendResponse(fault_pdu)) => {
                 let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
@@ -589,11 +817,30 @@ async fn handle_connection(
                 }
                 let latency = timer.elapsed_us();
                 if is_exception {
-                    metrics.record_exception(latency, request_bytes, response_bytes);
+                    metrics.record_exception_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 } else {
-                    metrics.record_success(latency, request_bytes, response_bytes);
+                    metrics.record_success_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 }
-                connections.record_request(connection_id, unit_id, function_code, !is_exception, latency, request_bytes, response_bytes);
+                connections.record_request_with_options(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    !is_exception,
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    connection_record_options,
+                );
             }
             Some(FaultAction::SendPartial { bytes }) => {
                 // Partial frames are RTU-only, but handle gracefully for TCP
@@ -606,12 +853,29 @@ async fn handle_connection(
                 }
                 let _ = inner.flush().await;
                 let latency = timer.elapsed_us();
-                metrics.record_success(latency, request_bytes, response_bytes);
-                connections.record_request(connection_id, unit_id, function_code, true, latency, request_bytes, response_bytes);
+                metrics.record_success_with_options(
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    record_latency,
+                );
+                connections.record_request_with_options(
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    true,
+                    latency,
+                    request_bytes,
+                    response_bytes,
+                    connection_record_options,
+                );
             }
             None => {
                 // No fault — normal response path
-                let is_exception = response_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
+                let is_exception = response_pdu
+                    .first()
+                    .map(|&fc| fc & 0x80 != 0)
+                    .unwrap_or(false);
                 let response = MbapFrame::response(&frame, response_pdu);
                 let response_bytes = response.frame_size() as u64;
 
@@ -623,12 +887,22 @@ async fn handle_connection(
                 // Record metrics
                 let latency = timer.elapsed_us();
                 if is_exception {
-                    metrics.record_exception(latency, request_bytes, response_bytes);
+                    metrics.record_exception_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 } else {
-                    metrics.record_success(latency, request_bytes, response_bytes);
+                    metrics.record_success_with_options(
+                        latency,
+                        request_bytes,
+                        response_bytes,
+                        record_latency,
+                    );
                 }
 
-                connections.record_request(
+                connections.record_request_with_options(
                     connection_id,
                     unit_id,
                     function_code,
@@ -636,6 +910,7 @@ async fn handle_connection(
                     latency,
                     request_bytes,
                     response_bytes,
+                    connection_record_options,
                 );
             }
         }
@@ -644,7 +919,10 @@ async fn handle_connection(
         if let Some(ref state) = disruption_state {
             match state.record_request() {
                 DisruptionAction::None => {}
-                DisruptionAction::Disconnect { close_delay, use_rst: _ } => {
+                DisruptionAction::Disconnect {
+                    close_delay,
+                    use_rst: _,
+                } => {
                     debug!(peer = %peer_addr, "Connection disruption: disconnect");
                     if let Some(delay) = close_delay {
                         tokio::time::sleep(delay).await;
@@ -655,14 +933,21 @@ async fn handle_connection(
                     // unread data in the receive buffer.
                     break;
                 }
-                DisruptionAction::DropMidFrame { close_delay, use_rst: _ } => {
+                DisruptionAction::DropMidFrame {
+                    close_delay,
+                    use_rst: _,
+                } => {
                     debug!(peer = %peer_addr, "Connection disruption: drop mid-frame");
                     if let Some(delay) = close_delay {
                         tokio::time::sleep(delay).await;
                     }
                     break;
                 }
-                DisruptionAction::RstAfterPartial { byte_count, close_delay, use_rst: _ } => {
+                DisruptionAction::RstAfterPartial {
+                    byte_count,
+                    close_delay,
+                    use_rst: _,
+                } => {
                     debug!(peer = %peer_addr, byte_count, "Connection disruption: RST after partial");
                     // Send partial garbage bytes then close
                     use tokio::io::AsyncWriteExt;
@@ -731,6 +1016,53 @@ mod tests {
         // Multiple shutdowns should be safe
         server.shutdown();
         assert!(server.is_shutdown());
+    }
+
+    #[test]
+    fn test_runtime_policy_default_keeps_full_request_tracking() {
+        let policy = PerformancePreset::Default.runtime_policy();
+        let options = policy.connection_record_options(1);
+
+        assert_eq!(
+            policy.request_timeout(Duration::from_secs(1)),
+            Some(Duration::from_secs(1))
+        );
+        assert!(policy.detailed_metrics());
+        assert!(policy.should_record_latency(1));
+        assert!(options.update_last_activity);
+        assert!(options.track_unit_access);
+        assert!(options.emit_event);
+        assert!(!policy.should_emit_server_events(0));
+        assert!(policy.should_emit_server_events(1));
+    }
+
+    #[test]
+    fn test_runtime_policy_high_throughput_samples_connection_metadata() {
+        let policy = PerformancePreset::HighThroughput.runtime_policy();
+        let options = policy.connection_record_options(16);
+        let unsampled_options = policy.connection_record_options(1);
+        let no_subscribers = policy.lifecycle_event_options(0);
+        let with_subscribers = policy.lifecycle_event_options(1);
+
+        assert_eq!(
+            policy.request_timeout(Duration::from_secs(1)),
+            Some(Duration::from_secs(1))
+        );
+        assert!(policy.detailed_metrics());
+        assert!(policy.should_record_latency(7));
+        assert!(policy.should_record_latency(8));
+        assert!(options.update_last_activity);
+        assert!(!options.track_unit_access);
+        assert!(!options.emit_event);
+        assert!(!unsampled_options.update_last_activity);
+        assert!(!unsampled_options.track_unit_access);
+        assert!(!unsampled_options.emit_event);
+        assert!(!no_subscribers.emit_connected);
+        assert!(!no_subscribers.emit_disconnected);
+        assert!(!no_subscribers.emit_rejected);
+        assert!(with_subscribers.emit_connected);
+        assert!(with_subscribers.emit_disconnected);
+        assert!(with_subscribers.emit_rejected);
     }
 
     // Integration test with actual TCP connection would require more setup

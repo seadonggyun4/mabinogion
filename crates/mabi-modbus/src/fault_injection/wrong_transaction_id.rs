@@ -128,10 +128,12 @@ mod tests {
 
     fn tcp_ctx() -> ModbusFaultContext {
         ModbusFaultContext::tcp(
-            1, 0x03,
+            1,
+            0x03,
             &[0x03, 0x00, 0x00, 0x00, 0x01],
             &[0x03, 0x02, 0x00, 0x64],
-            100, 1,
+            100,
+            1,
         )
     }
 
@@ -142,7 +144,10 @@ mod tests {
         let action = fault.apply(&tcp_ctx());
 
         match action {
-            FaultAction::OverrideTransactionId { transaction_id, response } => {
+            FaultAction::OverrideTransactionId {
+                transaction_id,
+                response,
+            } => {
                 assert_eq!(transaction_id, 999);
                 assert_eq!(response, vec![0x03, 0x02, 0x00, 0x64]);
             }

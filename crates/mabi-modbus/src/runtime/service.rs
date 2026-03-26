@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, to_value};
 
 use mabi_core::device::{Device, DeviceInfo};
-use mabi_core::types::DataType;
+use mabi_core::types::DataPointDef;
 use mabi_core::Protocol;
 use mabi_runtime::{
     DevicePort, DeviceRegistry, ManagedService, ProtocolDescriptor, ProtocolDriver,
@@ -16,13 +16,35 @@ use mabi_runtime::{
 };
 
 use crate::fault_injection::{FaultInjectionConfig, FaultPipeline};
-use crate::{ConnectionDisruptionConfig, ModbusDevice, ModbusDeviceConfig, ModbusTcpServerV2};
+use crate::simulator::{schema_summary, ModbusServiceLaunchConfig, ModbusTransportLaunch};
+use crate::{
+    Builder, ConnectionDisruptionConfig, GeneratedProfilePreset, ModbusDevice, ModbusRtuServer,
+    ModbusTcpServerV2, Profile,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ModbusLaunchConfig {
+struct LegacyModbusLaunchConfig {
     bind_addr: std::net::SocketAddr,
-    devices: usize,
-    points_per_device: usize,
+    #[serde(default)]
+    devices: Option<usize>,
+    #[serde(default)]
+    points_per_device: Option<usize>,
+    #[serde(default)]
+    profile: Option<Profile>,
+}
+
+impl LegacyModbusLaunchConfig {
+    fn into_service_launch(self) -> ModbusServiceLaunchConfig {
+        ModbusServiceLaunchConfig {
+            transport: ModbusTransportLaunch::Tcp {
+                bind_addr: self.bind_addr,
+                performance_preset: crate::tcp::PerformancePreset::Default,
+            },
+            profile: self.profile,
+            devices: self.devices,
+            points_per_device: self.points_per_device,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -37,9 +59,9 @@ fn runtime_error(message: impl Into<String>) -> RuntimeError {
     RuntimeError::service(message)
 }
 
-fn new_status(name: &str) -> ServiceStatus {
+fn new_status(name: &str, protocol: Protocol) -> ServiceStatus {
     let mut status = ServiceStatus::new(name);
-    status.protocol = Some(Protocol::ModbusTcp);
+    status.protocol = Some(protocol);
     status
 }
 
@@ -118,20 +140,143 @@ impl DevicePort for ModbusDevicePort {
     async fn write(&self, point_id: &str, value: mabi_core::Value) -> mabi_core::Result<()> {
         self.device.write_point(point_id, value).await
     }
+
+    fn point_definitions(&self) -> Vec<DataPointDef> {
+        self.device.point_definitions_owned()
+    }
+}
+
+enum ModbusRuntimeServer {
+    Tcp(Arc<ModbusTcpServerV2>),
+    Rtu(Arc<ModbusRtuServer>),
+}
+
+impl ModbusRuntimeServer {
+    fn protocol(&self) -> Protocol {
+        match self {
+            Self::Tcp(_) => Protocol::ModbusTcp,
+            Self::Rtu(_) => Protocol::ModbusRtu,
+        }
+    }
+
+    fn transport_name(&self) -> &'static str {
+        match self {
+            Self::Tcp(_) => "tcp",
+            Self::Rtu(_) => "rtu",
+        }
+    }
+
+    fn shutdown(&self) {
+        match self {
+            Self::Tcp(server) => server.shutdown(),
+            Self::Rtu(server) => server.shutdown(),
+        }
+    }
+
+    async fn run(&self) -> RuntimeResult<()> {
+        match self {
+            Self::Tcp(server) => server
+                .run()
+                .await
+                .map_err(|error| runtime_error(format!("modbus tcp server failed: {}", error))),
+            Self::Rtu(server) => server
+                .run()
+                .await
+                .map_err(|error| runtime_error(format!("modbus rtu server failed: {}", error))),
+        }
+    }
+
+    fn register_devices(&self, registry: &DeviceRegistry) {
+        match self {
+            Self::Tcp(server) => {
+                for unit_id in server.device_ids() {
+                    if let Some(device) = server.device(unit_id) {
+                        registry.register(
+                            device.id().to_string(),
+                            Arc::new(ModbusDevicePort::new(device)),
+                        );
+                    }
+                }
+            }
+            Self::Rtu(server) => {
+                for unit_id in server.device_ids() {
+                    if let Some(device) = server.device(unit_id) {
+                        registry.register(
+                            device.id().to_string(),
+                            Arc::new(ModbusDevicePort::new(device)),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn metrics_metadata(&self) -> serde_json::Value {
+        match self {
+            Self::Tcp(server) => {
+                let metrics = server.metrics().snapshot();
+                json!({
+                    "connections_total": metrics.connections_total,
+                    "connections_active": metrics.connections_active,
+                    "connections_rejected": metrics.connections_rejected,
+                    "requests_total": metrics.requests_total,
+                    "responses_success": metrics.responses_success,
+                    "responses_exception": metrics.responses_exception,
+                    "errors_total": metrics.errors_total,
+                    "frame_errors": metrics.frame_errors,
+                    "timeout_errors": metrics.timeout_errors,
+                    "bytes_received": metrics.bytes_received,
+                    "bytes_sent": metrics.bytes_sent,
+                    "uptime_secs": metrics.uptime_secs,
+                    "requests_per_second": metrics.requests_per_second,
+                    "avg_latency_us": metrics.avg_latency_us,
+                    "p50_latency_us": metrics.p50_latency_us,
+                    "p95_latency_us": metrics.p95_latency_us,
+                    "p99_latency_us": metrics.p99_latency_us,
+                })
+            }
+            Self::Rtu(server) => {
+                let stats = server.stats();
+                let transport = server.transport_metrics();
+                json!({
+                    "requests_processed": stats.requests_processed,
+                    "requests_success": stats.requests_success,
+                    "requests_exception": stats.requests_exception,
+                    "crc_errors": stats.crc_errors,
+                    "framing_errors": stats.framing_errors,
+                    "timeouts": stats.timeouts,
+                    "avg_latency_us": stats.avg_latency_us,
+                    "bytes_received": transport.bytes_received,
+                    "bytes_sent": transport.bytes_sent,
+                    "frames_received": transport.frames_received,
+                    "frames_sent": transport.frames_sent,
+                    "crc_errors_total": transport.crc_errors,
+                    "framing_errors_total": transport.framing_errors,
+                })
+            }
+        }
+    }
 }
 
 struct ModbusManagedService {
-    server: Arc<ModbusTcpServerV2>,
-    launch: ModbusLaunchConfig,
+    server: ModbusRuntimeServer,
+    launch: ModbusServiceLaunchConfig,
+    profile: Profile,
     status: RwLock<ServiceStatus>,
 }
 
 impl ModbusManagedService {
-    fn new(server: Arc<ModbusTcpServerV2>, name: String, launch: ModbusLaunchConfig) -> Self {
+    fn new(
+        server: ModbusRuntimeServer,
+        name: String,
+        launch: ModbusServiceLaunchConfig,
+        profile: Profile,
+    ) -> Self {
         Self {
+            status: RwLock::new(new_status(&name, server.protocol())),
             server,
             launch,
-            status: RwLock::new(new_status(&name)),
+            profile,
         }
     }
 }
@@ -158,7 +303,7 @@ impl ManagedService for ModbusManagedService {
             }
             Err(error) => {
                 mark_error(&self.status, error.to_string());
-                Err(runtime_error(format!("modbus server failed: {}", error)))
+                Err(error)
             }
         }
     }
@@ -168,84 +313,50 @@ impl ManagedService for ModbusManagedService {
     }
 
     async fn snapshot(&self) -> RuntimeResult<ServiceSnapshot> {
-        let metrics = self.server.metrics().snapshot();
         let mut metadata = BTreeMap::new();
         metadata.insert(
-            "bind_address".to_string(),
-            to_value(self.launch.bind_addr.to_string())
+            "transport".to_string(),
+            to_value(self.server.transport_name())
                 .map_err(|error| runtime_error(error.to_string()))?,
         );
         metadata.insert(
             "devices".to_string(),
-            to_value(self.launch.devices).map_err(|error| runtime_error(error.to_string()))?,
+            to_value(self.profile.units.len()).map_err(|error| runtime_error(error.to_string()))?,
         );
         metadata.insert(
-            "points_per_device".to_string(),
-            to_value(self.launch.points_per_device)
-                .map_err(|error| runtime_error(error.to_string()))?,
+            "points".to_string(),
+            to_value(
+                self.profile
+                    .units
+                    .iter()
+                    .map(|unit| unit.points.len())
+                    .sum::<usize>(),
+            )
+            .map_err(|error| runtime_error(error.to_string()))?,
         );
-        metadata.insert(
-            "metrics".to_string(),
-            json!({
-                "connections_total": metrics.connections_total,
-                "connections_active": metrics.connections_active,
-                "connections_rejected": metrics.connections_rejected,
-                "requests_total": metrics.requests_total,
-                "responses_success": metrics.responses_success,
-                "responses_exception": metrics.responses_exception,
-                "errors_total": metrics.errors_total,
-                "frame_errors": metrics.frame_errors,
-                "timeout_errors": metrics.timeout_errors,
-                "bytes_received": metrics.bytes_received,
-                "bytes_sent": metrics.bytes_sent,
-                "uptime_secs": metrics.uptime_secs,
-                "requests_per_second": metrics.requests_per_second,
-                "avg_latency_us": metrics.avg_latency_us,
-                "p50_latency_us": metrics.p50_latency_us,
-                "p95_latency_us": metrics.p95_latency_us,
-                "p99_latency_us": metrics.p99_latency_us,
-            }),
-        );
+        match &self.launch.transport {
+            ModbusTransportLaunch::Tcp { bind_addr, .. } => {
+                metadata.insert(
+                    "bind_address".to_string(),
+                    to_value(bind_addr.to_string())
+                        .map_err(|error| runtime_error(error.to_string()))?,
+                );
+            }
+            ModbusTransportLaunch::Rtu { config } => {
+                metadata.insert(
+                    "rtu_transport".to_string(),
+                    to_value(&config.transport)
+                        .map_err(|error| runtime_error(error.to_string()))?,
+                );
+            }
+        }
+        metadata.insert("metrics".to_string(), self.server.metrics_metadata());
         Ok(snapshot_with_metadata(&self.status(), metadata))
     }
 
     fn register_devices(&self, registry: &DeviceRegistry) -> RuntimeResult<()> {
-        for unit_id in 1..=self.launch.devices {
-            if let Some(device) = self.server.device(unit_id as u8) {
-                let device_id = device.id().to_string();
-                registry.register(device_id, Arc::new(ModbusDevicePort::new(device)));
-            }
-        }
+        self.server.register_devices(registry);
         Ok(())
-    }
-}
-
-fn populate_default_points(device: &mut ModbusDevice, requested_points: usize) {
-    let family_points = std::cmp::max(1, requested_points / 4);
-    for index in 0..family_points {
-        let address = index as u16;
-        device.add_holding_register(
-            format!("holding_{}", index),
-            format!("Holding Register {}", index),
-            address,
-            DataType::UInt16,
-        );
-        device.add_input_register(
-            format!("input_{}", index),
-            format!("Input Register {}", index),
-            address,
-            DataType::UInt16,
-        );
-        device.add_coil(
-            format!("coil_{}", index),
-            format!("Coil {}", index),
-            address,
-        );
-        device.add_discrete_input(
-            format!("discrete_{}", index),
-            format!("Discrete Input {}", index),
-            address,
-        );
     }
 }
 
@@ -263,6 +374,25 @@ impl ModbusDriver {
             None => Ok(ModbusProtocolRuntimeConfig::default()),
         }
     }
+
+    fn parse_launch_config(config: serde_json::Value) -> RuntimeResult<ModbusServiceLaunchConfig> {
+        serde_json::from_value::<ModbusServiceLaunchConfig>(config.clone())
+            .or_else(|_| {
+                serde_json::from_value::<LegacyModbusLaunchConfig>(config)
+                    .map(LegacyModbusLaunchConfig::into_service_launch)
+            })
+            .map_err(|error| runtime_error(format!("invalid modbus launch config: {}", error)))
+    }
+
+    fn resolved_profile(launch: &ModbusServiceLaunchConfig) -> Profile {
+        launch.profile.clone().unwrap_or_else(|| {
+            GeneratedProfilePreset::new(
+                launch.devices.unwrap_or(1),
+                launch.points_per_device.unwrap_or(4),
+            )
+            .build()
+        })
+    }
 }
 
 #[async_trait]
@@ -270,19 +400,24 @@ impl ProtocolDriver for ModbusDriver {
     fn descriptor(&self) -> ProtocolDescriptor {
         ProtocolDescriptor {
             key: "modbus",
-            display_name: "Modbus TCP",
+            display_name: "Modbus",
             protocol: Protocol::ModbusTcp,
             default_port: 502,
-            description: "Serve Modbus TCP devices through the shared runtime",
+            description: "Serve Modbus TCP or RTU devices through the shared runtime",
         }
     }
 
     fn features(&self) -> &'static [&'static str] {
         &[
-            "multi-unit devices",
-            "register families",
+            "tcp and rtu transports",
+            "session-centric config",
             "controller-visible device ports",
+            "typed config inspection",
         ]
+    }
+
+    fn schema(&self) -> Option<serde_json::Value> {
+        serde_json::to_value(schema_summary()).ok()
     }
 
     async fn build(
@@ -290,45 +425,63 @@ impl ProtocolDriver for ModbusDriver {
         spec: ProtocolLaunchSpec,
         extensions: RuntimeExtensions,
     ) -> RuntimeResult<Arc<dyn ManagedService>> {
-        let launch: ModbusLaunchConfig = serde_json::from_value(spec.config.clone())
-            .map_err(|error| runtime_error(format!("invalid modbus launch config: {}", error)))?;
+        let launch = Self::parse_launch_config(spec.config.clone())?;
         let runtime_config = Self::protocol_runtime_config(&extensions)?;
+        let profile = Self::resolved_profile(&launch);
 
-        let mut server = ModbusTcpServerV2::new(crate::tcp::ServerConfigV2 {
-            bind_address: launch.bind_addr,
-            ..Default::default()
-        });
+        let server = match &launch.transport {
+            ModbusTransportLaunch::Tcp {
+                bind_addr,
+                performance_preset,
+            } => {
+                let mut server = Builder::new()
+                    .config(crate::tcp::ServerConfigV2 {
+                        bind_address: *bind_addr,
+                        performance_preset: *performance_preset,
+                        ..Default::default()
+                    })
+                    .profile(profile.clone())
+                    .build()
+                    .map_err(|error| {
+                        runtime_error(format!("failed to build modbus tcp server: {}", error))
+                    })?;
 
-        if let Some(fault_injection) = runtime_config.fault_injection {
-            if fault_injection.enabled {
-                server = server.with_fault_pipeline(FaultPipeline::from_config(&fault_injection));
+                if let Some(fault_injection) = runtime_config.fault_injection.clone() {
+                    if fault_injection.enabled {
+                        server = server
+                            .with_fault_pipeline(FaultPipeline::from_config(&fault_injection));
+                    }
+                }
+                if let Some(connection_disruption) = runtime_config.connection_disruption.clone() {
+                    server = server.with_connection_disruption(connection_disruption);
+                }
+
+                ModbusRuntimeServer::Tcp(Arc::new(server))
             }
-        }
-        if let Some(connection_disruption) = runtime_config.connection_disruption {
-            server = server.with_connection_disruption(connection_disruption);
-        }
-
-        for index in 0..launch.devices {
-            let unit_id = (index + 1) as u8;
-            let points_per_family = std::cmp::max(1, launch.points_per_device / 4) as u16;
-            let mut device = ModbusDevice::new(ModbusDeviceConfig {
-                unit_id,
-                name: format!("Device-{}", unit_id),
-                holding_registers: points_per_family,
-                input_registers: points_per_family,
-                coils: points_per_family,
-                discrete_inputs: points_per_family,
-                response_delay_ms: 0,
-                tags: mabi_core::tags::Tags::new(),
-            });
-            populate_default_points(&mut device, launch.points_per_device);
-            server.add_device(device);
-        }
+            ModbusTransportLaunch::Rtu { config } => {
+                let mut server = ModbusRtuServer::new(config.clone());
+                server.set_broadcast_enabled(profile.broadcast_enabled);
+                for unit in profile.units.iter().cloned() {
+                    let device = ModbusDevice::from_profile(&unit).map_err(|error| {
+                        runtime_error(format!("failed to build modbus rtu device: {}", error))
+                    })?;
+                    server.add_device(device);
+                }
+                if let Some(fault_injection) = runtime_config.fault_injection.clone() {
+                    if fault_injection.enabled {
+                        server = server
+                            .with_fault_pipeline(FaultPipeline::from_config(&fault_injection));
+                    }
+                }
+                ModbusRuntimeServer::Rtu(Arc::new(server))
+            }
+        };
 
         Ok(Arc::new(ModbusManagedService::new(
-            Arc::new(server),
+            server,
             spec.service_name(&self.descriptor()),
             launch,
+            profile,
         )))
     }
 }

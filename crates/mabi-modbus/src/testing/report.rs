@@ -216,8 +216,18 @@ impl TestReport {
         let mut md = String::new();
 
         md.push_str(&format!("# Test Report: {}\n\n", self.summary.name));
-        md.push_str(&format!("**Description:** {}\n\n", self.summary.description));
-        md.push_str(&format!("**Status:** {}\n\n", if self.summary.passed { "PASSED" } else { "FAILED" }));
+        md.push_str(&format!(
+            "**Description:** {}\n\n",
+            self.summary.description
+        ));
+        md.push_str(&format!(
+            "**Status:** {}\n\n",
+            if self.summary.passed {
+                "PASSED"
+            } else {
+                "FAILED"
+            }
+        ));
 
         md.push_str("## Summary\n\n");
         md.push_str(&format!("| Metric | Value |\n"));
@@ -225,29 +235,55 @@ impl TestReport {
         md.push_str(&format!("| Duration | {:?} |\n", self.summary.duration));
         md.push_str(&format!("| Start Time | {} |\n", self.summary.start_time));
         md.push_str(&format!("| End Time | {} |\n", self.summary.end_time));
-        md.push_str(&format!("| Targets Passed | {}/{} |\n", self.summary.targets_passed, self.summary.targets_checked));
+        md.push_str(&format!(
+            "| Targets Passed | {}/{} |\n",
+            self.summary.targets_passed, self.summary.targets_checked
+        ));
 
         md.push_str("\n## Metrics\n\n");
         md.push_str(&format!("| Metric | Value |\n"));
         md.push_str(&format!("|--------|-------|\n"));
-        md.push_str(&format!("| Total Requests | {} |\n", self.metrics.total_requests));
-        md.push_str(&format!("| Successful | {} |\n", self.metrics.successful_requests));
+        md.push_str(&format!(
+            "| Total Requests | {} |\n",
+            self.metrics.total_requests
+        ));
+        md.push_str(&format!(
+            "| Successful | {} |\n",
+            self.metrics.successful_requests
+        ));
         md.push_str(&format!("| Failed | {} |\n", self.metrics.failed_requests));
         md.push_str(&format!("| Avg TPS | {} |\n", self.metrics.avg_tps));
         md.push_str(&format!("| Peak TPS | {} |\n", self.metrics.peak_tps));
-        md.push_str(&format!("| P50 Latency | {:.2}ms |\n", self.metrics.p50_latency_ms));
-        md.push_str(&format!("| P95 Latency | {:.2}ms |\n", self.metrics.p95_latency_ms));
-        md.push_str(&format!("| P99 Latency | {:.2}ms |\n", self.metrics.p99_latency_ms));
-        md.push_str(&format!("| Error Rate | {:.2}% |\n", self.metrics.error_rate * 100.0));
-        md.push_str(&format!("| Peak Memory | {:.2}MB |\n", self.metrics.memory_peak_mb));
+        md.push_str(&format!(
+            "| P50 Latency | {:.2}ms |\n",
+            self.metrics.p50_latency_ms
+        ));
+        md.push_str(&format!(
+            "| P95 Latency | {:.2}ms |\n",
+            self.metrics.p95_latency_ms
+        ));
+        md.push_str(&format!(
+            "| P99 Latency | {:.2}ms |\n",
+            self.metrics.p99_latency_ms
+        ));
+        md.push_str(&format!(
+            "| Error Rate | {:.2}% |\n",
+            self.metrics.error_rate * 100.0
+        ));
+        md.push_str(&format!(
+            "| Peak Memory | {:.2}MB |\n",
+            self.metrics.memory_peak_mb
+        ));
 
         md.push_str("\n## Target Results\n\n");
         md.push_str(&format!("| Target | Expected | Actual | Status |\n"));
         md.push_str(&format!("|--------|----------|--------|--------|\n"));
         for target in &self.target_results {
             let status = if target.passed { "PASSED" } else { "FAILED" };
-            md.push_str(&format!("| {} | {} {} | {} | {} |\n",
-                target.name, target.comparison, target.expected, target.actual, status));
+            md.push_str(&format!(
+                "| {} | {} {} | {} | {} |\n",
+                target.name, target.comparison, target.expected, target.actual, status
+            ));
         }
 
         if !self.summary.failure_reasons.is_empty() {
@@ -259,10 +295,18 @@ impl TestReport {
 
         md.push_str("\n## Environment\n\n");
         md.push_str(&format!("- **OS:** {}\n", self.metadata.host_info.os));
-        md.push_str(&format!("- **CPUs:** {}\n", self.metadata.host_info.cpu_count));
-        md.push_str(&format!("- **Memory:** {:.2}GB\n",
-            self.metadata.host_info.total_memory_bytes as f64 / (1024.0 * 1024.0 * 1024.0)));
-        md.push_str(&format!("- **Host:** {}\n", self.metadata.host_info.hostname));
+        md.push_str(&format!(
+            "- **CPUs:** {}\n",
+            self.metadata.host_info.cpu_count
+        ));
+        md.push_str(&format!(
+            "- **Memory:** {:.2}GB\n",
+            self.metadata.host_info.total_memory_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+        ));
+        md.push_str(&format!(
+            "- **Host:** {}\n",
+            self.metadata.host_info.hostname
+        ));
 
         md
     }
@@ -270,9 +314,11 @@ impl TestReport {
     /// Save report to file.
     pub fn save(&self, path: &str) -> std::io::Result<()> {
         let content = if path.ends_with(".json") {
-            self.to_json().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            self.to_json()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
         } else if path.ends_with(".yaml") || path.ends_with(".yml") {
-            self.to_yaml().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            self.to_yaml()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
         } else if path.ends_with(".md") {
             self.to_markdown()
         } else {
@@ -381,7 +427,12 @@ impl TestReportBuilder {
             .target_results
             .iter()
             .filter(|t| !t.passed)
-            .map(|t| format!("{}: expected {} {}, got {}", t.name, t.comparison, t.expected, t.actual))
+            .map(|t| {
+                format!(
+                    "{}: expected {} {}, got {}",
+                    t.name, t.comparison, t.expected, t.actual
+                )
+            })
             .collect();
 
         TestReport {
@@ -486,8 +537,7 @@ mod tests {
             memory_peak_mb: 256.0,
         };
 
-        let report = TestReport::builder("Test")
-            .build(metrics, true, Duration::from_secs(60));
+        let report = TestReport::builder("Test").build(metrics, true, Duration::from_secs(60));
 
         let md = report.to_markdown();
         assert!(md.contains("# Test Report: Test"));

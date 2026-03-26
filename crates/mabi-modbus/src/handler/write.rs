@@ -530,7 +530,10 @@ mod tests {
 
         // Verify coils
         let coils = ctx.registers.read_coils(0, 10).unwrap();
-        assert_eq!(coils, vec![true, false, true, true, false, true, false, true, true, true]);
+        assert_eq!(
+            coils,
+            vec![true, false, true, true, false, true, false, true, true, true]
+        );
     }
 
     #[test]
@@ -541,11 +544,11 @@ mod tests {
         // Write 3 registers starting at address 5
         let pdu = [
             0x10, 0x00, 0x05, // FC, address
-            0x00, 0x03,       // quantity
-            0x06,             // byte count
-            0x00, 0x64,       // 100
-            0x00, 0xC8,       // 200
-            0x01, 0x2C,       // 300
+            0x00, 0x03, // quantity
+            0x06, // byte count
+            0x00, 0x64, // 100
+            0x00, 0xC8, // 200
+            0x01, 0x2C, // 300
         ];
         let response = handler.handle(&pdu, &ctx).unwrap();
 
@@ -565,18 +568,19 @@ mod tests {
         let ctx = create_context();
 
         // Pre-set some values to read
-        ctx.registers.write_holding_registers(0, &[10, 20, 30]).unwrap();
+        ctx.registers
+            .write_holding_registers(0, &[10, 20, 30])
+            .unwrap();
 
         // Read 3 registers from addr 0, write 2 registers to addr 10
         let pdu = [
-            0x17,
-            0x00, 0x00,       // read address
-            0x00, 0x03,       // read quantity
-            0x00, 0x0A,       // write address
-            0x00, 0x02,       // write quantity
-            0x04,             // byte count
-            0x01, 0x00,       // 256
-            0x02, 0x00,       // 512
+            0x17, 0x00, 0x00, // read address
+            0x00, 0x03, // read quantity
+            0x00, 0x0A, // write address
+            0x00, 0x02, // write quantity
+            0x04, // byte count
+            0x01, 0x00, // 256
+            0x02, 0x00, // 512
         ];
         let response = handler.handle(&pdu, &ctx).unwrap();
 
@@ -737,11 +741,9 @@ mod tests {
 
         // Byte count doesn't match quantity
         let pdu = [
-            0x10, 0x00, 0x05,
-            0x00, 0x03,       // 3 registers = 6 bytes
-            0x04,             // but byte count says 4
-            0x00, 0x64,
-            0x00, 0xC8,
+            0x10, 0x00, 0x05, 0x00, 0x03, // 3 registers = 6 bytes
+            0x04, // but byte count says 4
+            0x00, 0x64, 0x00, 0xC8,
         ];
         let result = handler.handle(&pdu, &ctx);
 

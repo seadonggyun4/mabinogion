@@ -278,7 +278,9 @@ mod tests {
 
     #[test]
     fn test_reset_counters() {
-        let target = FaultTarget::new().with_skip_count(1).with_max_activations(1);
+        let target = FaultTarget::new()
+            .with_skip_count(1)
+            .with_max_activations(1);
         assert!(!target.should_activate(1, 0x03)); // skip
         assert!(target.should_activate(1, 0x03)); // activate
         assert!(!target.should_activate(1, 0x03)); // max reached

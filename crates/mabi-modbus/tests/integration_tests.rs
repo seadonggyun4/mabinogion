@@ -23,7 +23,7 @@ use tokio_modbus::Slave;
 use mabi_modbus::{
     config::ModbusDeviceConfig,
     device::ModbusDevice,
-    tcp::{ModbusTcpServerV2, ServerConfigV2},
+    tcp::{ModbusTcpServerV2, PerformancePreset, ServerConfigV2},
 };
 
 // =============================================================================
@@ -46,6 +46,7 @@ async fn create_test_server(port: u16) -> Arc<ModbusTcpServerV2> {
         tcp_keepalive: None,
         tcp_nodelay: true,
         shutdown_timeout: Duration::from_secs(5),
+        performance_preset: PerformancePreset::Default,
     };
 
     let server = Arc::new(ModbusTcpServerV2::new(config));

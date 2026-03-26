@@ -47,4 +47,4 @@ mod server;
 pub use codec::{MbapCodec, MbapFrame, MbapHeader};
 pub use connection::{ConnectionInfo, ConnectionPool, ConnectionState};
 pub use metrics::ServerMetrics;
-pub use server::{ModbusTcpServerV2, ServerConfigV2};
+pub use server::{ModbusTcpServerV2, PerformancePreset, ServerConfigV2};

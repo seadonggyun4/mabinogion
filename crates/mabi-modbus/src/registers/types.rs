@@ -195,7 +195,10 @@ mod tests {
         assert!(RegisterType::DiscreteInput.is_read_only());
         assert!(RegisterType::DiscreteInput.is_bit_type());
         assert_eq!(RegisterType::DiscreteInput.read_function_code(), 0x02);
-        assert_eq!(RegisterType::DiscreteInput.write_single_function_code(), None);
+        assert_eq!(
+            RegisterType::DiscreteInput.write_single_function_code(),
+            None
+        );
 
         // Holding Registers
         assert!(RegisterType::HoldingRegister.is_writable());
@@ -211,7 +214,10 @@ mod tests {
         assert!(RegisterType::InputRegister.is_read_only());
         assert!(RegisterType::InputRegister.is_word_type());
         assert_eq!(RegisterType::InputRegister.read_function_code(), 0x04);
-        assert_eq!(RegisterType::InputRegister.write_single_function_code(), None);
+        assert_eq!(
+            RegisterType::InputRegister.write_single_function_code(),
+            None
+        );
     }
 
     #[test]

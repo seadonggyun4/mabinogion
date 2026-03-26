@@ -141,7 +141,11 @@ impl MbapFrame {
 
     /// Create a response frame for a request.
     pub fn response(request: &MbapFrame, response_pdu: Vec<u8>) -> Self {
-        Self::new(request.header.transaction_id, request.header.unit_id, response_pdu)
+        Self::new(
+            request.header.transaction_id,
+            request.header.unit_id,
+            response_pdu,
+        )
     }
 
     /// Get the function code.
@@ -222,9 +226,7 @@ impl Decoder for MbapCodec {
                     // Validate PDU length
                     let pdu_len = header.pdu_length();
                     if pdu_len == 0 {
-                        return Err(ModbusError::InvalidData(
-                            "PDU length cannot be zero".into(),
-                        ));
+                        return Err(ModbusError::InvalidData("PDU length cannot be zero".into()));
                     }
                     if pdu_len > MAX_PDU_SIZE {
                         return Err(ModbusError::InvalidData(format!(
@@ -355,15 +357,17 @@ mod tests {
         let mut codec = MbapCodec::new();
 
         // Complete frame: Read holding registers request
-        let mut buf = BytesMut::from(&[
-            0x00, 0x01, // Transaction ID
-            0x00, 0x00, // Protocol ID
-            0x00, 0x06, // Length (1 + 5)
-            0x01,       // Unit ID
-            0x03,       // Function code
-            0x00, 0x00, // Start address
-            0x00, 0x0A, // Quantity
-        ][..]);
+        let mut buf = BytesMut::from(
+            &[
+                0x00, 0x01, // Transaction ID
+                0x00, 0x00, // Protocol ID
+                0x00, 0x06, // Length (1 + 5)
+                0x01, // Unit ID
+                0x03, // Function code
+                0x00, 0x00, // Start address
+                0x00, 0x0A, // Quantity
+            ][..],
+        );
 
         let frame = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -378,9 +382,7 @@ mod tests {
         let mut codec = MbapCodec::new();
 
         // Partial frame (header only)
-        let mut buf = BytesMut::from(&[
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01,
-        ][..]);
+        let mut buf = BytesMut::from(&[0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01][..]);
 
         // Should return None (need more data)
         let result = codec.decode(&mut buf).unwrap();
@@ -398,12 +400,13 @@ mod tests {
         let mut codec = MbapCodec::new();
 
         // Two complete frames
-        let mut buf = BytesMut::from(&[
-            // Frame 1
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x01, 0x03, 0x00,
-            // Frame 2
-            0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x02, 0x04, 0x00,
-        ][..]);
+        let mut buf = BytesMut::from(
+            &[
+                // Frame 1
+                0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x01, 0x03, 0x00, // Frame 2
+                0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x02, 0x04, 0x00,
+            ][..],
+        );
 
         let frame1 = codec.decode(&mut buf).unwrap().unwrap();
         assert_eq!(frame1.header.transaction_id, 1);
@@ -424,20 +427,27 @@ mod tests {
         let mut buf = BytesMut::new();
         codec.encode(frame, &mut buf).unwrap();
 
-        assert_eq!(buf, &[
-            0x00, 0x01, // Transaction ID
-            0x00, 0x00, // Protocol ID
-            0x00, 0x06, // Length
-            0x01,       // Unit ID
-            0x03, 0x00, 0x00, 0x00, 0x0A, // PDU
-        ][..]);
+        assert_eq!(
+            buf,
+            &[
+                0x00, 0x01, // Transaction ID
+                0x00, 0x00, // Protocol ID
+                0x00, 0x06, // Length
+                0x01, // Unit ID
+                0x03, 0x00, 0x00, 0x00, 0x0A, // PDU
+            ][..]
+        );
     }
 
     #[test]
     fn test_codec_round_trip() {
         let mut codec = MbapCodec::new();
 
-        let original = MbapFrame::new(42, 5, vec![0x10, 0x00, 0x10, 0x00, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04]);
+        let original = MbapFrame::new(
+            42,
+            5,
+            vec![0x10, 0x00, 0x10, 0x00, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04],
+        );
 
         // Encode
         let mut buf = BytesMut::new();
@@ -446,7 +456,10 @@ mod tests {
         // Decode
         let decoded = codec.decode(&mut buf).unwrap().unwrap();
 
-        assert_eq!(decoded.header.transaction_id, original.header.transaction_id);
+        assert_eq!(
+            decoded.header.transaction_id,
+            original.header.transaction_id
+        );
         assert_eq!(decoded.header.unit_id, original.header.unit_id);
         assert_eq!(decoded.pdu, original.pdu);
     }

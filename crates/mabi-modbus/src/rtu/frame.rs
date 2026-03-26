@@ -516,7 +516,11 @@ mod tests {
         let data = [0x01, 0x03, 0x00, 0x00, 0x00, 0x0A];
         let crc = calculate_crc(&data);
         // The CRC is computed in little-endian format internally
-        assert_eq!(crc, 0xCDC5, "CRC mismatch: expected 0xCDC5, got 0x{:04X}", crc);
+        assert_eq!(
+            crc, 0xCDC5,
+            "CRC mismatch: expected 0xCDC5, got 0x{:04X}",
+            crc
+        );
 
         // Another test vector: [0x01, 0x03]
         // The actual CRC value computed by our algorithm
@@ -537,7 +541,8 @@ mod tests {
             assert_eq!(
                 calculate_crc(subset),
                 calculate_crc_slow(subset),
-                "CRC mismatch for length {}", len
+                "CRC mismatch for length {}",
+                len
             );
         }
     }

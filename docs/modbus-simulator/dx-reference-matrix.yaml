@@ -1,0 +1,110 @@
+version: 1
+entries:
+  - id: dx-config-named-resources
+    reference: pymodbus
+    area: config
+    status: implemented
+    priority: p0
+    source_url: https://pymodbus.readthedocs.io/en/v3.7.4/source/library/simulator/config.html
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/simulator.rs
+    local_test_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/simulator.rs
+    gap_summary: Named transports, devices, sessions, and presets are now the canonical config surface.
+    acceptance: Config files can define reusable named components and compile a selected session.
+  - id: dx-validate-before-run
+    reference: prism
+    area: cli
+    status: implemented
+    priority: p0
+    source_url: https://github.com/stoplightio/prism
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-cli/src/main.rs
+    local_test_refs: []
+    gap_summary: The CLI provides typed validate and inspect steps before serve.
+    acceptance: Operators can validate and inspect a config without starting a simulator session.
+  - id: dx-inspect-schema
+    reference: prism
+    area: schema
+    status: implemented
+    priority: p1
+    source_url: https://docs.stoplight.io/docs/prism/ZG9jOjk1
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/simulator.rs
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-runtime/src/driver.rs
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-cli/src/main.rs
+    local_test_refs: []
+    gap_summary: Schema inspection exists, but output can become more field-oriented and operator-friendly.
+    acceptance: Schema inspection explains config structure without reading Rust types.
+  - id: dx-runtime-status-reset
+    reference: wiremock
+    area: control-plane
+    status: implemented
+    priority: p0
+    source_url: https://wiremock.org/docs/stateful-behaviour/
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    local_test_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    gap_summary: Runtime state can be inspected and reset without mutating the config file.
+    acceptance: Session status, snapshot, and reset are available through typed control ports.
+  - id: dx-point-control
+    reference: pymodbus
+    area: control-plane
+    status: implemented
+    priority: p0
+    source_url: https://pymodbus.readthedocs.io/en/latest/source/simulator3.html
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/device.rs
+    local_test_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    gap_summary: Point list, read, and write are available through a stable control surface.
+    acceptance: Operators can access points by symbolic id or address-oriented selector.
+  - id: dx-bounded-trace
+    reference: mockoon
+    area: trace
+    status: implemented
+    priority: p0
+    source_url: https://mockoon.com/docs/latest/admin-api/transaction-logs/
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    local_test_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    gap_summary: Recent control-plane operations are retained in an in-memory bounded buffer with clear and subscribe support.
+    acceptance: Trace tail and clear are predictable and do not become unbounded memory growth.
+  - id: dx-fault-presets
+    reference: pymodbus
+    area: fault-control
+    status: implemented
+    priority: p1
+    source_url: https://pymodbus.readthedocs.io/en/latest/source/library/simulator/restapi.html
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/simulator.rs
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    local_test_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    gap_summary: Named fault presets exist and can be applied or cleared, but the operator UX can be richer.
+    acceptance: Fault presets are declarative in config and switchable at runtime.
+  - id: dx-import-export
+    reference: mockoon
+    area: control-plane
+    status: planned
+    priority: p2
+    source_url: https://mockoon.com/docs/latest/mockoon-data-files/data-files-location/
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/crates/mabi-modbus/src/control.rs
+    local_test_refs: []
+    gap_summary: Register import/export hooks are part of the control contract but not implemented yet.
+    acceptance: Operators can export and restore register state through typed commands.
+  - id: dx-external-admin
+    reference: mockoon
+    area: admin-transport
+    status: not_planned
+    priority: p3
+    source_url: https://mockoon.com/docs/v9.0.0/admin-api/overview/
+    local_code_refs:
+      - /Users/dgseo/Desktop/trap-project/mabinogion/docs/modbus-simulator/simulator-control-plane-spec.md
+    local_test_refs: []
+    gap_summary: The first phase stays in-process and CLI-driven instead of adding an external admin HTTP API.
+    acceptance: Control-plane stability is proven before any network-exposed admin surface is considered.

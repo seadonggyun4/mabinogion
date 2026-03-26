@@ -322,11 +322,7 @@ mod tests {
         for order in WordOrder::all() {
             let regs = order.bytes_to_registers_32(original_bytes);
             let result = order.registers_to_bytes_32(regs);
-            assert_eq!(
-                result, original_bytes,
-                "Round-trip failed for {:?}",
-                order
-            );
+            assert_eq!(result, original_bytes, "Round-trip failed for {:?}", order);
         }
     }
 
@@ -351,11 +347,20 @@ mod tests {
 
     #[test]
     fn test_parse_word_order() {
-        assert_eq!("big_endian".parse::<WordOrder>().unwrap(), WordOrder::BigEndian);
+        assert_eq!(
+            "big_endian".parse::<WordOrder>().unwrap(),
+            WordOrder::BigEndian
+        );
         assert_eq!("BE".parse::<WordOrder>().unwrap(), WordOrder::BigEndian);
         assert_eq!("AB_CD".parse::<WordOrder>().unwrap(), WordOrder::BigEndian);
-        assert_eq!("cd_ab".parse::<WordOrder>().unwrap(), WordOrder::BigEndianWordSwap);
-        assert_eq!("little_endian".parse::<WordOrder>().unwrap(), WordOrder::LittleEndian);
+        assert_eq!(
+            "cd_ab".parse::<WordOrder>().unwrap(),
+            WordOrder::BigEndianWordSwap
+        );
+        assert_eq!(
+            "little_endian".parse::<WordOrder>().unwrap(),
+            WordOrder::LittleEndian
+        );
         assert!("invalid".parse::<WordOrder>().is_err());
     }
 

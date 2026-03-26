@@ -106,16 +106,11 @@ pub enum FaultAction {
 
     /// Delay before sending the response.
     /// The delay is applied by the server integration layer.
-    DelayThenSend {
-        delay: Duration,
-        response: Vec<u8>,
-    },
+    DelayThenSend { delay: Duration, response: Vec<u8> },
 
     /// Send a partial frame (RTU only).
     /// The server sends exactly these bytes then stops.
-    SendPartial {
-        bytes: Vec<u8>,
-    },
+    SendPartial { bytes: Vec<u8> },
 
     /// Send raw wire bytes, bypassing CRC calculation.
     /// Used for CRC corruption: the bytes include the corrupted CRC.
@@ -536,9 +531,10 @@ impl FaultPipeline {
                     fault_cfg.target.clone(),
                 )),
                 FaultType::NoResponse => Arc::new(NoResponseFault::new(fault_cfg.target.clone())),
-                FaultType::ExceptionInjection => Arc::new(
-                    ExceptionInjectionFault::from_config(&fault_cfg.config, fault_cfg.target.clone()),
-                ),
+                FaultType::ExceptionInjection => Arc::new(ExceptionInjectionFault::from_config(
+                    &fault_cfg.config,
+                    fault_cfg.target.clone(),
+                )),
                 FaultType::PartialFrame => Arc::new(PartialFrameFault::from_config(
                     &fault_cfg.config,
                     fault_cfg.target.clone(),
@@ -667,7 +663,14 @@ mod tests {
     }
 
     fn test_ctx() -> ModbusFaultContext {
-        ModbusFaultContext::tcp(1, 0x03, &[0x03, 0x00, 0x00, 0x00, 0x01], &[0x03, 0x02, 0x00, 0x64], 1, 1)
+        ModbusFaultContext::tcp(
+            1,
+            0x03,
+            &[0x03, 0x00, 0x00, 0x00, 0x01],
+            &[0x03, 0x02, 0x00, 0x64],
+            1,
+            1,
+        )
     }
 
     #[test]
@@ -680,8 +683,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_disabled() {
-        let pipeline = FaultPipeline::new()
-            .with_fault(Arc::new(AlwaysDropFault::new()));
+        let pipeline = FaultPipeline::new().with_fault(Arc::new(AlwaysDropFault::new()));
         pipeline.set_enabled(false);
         assert!(pipeline.apply(&test_ctx()).is_none());
     }
@@ -745,9 +747,7 @@ mod tests {
         let fault1 = Arc::new(PrependByteFault::new(0xAA));
         let fault2 = Arc::new(PrependByteFault::new(0xBB));
 
-        let pipeline = FaultPipeline::new()
-            .with_fault(fault1)
-            .with_fault(fault2);
+        let pipeline = FaultPipeline::new().with_fault(fault1).with_fault(fault2);
 
         pipeline.apply(&test_ctx());
 
@@ -797,9 +797,15 @@ mod tests {
             stats: FaultStats,
         }
         impl ModbusFault for RtuOnlyFault {
-            fn fault_type(&self) -> &'static str { "rtu_only" }
-            fn is_enabled(&self) -> bool { self.stats.is_enabled() }
-            fn set_enabled(&self, enabled: bool) { self.stats.set_enabled(enabled); }
+            fn fault_type(&self) -> &'static str {
+                "rtu_only"
+            }
+            fn is_enabled(&self) -> bool {
+                self.stats.is_enabled()
+            }
+            fn set_enabled(&self, enabled: bool) {
+                self.stats.set_enabled(enabled);
+            }
             fn should_activate(&self, _: &ModbusFaultContext) -> bool {
                 self.stats.record_check();
                 true
@@ -808,14 +814,20 @@ mod tests {
                 self.stats.record_activation();
                 FaultAction::SendResponse(ctx.response_pdu.clone())
             }
-            fn stats(&self) -> FaultStatsSnapshot { self.stats.snapshot() }
-            fn reset_stats(&self) { self.stats.reset(); }
+            fn stats(&self) -> FaultStatsSnapshot {
+                self.stats.snapshot()
+            }
+            fn reset_stats(&self) {
+                self.stats.reset();
+            }
             fn compatible_transport(&self) -> Option<TransportKind> {
                 Some(TransportKind::Rtu)
             }
         }
 
-        let fault = Arc::new(RtuOnlyFault { stats: FaultStats::new() });
+        let fault = Arc::new(RtuOnlyFault {
+            stats: FaultStats::new(),
+        });
         let pipeline = FaultPipeline::new().with_fault(fault.clone());
 
         // TCP context: should not activate

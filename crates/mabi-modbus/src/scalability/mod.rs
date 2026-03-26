@@ -58,33 +58,30 @@
 //! | p99 Latency         | < 10ms       | < 50ms       |
 //! | Memory (10K dev)    | < 2GB        | < 8GB        |
 
+pub mod batch_processor;
 pub mod config;
 pub mod connection_pool;
-pub mod batch_processor;
-pub mod resource_limiter;
 pub mod profiler;
+pub mod resource_limiter;
 
 // Re-exports
-pub use config::{
-    ScalabilityConfig, ConnectionPoolConfig, BatchProcessorConfig,
-    ResourceLimiterConfig, ProfilerConfig, ScalabilityPreset,
-    BackpressureStrategyConfig, ConfigError,
-};
-pub use connection_pool::{
-    ShardedConnectionPool, ShardedConnectionInfo, ConnectionShard,
-    ConnectionHandle, PoolStatistics,
-};
 pub use batch_processor::{
-    BatchProcessor, BatchRequest, BatchResponse, BatchConfig,
-    ProcessingStrategy, BatchHandler, BatchError, BatchStatistics,
-    RequestPriority, RequestId,
+    BatchConfig, BatchError, BatchHandler, BatchProcessor, BatchRequest, BatchResponse,
+    BatchStatistics, ProcessingStrategy, RequestId, RequestPriority,
 };
 pub use config::CoalescingConfig;
-pub use resource_limiter::{
-    ResourceLimiter, ResourceType, LimitResult, BackpressureStrategy,
-    ResourceSnapshot, LimiterStatistics,
+pub use config::{
+    BackpressureStrategyConfig, BatchProcessorConfig, ConfigError, ConnectionPoolConfig,
+    ProfilerConfig, ResourceLimiterConfig, ScalabilityConfig, ScalabilityPreset,
+};
+pub use connection_pool::{
+    ConnectionHandle, ConnectionShard, PoolStatistics, ShardedConnectionInfo, ShardedConnectionPool,
 };
 pub use profiler::{
-    PerformanceProfiler, ProfileSnapshot, LatencyHistogram, HistogramSnapshot,
-    ThroughputCounter, ResourceUsage, ProfileReport, PerformanceSummary,
+    HistogramSnapshot, LatencyHistogram, PerformanceProfiler, PerformanceSummary, ProfileReport,
+    ProfileSnapshot, ResourceUsage, ThroughputCounter,
+};
+pub use resource_limiter::{
+    BackpressureStrategy, LimitResult, LimiterStatistics, ResourceLimiter, ResourceSnapshot,
+    ResourceType,
 };

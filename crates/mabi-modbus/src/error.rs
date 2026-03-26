@@ -1,7 +1,7 @@
 //! Modbus error types.
 
-use thiserror::Error;
 use mabi_core::Error as CoreError;
+use thiserror::Error;
 
 /// Modbus result type.
 pub type ModbusResult<T> = Result<T, ModbusError>;
@@ -78,22 +78,22 @@ impl ModbusError {
     /// Convert to Modbus exception code.
     pub fn to_exception_code(&self) -> u8 {
         match self {
-            Self::InvalidFunction(_) => 0x01,     // Illegal Function
-            Self::InvalidAddress { .. } => 0x02,  // Illegal Data Address
-            Self::InvalidQuantity { .. } => 0x03, // Illegal Data Value
-            Self::InvalidData(_) => 0x03,         // Illegal Data Value
-            Self::DeviceNotFound { .. } => 0x0B,  // Gateway Target Device Failed to Respond
-            Self::Server(_) => 0x04,              // Server Device Failure
-            Self::Connection(_) => 0x0A,          // Gateway Path Unavailable
-            Self::Io(_) => 0x04,                  // Server Device Failure
-            Self::Core(_) => 0x04,                // Server Device Failure
-            Self::Internal(_) => 0x04,            // Server Device Failure
-            Self::InvalidUnitId { .. } => 0x0B,   // Gateway Target Device Failed to Respond
-            Self::UnitNotFound { .. } => 0x0B,    // Gateway Target Device Failed to Respond
+            Self::InvalidFunction(_) => 0x01,       // Illegal Function
+            Self::InvalidAddress { .. } => 0x02,    // Illegal Data Address
+            Self::InvalidQuantity { .. } => 0x03,   // Illegal Data Value
+            Self::InvalidData(_) => 0x03,           // Illegal Data Value
+            Self::DeviceNotFound { .. } => 0x0B,    // Gateway Target Device Failed to Respond
+            Self::Server(_) => 0x04,                // Server Device Failure
+            Self::Connection(_) => 0x0A,            // Gateway Path Unavailable
+            Self::Io(_) => 0x04,                    // Server Device Failure
+            Self::Core(_) => 0x04,                  // Server Device Failure
+            Self::Internal(_) => 0x04,              // Server Device Failure
+            Self::InvalidUnitId { .. } => 0x0B,     // Gateway Target Device Failed to Respond
+            Self::UnitNotFound { .. } => 0x0B,      // Gateway Target Device Failed to Respond
             Self::UnitAlreadyExists { .. } => 0x04, // Server Device Failure
             Self::UnitLimitReached { .. } => 0x04,  // Server Device Failure
-            Self::UnitDisabled { .. } => 0x0B,    // Gateway Target Device Failed to Respond
-            Self::Config(_) => 0x04,              // Server Device Failure
+            Self::UnitDisabled { .. } => 0x0B,      // Gateway Target Device Failed to Respond
+            Self::Config(_) => 0x04,                // Server Device Failure
         }
     }
 

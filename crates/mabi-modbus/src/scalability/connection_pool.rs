@@ -32,7 +32,6 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
-use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -42,6 +41,8 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use tokio::sync::broadcast;
 use tracing::{debug, trace};
+
+use crate::connection_core::ShardRouter;
 
 use super::config::ConnectionPoolConfig;
 
@@ -391,11 +392,8 @@ pub struct ShardedConnectionPool {
     /// Connection shards.
     shards: Vec<ConnectionShard>,
 
-    /// Shard count (cached for fast modulo).
-    shard_count: usize,
-
-    /// Shard mask for power-of-2 shard counts.
-    shard_mask: Option<usize>,
+    /// Shared shard routing logic.
+    router: ShardRouter,
 
     /// Global connection ID counter.
     next_id: AtomicU64,
@@ -439,21 +437,13 @@ impl ShardedConnectionPool {
             .map(|i| ConnectionShard::new(i, connections_per_shard))
             .collect();
 
-        // Calculate mask for power-of-2 shard counts
-        let shard_mask = if shard_count.is_power_of_two() {
-            Some(shard_count - 1)
-        } else {
-            None
-        };
-
         let (event_tx, _) = broadcast::channel(4096);
 
         Arc::new(Self {
             max_connections: config.max_connections,
             config,
             shards,
-            shard_count,
-            shard_mask,
+            router: ShardRouter::new(shard_count),
             next_id: AtomicU64::new(1),
             total_connections: AtomicU64::new(0),
             total_rejected: AtomicU64::new(0),
@@ -474,27 +464,13 @@ impl ShardedConnectionPool {
     /// Get shard index for a connection ID.
     #[inline]
     fn shard_index(&self, id: ConnectionId) -> usize {
-        if let Some(mask) = self.shard_mask {
-            // Fast path: power-of-2 shard count
-            (id as usize) & mask
-        } else {
-            // Slow path: modulo
-            (id as usize) % self.shard_count
-        }
+        self.router.index_for_id(id)
     }
 
     /// Get shard index for an address (for lookup).
     #[inline]
     fn shard_index_for_addr(&self, addr: &SocketAddr) -> usize {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        addr.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        if let Some(mask) = self.shard_mask {
-            (hash as usize) & mask
-        } else {
-            (hash as usize) % self.shard_count
-        }
+        self.router.index_for_addr(addr)
     }
 
     /// Try to register a new connection.
@@ -652,7 +628,7 @@ impl ShardedConnectionPool {
     /// Get shard count.
     #[inline]
     pub fn shard_count(&self) -> usize {
-        self.shard_count
+        self.router.shard_count()
     }
 
     /// Get pool uptime.
@@ -974,13 +950,14 @@ mod tests {
 
     #[test]
     fn test_power_of_two_sharding() {
-        // Power of 2 shard count should use mask
         let pool = make_pool(100, 8);
-        assert!(pool.shard_mask.is_some());
-        assert_eq!(pool.shard_mask.unwrap(), 7);
+        assert_eq!(pool.router.shard_count(), 8);
+        assert_eq!(pool.shard_index(7), 7);
+        assert_eq!(pool.shard_index(8), 0);
 
-        // Non-power of 2 should use modulo
         let pool = make_pool(100, 6);
-        assert!(pool.shard_mask.is_none());
+        assert_eq!(pool.router.shard_count(), 6);
+        assert_eq!(pool.shard_index(7), 1);
+        assert_eq!(pool.shard_index(12), 0);
     }
 }

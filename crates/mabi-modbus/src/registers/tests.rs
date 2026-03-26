@@ -502,8 +502,14 @@ mod register_type_tests {
             RegisterType::HoldingRegister.write_single_function_code(),
             Some(0x06)
         );
-        assert_eq!(RegisterType::DiscreteInput.write_single_function_code(), None);
-        assert_eq!(RegisterType::InputRegister.write_single_function_code(), None);
+        assert_eq!(
+            RegisterType::DiscreteInput.write_single_function_code(),
+            None
+        );
+        assert_eq!(
+            RegisterType::InputRegister.write_single_function_code(),
+            None
+        );
     }
 
     #[test]

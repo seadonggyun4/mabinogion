@@ -6,13 +6,13 @@
 //! - Sub-10ms P99 latency under load
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
 use tokio::net::TcpStream;
-use tokio::sync::{Semaphore, broadcast};
+use tokio::sync::{broadcast, Semaphore};
 use tokio::time::timeout;
 
 use super::report::TestMetrics;
@@ -303,7 +303,11 @@ impl LiveMetrics {
             p50_latency: p50,
             p95_latency: p95,
             p99_latency: p99,
-            error_rate: if total > 0 { failed as f64 / total as f64 } else { 0.0 },
+            error_rate: if total > 0 {
+                failed as f64 / total as f64
+            } else {
+                0.0
+            },
         }
     }
 }
@@ -418,15 +422,18 @@ impl PerformanceValidator {
             let value = match target.metric {
                 TargetMetric::Connections => snapshot.connections_total as f64,
                 TargetMetric::Tps => tps as f64,
-                TargetMetric::P50Latency => {
-                    snapshot.p50_latency.map(|d| d.as_millis() as f64).unwrap_or(0.0)
-                }
-                TargetMetric::P95Latency => {
-                    snapshot.p95_latency.map(|d| d.as_millis() as f64).unwrap_or(0.0)
-                }
-                TargetMetric::P99Latency => {
-                    snapshot.p99_latency.map(|d| d.as_millis() as f64).unwrap_or(0.0)
-                }
+                TargetMetric::P50Latency => snapshot
+                    .p50_latency
+                    .map(|d| d.as_millis() as f64)
+                    .unwrap_or(0.0),
+                TargetMetric::P95Latency => snapshot
+                    .p95_latency
+                    .map(|d| d.as_millis() as f64)
+                    .unwrap_or(0.0),
+                TargetMetric::P99Latency => snapshot
+                    .p99_latency
+                    .map(|d| d.as_millis() as f64)
+                    .unwrap_or(0.0),
                 TargetMetric::ErrorRate => snapshot.error_rate,
                 TargetMetric::MemoryMb => 0.0, // TODO: Integrate with memory profiler
             };
@@ -451,9 +458,18 @@ impl PerformanceValidator {
             peak_connections: snapshot.connections_active, // Approximation
             avg_tps: tps,
             peak_tps: tps, // Would need more tracking for accurate peak
-            p50_latency_ms: snapshot.p50_latency.map(|d| d.as_millis() as f64).unwrap_or(0.0),
-            p95_latency_ms: snapshot.p95_latency.map(|d| d.as_millis() as f64).unwrap_or(0.0),
-            p99_latency_ms: snapshot.p99_latency.map(|d| d.as_millis() as f64).unwrap_or(0.0),
+            p50_latency_ms: snapshot
+                .p50_latency
+                .map(|d| d.as_millis() as f64)
+                .unwrap_or(0.0),
+            p95_latency_ms: snapshot
+                .p95_latency
+                .map(|d| d.as_millis() as f64)
+                .unwrap_or(0.0),
+            p99_latency_ms: snapshot
+                .p99_latency
+                .map(|d| d.as_millis() as f64)
+                .unwrap_or(0.0),
             error_rate: snapshot.error_rate,
             memory_peak_mb: 0.0, // TODO: Integrate with memory profiler
         };
@@ -491,7 +507,11 @@ impl PerformanceValidator {
                 tokio::time::sleep(Duration::from_millis(ramp_up_interval as u64)).await;
             }
 
-            let permit = semaphore.clone().acquire_owned().await.map_err(|e| e.to_string())?;
+            let permit = semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|e| e.to_string())?;
             let metrics = self.metrics.clone();
             let server_addr = self.config.server_addr;
             let duration = self.config.duration;
@@ -502,17 +522,18 @@ impl PerformanceValidator {
                 let _permit = permit;
 
                 // Connect to server
-                let stream = match timeout(Duration::from_secs(10), TcpStream::connect(server_addr)).await {
-                    Ok(Ok(s)) => s,
-                    Ok(Err(e)) => {
-                        tracing::debug!("Connection failed: {}", e);
-                        return;
-                    }
-                    Err(_) => {
-                        tracing::debug!("Connection timeout");
-                        return;
-                    }
-                };
+                let stream =
+                    match timeout(Duration::from_secs(10), TcpStream::connect(server_addr)).await {
+                        Ok(Ok(s)) => s,
+                        Ok(Err(e)) => {
+                            tracing::debug!("Connection failed: {}", e);
+                            return;
+                        }
+                        Err(_) => {
+                            tracing::debug!("Connection timeout");
+                            return;
+                        }
+                    };
 
                 metrics.add_connection();
                 let start = Instant::now();
@@ -559,13 +580,13 @@ impl PerformanceValidator {
         // Simple Modbus TCP read holding registers request
         // MBAP Header (7 bytes) + PDU (5 bytes)
         let request: [u8; 12] = [
-            0x00, 0x01,             // Transaction ID
-            0x00, 0x00,             // Protocol ID
-            0x00, 0x06,             // Length
-            0x01,                   // Unit ID
-            0x03,                   // Function code: Read Holding Registers
-            0x00, 0x00,             // Starting address
-            0x00, 0x01,             // Quantity
+            0x00, 0x01, // Transaction ID
+            0x00, 0x00, // Protocol ID
+            0x00, 0x06, // Length
+            0x01, // Unit ID
+            0x03, // Function code: Read Holding Registers
+            0x00, 0x00, // Starting address
+            0x00, 0x01, // Quantity
         ];
 
         let mut response = [0u8; 256];

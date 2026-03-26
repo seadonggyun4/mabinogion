@@ -11,14 +11,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mabi_modbus::testing::{
-    PerformanceValidator, PerformanceConfig, PerformanceTarget,
-    MemoryProfiler, LoadGenerator, LoadConfig, LoadPattern,
-    TestReport, TestMetrics,
-    memory::estimate_memory_usage,
-};
-use mabi_modbus::{ModbusTcpServerV2, tcp::ServerConfigV2};
 use mabi_modbus::registers::SparseRegisterStore;
+use mabi_modbus::testing::{
+    memory::estimate_memory_usage, LoadConfig, LoadGenerator, LoadPattern, MemoryProfiler,
+    PerformanceConfig, PerformanceTarget, PerformanceValidator, TestMetrics, TestReport,
+};
+use mabi_modbus::{tcp::ServerConfigV2, ModbusTcpServerV2};
 
 /// Test configuration for quick validation (runs in CI).
 fn quick_config() -> PerformanceConfig {
@@ -88,14 +86,17 @@ fn test_sparse_register_store_memory_efficiency() {
     // Write to sparse addresses (simulating 10K devices with sparse registers)
     for device_offset in 0..1000u16 {
         let base_addr = device_offset * 60; // Use smaller multiplier to stay in range
-        // Only write a few registers per device
+                                            // Only write a few registers per device
         for i in 0..10u16 {
             let _ = store.write_holding_register(base_addr + i, (device_offset * 10 + i) as u16);
         }
     }
 
     let memory = store.memory_usage();
-    println!("Sparse store memory usage: {} bytes for 10,000 registers", memory);
+    println!(
+        "Sparse store memory usage: {} bytes for 10,000 registers",
+        memory
+    );
 
     // Memory should be proportional to actual stored values, not address space
     // 10,000 registers * ~20 bytes each = ~200KB
@@ -314,14 +315,15 @@ async fn test_10k_connections() {
                 .description("Validate 10,000 simultaneous connections")
                 .environment("integration-test")
                 .config("target_connections", "10000")
-                .build(validation.metrics.clone(), validation.passed, validation.duration);
+                .build(
+                    validation.metrics.clone(),
+                    validation.passed,
+                    validation.duration,
+                );
 
             println!("\n{}", report.to_markdown());
 
-            assert!(
-                validation.passed,
-                "10K connection validation should pass"
-            );
+            assert!(validation.passed, "10K connection validation should pass");
         }
         Err(e) => {
             panic!("Validation failed with error: {}", e);
@@ -382,10 +384,7 @@ async fn test_100k_tps() {
                 );
             }
 
-            assert!(
-                validation.passed,
-                "100K TPS validation should pass"
-            );
+            assert!(validation.passed, "100K TPS validation should pass");
         }
         Err(e) => {
             panic!("Validation failed with error: {}", e);
@@ -426,8 +425,7 @@ async fn test_24h_stability() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     // Start memory profiler
-    let profiler = MemoryProfiler::new()
-        .with_sample_interval(Duration::from_secs(60));
+    let profiler = MemoryProfiler::new().with_sample_interval(Duration::from_secs(60));
     let _guard = profiler.start();
 
     // Run load generator

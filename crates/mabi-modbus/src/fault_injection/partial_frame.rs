@@ -84,11 +84,9 @@ impl PartialFrameFault {
 
         let keep = match self.mode {
             PartialFrameMode::FixedCount => self.byte_count.min(total_len).max(1),
-            PartialFrameMode::Percentage => {
-                ((total_len as f64 * self.percentage).ceil() as usize)
-                    .max(1)
-                    .min(total_len)
-            }
+            PartialFrameMode::Percentage => ((total_len as f64 * self.percentage).ceil() as usize)
+                .max(1)
+                .min(total_len),
             PartialFrameMode::UpToFc => {
                 // unit_id + function_code = 2 bytes
                 2.min(total_len)
@@ -174,7 +172,8 @@ mod tests {
     fn rtu_ctx() -> ModbusFaultContext {
         // Response: FC(0x03) + ByteCount(0x02) + Data(0x00, 0x64)
         ModbusFaultContext::rtu(
-            1, 0x03,
+            1,
+            0x03,
             &[0x03, 0x00, 0x00, 0x00, 0x01],
             &[0x03, 0x02, 0x00, 0x64],
             1,
@@ -189,7 +188,7 @@ mod tests {
         match action {
             FaultAction::SendPartial { bytes } => {
                 assert_eq!(bytes.len(), 2);
-                assert_eq!(bytes[0], 1);    // unit_id
+                assert_eq!(bytes[0], 1); // unit_id
                 assert_eq!(bytes[1], 0x03); // FC
             }
             _ => panic!("Expected SendPartial"),
@@ -206,7 +205,7 @@ mod tests {
                 // Full frame = [1, 0x03, 0x02, 0x00, 0x64, CRC_lo, CRC_hi] = 7 bytes
                 // UpToData = 7 - 2 = 5 bytes
                 assert_eq!(bytes.len(), 5);
-                assert_eq!(bytes[0], 1);    // unit_id
+                assert_eq!(bytes[0], 1); // unit_id
                 assert_eq!(bytes[1], 0x03); // FC
                 assert_eq!(bytes[2], 0x02); // byte count
                 assert_eq!(bytes[3], 0x00); // data hi
@@ -225,7 +224,7 @@ mod tests {
         match action {
             FaultAction::SendPartial { bytes } => {
                 assert_eq!(bytes.len(), 3);
-                assert_eq!(bytes[0], 1);    // unit_id
+                assert_eq!(bytes[0], 1); // unit_id
                 assert_eq!(bytes[1], 0x03); // FC
                 assert_eq!(bytes[2], 0x02); // byte count
             }

@@ -600,7 +600,11 @@ mod tests {
             ScalabilityPreset::Enterprise,
         ] {
             let config = ScalabilityConfig::for_preset(preset);
-            assert!(config.validate().is_ok(), "Preset {:?} failed validation", preset);
+            assert!(
+                config.validate().is_ok(),
+                "Preset {:?} failed validation",
+                preset
+            );
         }
     }
 

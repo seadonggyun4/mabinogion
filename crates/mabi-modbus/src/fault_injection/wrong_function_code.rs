@@ -135,10 +135,12 @@ mod tests {
 
     fn test_ctx() -> ModbusFaultContext {
         ModbusFaultContext::tcp(
-            1, 0x03,
+            1,
+            0x03,
             &[0x03, 0x00, 0x00, 0x00, 0x01],
             &[0x03, 0x02, 0x00, 0x64],
-            1, 1,
+            1,
+            1,
         )
     }
 
@@ -213,14 +215,22 @@ mod tests {
         let fault = WrongFunctionCodeFault::new(FcCorruptionMode::SwapRW, FaultTarget::new());
 
         let mappings = vec![
-            (0x01, 0x05), (0x02, 0x0F), (0x03, 0x10), (0x04, 0x06),
-            (0x05, 0x01), (0x06, 0x04), (0x0F, 0x02), (0x10, 0x03),
+            (0x01, 0x05),
+            (0x02, 0x0F),
+            (0x03, 0x10),
+            (0x04, 0x06),
+            (0x05, 0x01),
+            (0x06, 0x04),
+            (0x0F, 0x02),
+            (0x10, 0x03),
         ];
 
         for (from, to) in mappings {
             let ctx = ModbusFaultContext::tcp(1, from, &[from], &[from, 0x00], 1, 1);
             match fault.apply(&ctx) {
-                FaultAction::SendResponse(pdu) => assert_eq!(pdu[0], to, "FC 0x{:02X} should map to 0x{:02X}", from, to),
+                FaultAction::SendResponse(pdu) => {
+                    assert_eq!(pdu[0], to, "FC 0x{:02X} should map to 0x{:02X}", from, to)
+                }
                 _ => panic!("Expected SendResponse"),
             }
         }

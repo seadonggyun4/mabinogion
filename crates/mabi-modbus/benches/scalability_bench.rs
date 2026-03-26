@@ -9,16 +9,14 @@
 //! 3. **Resource Limiter**: Check and acquire performance
 //! 4. **Profiler**: Recording overhead
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use mabi_modbus::scalability::{
-    ShardedConnectionPool, ConnectionPoolConfig,
-    BatchProcessor, BatchProcessorConfig, BatchRequest, BatchHandler, BatchError,
-    ResourceLimiter, ResourceLimiterConfig, BackpressureStrategyConfig,
-    PerformanceProfiler, ProfilerConfig,
-    CoalescingConfig,
+    BackpressureStrategyConfig, BatchError, BatchHandler, BatchProcessor, BatchProcessorConfig,
+    BatchRequest, CoalescingConfig, ConnectionPoolConfig, PerformanceProfiler, ProfilerConfig,
+    ResourceLimiter, ResourceLimiterConfig, ShardedConnectionPool,
 };
 
 // =============================================================================
@@ -154,7 +152,7 @@ fn bench_connection_pool_mixed(c: &mut Criterion) {
 // =============================================================================
 
 fn bench_batch_processor_submit(c: &mut Criterion) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _rt = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("batch_processor_submit");
 
     for batch_size in [10, 50, 100, 200] {
@@ -175,13 +173,7 @@ fn bench_batch_processor_submit(c: &mut Criterion) {
                 let payload = vec![0x03, 0x00, 0x00, 0x00, 0x0A];
 
                 b.iter(|| {
-                    let (request, _rx) = BatchRequest::new(
-                        payload.clone(),
-                        1,
-                        0x03,
-                        0,
-                        10,
-                    );
+                    let (request, _rx) = BatchRequest::new(payload.clone(), 1, 0x03, 0, 10);
                     let _ = black_box(processor.submit(request));
                 });
             },
@@ -216,13 +208,8 @@ fn bench_batch_processor_flush(c: &mut Criterion) {
                 b.iter(|| {
                     // Submit batch_size requests
                     for i in 0..*size {
-                        let (request, _rx) = BatchRequest::new(
-                            payload.clone(),
-                            1,
-                            0x03,
-                            i as u16,
-                            1,
-                        );
+                        let (request, _rx) =
+                            BatchRequest::new(payload.clone(), 1, 0x03, i as u16, 1);
                         let _ = processor.submit(request);
                     }
 
@@ -263,7 +250,7 @@ fn bench_resource_limiter_check(c: &mut Criterion) {
         let limiter = ResourceLimiter::new(config);
         // Set some utilization
         limiter.set_memory_used(1024 * 1024 * 1024); // 50%
-        // Add 5000 connections
+                                                     // Add 5000 connections
         for _ in 0..5000 {
             limiter.add_connection();
         }

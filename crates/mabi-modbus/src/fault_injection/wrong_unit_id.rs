@@ -52,7 +52,9 @@ impl WrongUnitIdFault {
     /// Create from config.
     pub fn from_config(config: &FaultTypeConfig, target: FaultTarget) -> Self {
         let mut fault = Self {
-            mode: config.unit_id_mode.unwrap_or(UnitIdCorruptionMode::Increment),
+            mode: config
+                .unit_id_mode
+                .unwrap_or(UnitIdCorruptionMode::Increment),
             fixed_id: config.fixed_unit_id.unwrap_or(0xFF),
             target,
             stats: FaultStats::new(),
@@ -192,11 +194,24 @@ mod tests {
     use super::*;
 
     fn rtu_ctx() -> ModbusFaultContext {
-        ModbusFaultContext::rtu(1, 0x03, &[0x03, 0x00, 0x00, 0x00, 0x01], &[0x03, 0x02, 0x00, 0x64], 1)
+        ModbusFaultContext::rtu(
+            1,
+            0x03,
+            &[0x03, 0x00, 0x00, 0x00, 0x01],
+            &[0x03, 0x02, 0x00, 0x64],
+            1,
+        )
     }
 
     fn tcp_ctx() -> ModbusFaultContext {
-        ModbusFaultContext::tcp(1, 0x03, &[0x03, 0x00, 0x00, 0x00, 0x01], &[0x03, 0x02, 0x00, 0x64], 42, 1)
+        ModbusFaultContext::tcp(
+            1,
+            0x03,
+            &[0x03, 0x00, 0x00, 0x00, 0x01],
+            &[0x03, 0x02, 0x00, 0x64],
+            42,
+            1,
+        )
     }
 
     #[test]
@@ -209,10 +224,11 @@ mod tests {
             FaultAction::SendRawBytes(bytes) => {
                 assert_eq!(bytes[0], 99); // corrupted unit_id
                 assert_eq!(&bytes[1..5], &[0x03, 0x02, 0x00, 0x64]); // PDU intact
-                // CRC should be valid for the corrupted frame
+                                                                     // CRC should be valid for the corrupted frame
                 let crc_data = &bytes[..bytes.len() - 2];
                 let expected_crc = compute_crc(crc_data);
-                let actual_crc = (bytes[bytes.len() - 2] as u16) | ((bytes[bytes.len() - 1] as u16) << 8);
+                let actual_crc =
+                    (bytes[bytes.len() - 2] as u16) | ((bytes[bytes.len() - 1] as u16) << 8);
                 assert_eq!(actual_crc, expected_crc);
             }
             _ => panic!("Expected SendRawBytes for RTU"),
@@ -271,10 +287,10 @@ mod tests {
             FaultAction::SendRawBytes(bytes) => {
                 // MBAP header: TID(2) + Protocol(2) + Length(2) + UnitID(1) + PDU
                 assert_eq!(bytes[0], 0x00); // TID high
-                assert_eq!(bytes[1], 42);   // TID low
+                assert_eq!(bytes[1], 42); // TID low
                 assert_eq!(bytes[2], 0x00); // Protocol high
                 assert_eq!(bytes[3], 0x00); // Protocol low
-                assert_eq!(bytes[6], 99);   // corrupted unit_id
+                assert_eq!(bytes[6], 99); // corrupted unit_id
                 assert_eq!(&bytes[7..], &[0x03, 0x02, 0x00, 0x64]); // PDU intact
             }
             _ => panic!("Expected SendRawBytes for TCP"),

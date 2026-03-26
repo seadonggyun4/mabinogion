@@ -166,13 +166,22 @@ mod tests {
         assert_eq!(ExceptionCode::IllegalDataAddress as u8, 0x02);
         assert_eq!(ExceptionCode::IllegalDataValue as u8, 0x03);
         assert_eq!(ExceptionCode::SlaveDeviceFailure as u8, 0x04);
-        assert_eq!(ExceptionCode::GatewayTargetDeviceFailedToRespond as u8, 0x0B);
+        assert_eq!(
+            ExceptionCode::GatewayTargetDeviceFailedToRespond as u8,
+            0x0B
+        );
     }
 
     #[test]
     fn test_exception_code_from_u8() {
-        assert_eq!(ExceptionCode::from_u8(0x01), Some(ExceptionCode::IllegalFunction));
-        assert_eq!(ExceptionCode::from_u8(0x02), Some(ExceptionCode::IllegalDataAddress));
+        assert_eq!(
+            ExceptionCode::from_u8(0x01),
+            Some(ExceptionCode::IllegalFunction)
+        );
+        assert_eq!(
+            ExceptionCode::from_u8(0x02),
+            Some(ExceptionCode::IllegalDataAddress)
+        );
         assert_eq!(ExceptionCode::from_u8(0xFF), None);
     }
 

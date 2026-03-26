@@ -14,7 +14,15 @@ fn test_all_word_orders_round_trip() {
     let i32_values = [0, 1, -1, i32::MIN, i32::MAX, 0x12345678, -12345678];
     let u32_values = [0, 1, u32::MAX, 0x12345678, 0xDEADBEEF];
     let f32_values = [0.0f32, 1.0, -1.0, 123.456, -987.654, f32::MIN, f32::MAX];
-    let f64_values = [0.0f64, 1.0, -1.0, 123456.789, -987654.321, f64::MIN, f64::MAX];
+    let f64_values = [
+        0.0f64,
+        1.0,
+        -1.0,
+        123456.789,
+        -987654.321,
+        f64::MIN,
+        f64::MAX,
+    ];
 
     for conv in &converters {
         // i32

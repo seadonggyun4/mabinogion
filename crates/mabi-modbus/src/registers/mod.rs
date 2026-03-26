@@ -66,8 +66,7 @@ mod value;
 
 // Re-exports
 pub use callback::{
-    CallbackManager, CallbackPriority, ReadCallback, ReadCallbackFn, WriteCallback,
-    WriteCallbackFn,
+    CallbackManager, CallbackPriority, ReadCallback, ReadCallbackFn, WriteCallback, WriteCallbackFn,
 };
 pub use config::{
     AddressRange, DefaultValue, InitializationMode, RegisterRangeConfig, RegisterStoreConfig,

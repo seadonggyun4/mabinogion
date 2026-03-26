@@ -137,12 +137,7 @@ impl RegisterDataType {
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
-            Self::Int16
-                | Self::UInt16
-                | Self::Int32
-                | Self::UInt32
-                | Self::Int64
-                | Self::UInt64
+            Self::Int16 | Self::UInt16 | Self::Int32 | Self::UInt32 | Self::Int64 | Self::UInt64
         )
     }
 
@@ -275,13 +270,17 @@ impl std::str::FromStr for RegisterDataType {
         // Check for string/bytes with length: "string[20]", "bytes[10]"
         if normalized.starts_with("string[") && normalized.ends_with(']') {
             let len_str = &normalized[7..normalized.len() - 1];
-            let bytes: u16 = len_str.parse().map_err(|_| DataTypeParseError(s.to_string()))?;
+            let bytes: u16 = len_str
+                .parse()
+                .map_err(|_| DataTypeParseError(s.to_string()))?;
             return Ok(Self::String((bytes + 1) / 2));
         }
 
         if normalized.starts_with("bytes[") && normalized.ends_with(']') {
             let len_str = &normalized[6..normalized.len() - 1];
-            let bytes: u16 = len_str.parse().map_err(|_| DataTypeParseError(s.to_string()))?;
+            let bytes: u16 = len_str
+                .parse()
+                .map_err(|_| DataTypeParseError(s.to_string()))?;
             return Ok(Self::Bytes((bytes + 1) / 2));
         }
 
@@ -354,10 +353,22 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        assert_eq!("bool".parse::<RegisterDataType>().unwrap(), RegisterDataType::Bool);
-        assert_eq!("float32".parse::<RegisterDataType>().unwrap(), RegisterDataType::Float32);
-        assert_eq!("real".parse::<RegisterDataType>().unwrap(), RegisterDataType::Float32);
-        assert_eq!("i32".parse::<RegisterDataType>().unwrap(), RegisterDataType::Int32);
+        assert_eq!(
+            "bool".parse::<RegisterDataType>().unwrap(),
+            RegisterDataType::Bool
+        );
+        assert_eq!(
+            "float32".parse::<RegisterDataType>().unwrap(),
+            RegisterDataType::Float32
+        );
+        assert_eq!(
+            "real".parse::<RegisterDataType>().unwrap(),
+            RegisterDataType::Float32
+        );
+        assert_eq!(
+            "i32".parse::<RegisterDataType>().unwrap(),
+            RegisterDataType::Int32
+        );
         assert_eq!(
             "string[20]".parse::<RegisterDataType>().unwrap(),
             RegisterDataType::String(10)

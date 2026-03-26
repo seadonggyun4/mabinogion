@@ -1,12 +1,12 @@
 //! High-performance sparse register store implementation.
 //!
-//! This module provides the core `SparseRegisterStore` that uses DashMap for
-//! concurrent, memory-efficient storage of register values.
+//! This module provides the core `SparseRegisterStore` that uses a sharded,
+//! segment-oriented sparse map for concurrent, memory-efficient storage.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use dashmap::DashMap;
-use tracing::{instrument, trace};
+use parking_lot::RwLock;
 
 use crate::error::{ModbusError, ModbusResult};
 
@@ -15,54 +15,308 @@ use super::config::{InitializationMode, RegisterSnapshot, RegisterStoreConfig};
 use super::types::RegisterType;
 use super::value::RegisterValue;
 
+const SHARD_COUNT: usize = 64;
+const SHARD_MASK: usize = SHARD_COUNT - 1;
+const SHARD_SHIFT: usize = 6;
+const SEGMENT_SIZE: usize = 64;
+const SEGMENT_MASK: usize = SEGMENT_SIZE - 1;
+const TOTAL_SEGMENTS: usize = (u16::MAX as usize + 1) / SEGMENT_SIZE;
+const SEGMENTS_PER_SHARD: usize = TOTAL_SEGMENTS / SHARD_COUNT;
+
+#[derive(Clone)]
+struct RegisterSegment<T: Copy + Default> {
+    values: [T; SEGMENT_SIZE],
+    occupancy: u64,
+}
+
+impl<T: Copy + Default> RegisterSegment<T> {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            values: [T::default(); SEGMENT_SIZE],
+            occupancy: 0,
+        }
+    }
+
+    #[inline]
+    fn contains(&self, offset: usize) -> bool {
+        (self.occupancy & (1u64 << offset)) != 0
+    }
+
+    #[inline]
+    fn get(&self, offset: usize) -> Option<T> {
+        self.contains(offset).then_some(self.values[offset])
+    }
+
+    #[inline]
+    fn set(&mut self, offset: usize, value: T) -> Option<T> {
+        let mask = 1u64 << offset;
+        let previous = if (self.occupancy & mask) != 0 {
+            Some(self.values[offset])
+        } else {
+            None
+        };
+        self.values[offset] = value;
+        self.occupancy |= mask;
+        previous
+    }
+
+    #[inline]
+    fn remove(&mut self, offset: usize) -> Option<T> {
+        let mask = 1u64 << offset;
+        if (self.occupancy & mask) == 0 {
+            return None;
+        }
+
+        self.occupancy &= !mask;
+        Some(self.values[offset])
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.occupancy == 0
+    }
+}
+
+struct ShardedRegisterMap<T: Copy + Default> {
+    shards: Box<[RwLock<Box<[Option<RegisterSegment<T>>]>>]>,
+    len: AtomicUsize,
+}
+
+impl<T: Copy + Default> ShardedRegisterMap<T> {
+    fn new() -> Self {
+        let shards = (0..SHARD_COUNT)
+            .map(|_| RwLock::new(vec![None; SEGMENTS_PER_SHARD].into_boxed_slice()))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+
+        Self {
+            shards,
+            len: AtomicUsize::new(0),
+        }
+    }
+
+    #[inline]
+    fn split_address(address: u16) -> (u16, usize) {
+        let raw = address as usize;
+        ((raw / SEGMENT_SIZE) as u16, raw & SEGMENT_MASK)
+    }
+
+    #[inline]
+    fn shard_index(segment: u16) -> usize {
+        (segment as usize) & SHARD_MASK
+    }
+
+    #[inline]
+    fn slot_index(segment: u16) -> usize {
+        (segment as usize) >> SHARD_SHIFT
+    }
+
+    #[inline]
+    fn next_boundary(address: usize) -> usize {
+        ((address / SEGMENT_SIZE) + 1) * SEGMENT_SIZE
+    }
+
+    #[inline]
+    fn insert(&self, address: u16, value: T) -> Option<T> {
+        let (segment_key, offset) = Self::split_address(address);
+        let mut shard = self.shards[Self::shard_index(segment_key)].write();
+        let previous = shard[Self::slot_index(segment_key)]
+            .get_or_insert_with(RegisterSegment::new)
+            .set(offset, value);
+        if previous.is_none() {
+            self.len.fetch_add(1, Ordering::Relaxed);
+        }
+        previous
+    }
+
+    fn populate_range<F>(&self, start: u16, end_inclusive: u16, mut value_for: F)
+    where
+        F: FnMut(u16) -> T,
+    {
+        let end_exclusive = end_inclusive as usize + 1;
+        let mut current = start as usize;
+
+        while current < end_exclusive {
+            let chunk_end = Self::next_boundary(current).min(end_exclusive);
+            let (segment_key, start_offset) = Self::split_address(current as u16);
+            let mut shard = self.shards[Self::shard_index(segment_key)].write();
+            let segment =
+                shard[Self::slot_index(segment_key)].get_or_insert_with(RegisterSegment::new);
+            let mut inserted = 0usize;
+
+            for raw_addr in current..chunk_end {
+                let address = raw_addr as u16;
+                let offset = start_offset + (raw_addr - current);
+                if segment.set(offset, value_for(address)).is_none() {
+                    inserted += 1;
+                }
+            }
+
+            if inserted > 0 {
+                self.len.fetch_add(inserted, Ordering::Relaxed);
+            }
+            current = chunk_end;
+        }
+    }
+
+    fn read_range(&self, address: u16, quantity: u16, default: T) -> Vec<T> {
+        let end_exclusive = address as usize + quantity as usize;
+        let mut current = address as usize;
+        let mut result = vec![default; quantity as usize];
+
+        while current < end_exclusive {
+            let chunk_end = Self::next_boundary(current).min(end_exclusive);
+            let (segment_key, start_offset) = Self::split_address(current as u16);
+            let shard = self.shards[Self::shard_index(segment_key)].read();
+
+            if let Some(segment) = shard[Self::slot_index(segment_key)].as_ref() {
+                let result_offset = current - address as usize;
+                for raw_addr in current..chunk_end {
+                    let segment_offset = start_offset + (raw_addr - current);
+                    if let Some(value) = segment.get(segment_offset) {
+                        result[result_offset + (raw_addr - current)] = value;
+                    }
+                }
+            }
+
+            current = chunk_end;
+        }
+
+        result
+    }
+
+    #[inline]
+    fn read_one(&self, address: u16, default: T) -> T {
+        let (segment_key, offset) = Self::split_address(address);
+        let shard = self.shards[Self::shard_index(segment_key)].read();
+        shard[Self::slot_index(segment_key)]
+            .as_ref()
+            .and_then(|segment| segment.get(offset))
+            .unwrap_or(default)
+    }
+
+    fn write_range(&self, address: u16, values: &[T]) {
+        if values.is_empty() {
+            return;
+        }
+
+        let end_exclusive = address as usize + values.len();
+        let mut current = address as usize;
+
+        while current < end_exclusive {
+            let chunk_end = Self::next_boundary(current).min(end_exclusive);
+            let start_offset = current - address as usize;
+            let end_offset = start_offset + (chunk_end - current);
+            let (segment_key, segment_offset) = Self::split_address(current as u16);
+            let mut shard = self.shards[Self::shard_index(segment_key)].write();
+            let segment =
+                shard[Self::slot_index(segment_key)].get_or_insert_with(RegisterSegment::new);
+            let mut inserted = 0usize;
+
+            for (offset, value) in values[start_offset..end_offset].iter().copied().enumerate() {
+                if segment.set(segment_offset + offset, value).is_none() {
+                    inserted += 1;
+                }
+            }
+
+            if inserted > 0 {
+                self.len.fetch_add(inserted, Ordering::Relaxed);
+            }
+            current = chunk_end;
+        }
+    }
+
+    fn clear(&self) {
+        for shard in self.shards.iter() {
+            let mut shard = shard.write();
+            for segment in shard.iter_mut() {
+                *segment = None;
+            }
+        }
+        self.len.store(0, Ordering::Relaxed);
+    }
+
+    fn len(&self) -> usize {
+        self.len.load(Ordering::Relaxed)
+    }
+
+    fn active_shard_count(&self) -> usize {
+        self.shards
+            .iter()
+            .filter(|shard| shard.read().iter().any(|segment| segment.is_some()))
+            .count()
+    }
+
+    fn contains_key(&self, address: u16) -> bool {
+        let (segment_key, offset) = Self::split_address(address);
+        let shard = self.shards[Self::shard_index(segment_key)].read();
+        shard[Self::slot_index(segment_key)]
+            .as_ref()
+            .map(|segment| segment.contains(offset))
+            .unwrap_or(false)
+    }
+
+    fn remove(&self, address: u16) -> Option<T> {
+        let (segment_key, offset) = Self::split_address(address);
+        let mut shard = self.shards[Self::shard_index(segment_key)].write();
+        let slot = Self::slot_index(segment_key);
+        let previous = shard[slot]
+            .as_mut()
+            .and_then(|segment| segment.remove(offset));
+        if previous.is_some() {
+            self.len.fetch_sub(1, Ordering::Relaxed);
+            let remove_segment = shard[slot]
+                .as_ref()
+                .map(|segment| segment.is_empty())
+                .unwrap_or(false);
+            if remove_segment {
+                shard[slot] = None;
+            }
+        }
+        previous
+    }
+
+    fn snapshot(&self) -> Vec<(u16, T)> {
+        let mut entries = Vec::with_capacity(self.len());
+        for (shard_index, shard) in self.shards.iter().enumerate() {
+            let shard = shard.read();
+            for (slot_index, segment) in shard.iter().enumerate() {
+                if let Some(segment) = segment.as_ref() {
+                    let segment_key = (slot_index << SHARD_SHIFT) | shard_index;
+                    let base = segment_key * SEGMENT_SIZE;
+                    for offset in 0..SEGMENT_SIZE {
+                        if let Some(value) = segment.get(offset) {
+                            entries.push(((base + offset) as u16, value));
+                        }
+                    }
+                }
+            }
+        }
+        entries
+    }
+}
+
 /// High-performance sparse register store.
 ///
-/// Uses DashMap for lock-free concurrent access, storing only registers
-/// that have been accessed. This makes it suitable for simulating
-/// large address spaces with sparse access patterns.
-///
-/// # Performance Characteristics
-///
-/// - Single register read: O(1), typically < 100ns
-/// - Single register write: O(1), typically < 200ns
-/// - Batch operations: O(n) where n is the number of registers
-/// - Memory: Only stores accessed registers (~24 bytes per entry)
-///
-/// # Thread Safety
-///
-/// All operations are thread-safe and can be called concurrently from
-/// multiple threads without external synchronization.
-///
-/// # Example
-///
-/// ```rust
-/// use mabi_modbus::registers::{SparseRegisterStore, RegisterStoreConfig};
-///
-/// let store = SparseRegisterStore::new(RegisterStoreConfig::default());
-///
-/// // Write and read
-/// store.write_holding_register(100, 12345).unwrap();
-/// let values = store.read_holding_registers(100, 1).unwrap();
-/// assert_eq!(values[0], 12345);
-///
-/// // Sparse storage - only accessed registers use memory
-/// println!("Entries: {}", store.entry_count());
-/// ```
+/// Uses sharded sparse segments with block-local locking, storing only touched
+/// segments and slots. This keeps sparse profiles memory efficient while
+/// reducing contention and lookup overhead on hot concurrent paths.
 pub struct SparseRegisterStore {
     /// Configuration.
     config: RegisterStoreConfig,
 
     /// Coils storage (sparse).
-    coils: DashMap<u16, bool>,
+    coils: ShardedRegisterMap<bool>,
 
     /// Discrete inputs storage (sparse).
-    discrete_inputs: DashMap<u16, bool>,
+    discrete_inputs: ShardedRegisterMap<bool>,
 
     /// Holding registers storage (sparse).
-    holding_registers: DashMap<u16, u16>,
+    holding_registers: ShardedRegisterMap<u16>,
 
     /// Input registers storage (sparse).
-    input_registers: DashMap<u16, u16>,
+    input_registers: ShardedRegisterMap<u16>,
 
     /// Callback manager.
     callbacks: Arc<CallbackManager>,
@@ -72,17 +326,15 @@ impl SparseRegisterStore {
     /// Create a new sparse register store with the given configuration.
     pub fn new(config: RegisterStoreConfig) -> Self {
         let store = Self {
-            coils: DashMap::new(),
-            discrete_inputs: DashMap::new(),
-            holding_registers: DashMap::new(),
-            input_registers: DashMap::new(),
+            coils: ShardedRegisterMap::new(),
+            discrete_inputs: ShardedRegisterMap::new(),
+            holding_registers: ShardedRegisterMap::new(),
+            input_registers: ShardedRegisterMap::new(),
             callbacks: Arc::new(CallbackManager::new()),
             config,
         };
 
-        // Apply initialization mode
         store.apply_initialization();
-
         store
     }
 
@@ -94,60 +346,50 @@ impl SparseRegisterStore {
     /// Apply initialization based on configuration.
     fn apply_initialization(&self) {
         match &self.config.initialization {
-            InitializationMode::Lazy => {
-                // No pre-initialization needed
-            }
-            InitializationMode::Eager => {
-                self.initialize_eager();
-            }
-            InitializationMode::Pattern(pattern) => {
-                self.initialize_pattern(pattern);
-            }
-            InitializationMode::Snapshot(snapshot) => {
-                self.load_snapshot(snapshot);
-            }
+            InitializationMode::Lazy => {}
+            InitializationMode::Eager => self.initialize_eager(),
+            InitializationMode::Pattern(pattern) => self.initialize_pattern(pattern),
+            InitializationMode::Snapshot(snapshot) => self.load_snapshot(snapshot),
         }
 
-        // Set callback enabled state from config
         self.callbacks.set_enabled(self.config.callbacks_enabled);
     }
 
     /// Eager initialization - pre-populate all registers.
     fn initialize_eager(&self) {
-        // Initialize coils
         let coils_config = &self.config.coils;
         if coils_config.enabled {
-            for addr in coils_config.range.start..=coils_config.range.end {
-                let value = coils_config.default_value.get_bool();
-                self.coils.insert(addr, value);
-            }
+            self.coils
+                .populate_range(coils_config.range.start, coils_config.range.end, |_| {
+                    coils_config.default_value.get_bool()
+                });
         }
 
-        // Initialize discrete inputs
-        let di_config = &self.config.discrete_inputs;
-        if di_config.enabled {
-            for addr in di_config.range.start..=di_config.range.end {
-                let value = di_config.default_value.get_bool();
-                self.discrete_inputs.insert(addr, value);
-            }
+        let discrete_config = &self.config.discrete_inputs;
+        if discrete_config.enabled {
+            self.discrete_inputs.populate_range(
+                discrete_config.range.start,
+                discrete_config.range.end,
+                |_| discrete_config.default_value.get_bool(),
+            );
         }
 
-        // Initialize holding registers
-        let hr_config = &self.config.holding_registers;
-        if hr_config.enabled {
-            for addr in hr_config.range.start..=hr_config.range.end {
-                let value = hr_config.default_value.get_word();
-                self.holding_registers.insert(addr, value);
-            }
+        let holding_config = &self.config.holding_registers;
+        if holding_config.enabled {
+            self.holding_registers.populate_range(
+                holding_config.range.start,
+                holding_config.range.end,
+                |_| holding_config.default_value.get_word(),
+            );
         }
 
-        // Initialize input registers
-        let ir_config = &self.config.input_registers;
-        if ir_config.enabled {
-            for addr in ir_config.range.start..=ir_config.range.end {
-                let value = ir_config.default_value.get_word();
-                self.input_registers.insert(addr, value);
-            }
+        let input_config = &self.config.input_registers;
+        if input_config.enabled {
+            self.input_registers.populate_range(
+                input_config.range.start,
+                input_config.range.end,
+                |_| input_config.default_value.get_word(),
+            );
         }
     }
 
@@ -157,46 +399,50 @@ impl SparseRegisterStore {
             return;
         }
 
-        // Initialize holding registers with pattern
-        let hr_config = &self.config.holding_registers;
-        if hr_config.enabled {
-            let mut pattern_idx = 0;
-            for addr in hr_config.range.start..=hr_config.range.end {
-                let hi = pattern[pattern_idx % pattern.len()];
-                let lo = pattern[(pattern_idx + 1) % pattern.len()];
-                let value = u16::from_be_bytes([hi, lo]);
-                self.holding_registers.insert(addr, value);
-                pattern_idx += 2;
-            }
+        let holding_config = &self.config.holding_registers;
+        if holding_config.enabled {
+            let mut pattern_idx = 0usize;
+            self.holding_registers.populate_range(
+                holding_config.range.start,
+                holding_config.range.end,
+                |_| {
+                    let hi = pattern[pattern_idx % pattern.len()];
+                    let lo = pattern[(pattern_idx + 1) % pattern.len()];
+                    pattern_idx += 2;
+                    u16::from_be_bytes([hi, lo])
+                },
+            );
         }
 
-        // Initialize input registers with pattern
-        let ir_config = &self.config.input_registers;
-        if ir_config.enabled {
-            let mut pattern_idx = 0;
-            for addr in ir_config.range.start..=ir_config.range.end {
-                let hi = pattern[pattern_idx % pattern.len()];
-                let lo = pattern[(pattern_idx + 1) % pattern.len()];
-                let value = u16::from_be_bytes([hi, lo]);
-                self.input_registers.insert(addr, value);
-                pattern_idx += 2;
-            }
+        let input_config = &self.config.input_registers;
+        if input_config.enabled {
+            let mut pattern_idx = 0usize;
+            self.input_registers.populate_range(
+                input_config.range.start,
+                input_config.range.end,
+                |_| {
+                    let hi = pattern[pattern_idx % pattern.len()];
+                    let lo = pattern[(pattern_idx + 1) % pattern.len()];
+                    pattern_idx += 2;
+                    u16::from_be_bytes([hi, lo])
+                },
+            );
         }
     }
 
     /// Load from snapshot.
     fn load_snapshot(&self, snapshot: &RegisterSnapshot) {
-        for (addr, value) in &snapshot.coils {
-            self.coils.insert(*addr, *value);
+        for (address, value) in &snapshot.coils {
+            self.coils.insert(*address, *value);
         }
-        for (addr, value) in &snapshot.discrete_inputs {
-            self.discrete_inputs.insert(*addr, *value);
+        for (address, value) in &snapshot.discrete_inputs {
+            self.discrete_inputs.insert(*address, *value);
         }
-        for (addr, value) in &snapshot.holding_registers {
-            self.holding_registers.insert(*addr, *value);
+        for (address, value) in &snapshot.holding_registers {
+            self.holding_registers.insert(*address, *value);
         }
-        for (addr, value) in &snapshot.input_registers {
-            self.input_registers.insert(*addr, *value);
+        for (address, value) in &snapshot.input_registers {
+            self.input_registers.insert(*address, *value);
         }
     }
 
@@ -258,114 +504,78 @@ impl SparseRegisterStore {
             })
     }
 
-    #[allow(dead_code)]
-    /// Get default value for a register type.
-    #[inline]
-    fn get_default(&self, reg_type: RegisterType) -> RegisterValue {
-        let config = self.config.get_range_config(reg_type);
-        if reg_type.is_bit_type() {
-            RegisterValue::Bool(config.default_value.get_bool())
-        } else {
-            RegisterValue::Word(config.default_value.get_word())
-        }
-    }
-
     // =========================================================================
     // Coil Operations
     // =========================================================================
 
     /// Read coils.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - Start address
-    /// * `quantity` - Number of coils to read (1-2000)
-    ///
-    /// # Returns
-    ///
-    /// Vector of boolean values.
-    #[instrument(level = "trace", skip(self))]
     pub fn read_coils(&self, address: u16, quantity: u16) -> ModbusResult<Vec<bool>> {
         self.validate(RegisterType::Coil, address, quantity)?;
 
         let default = self.config.coils.default_value.get_bool();
-        let mut result = Vec::with_capacity(quantity as usize);
-        let mut values_for_callback = Vec::with_capacity(quantity as usize);
+        let result = if quantity == 1 {
+            vec![self.coils.read_one(address, default)]
+        } else {
+            self.coils.read_range(address, quantity, default)
+        };
 
-        for i in 0..quantity {
-            let addr = address + i;
-            let value = self.coils.get(&addr).map(|v| *v).unwrap_or(default);
-            result.push(value);
-            values_for_callback.push(RegisterValue::Bool(value));
+        if self.callbacks.has_read_callbacks() {
+            let values = result
+                .iter()
+                .copied()
+                .map(RegisterValue::Bool)
+                .collect::<Vec<_>>();
+            self.callbacks.notify_read(
+                ReadContext {
+                    register_type: RegisterType::Coil,
+                    address,
+                    count: quantity,
+                },
+                &values,
+            );
         }
 
-        // Notify callbacks
-        if self.callbacks.is_enabled() {
-            let ctx = ReadContext {
-                register_type: RegisterType::Coil,
-                address,
-                count: quantity,
-            };
-            self.callbacks.notify_read(ctx, &values_for_callback);
-        }
-
-        trace!(address, quantity, "Read coils");
         Ok(result)
     }
 
     /// Write a single coil.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - Coil address
-    /// * `value` - Boolean value to write
-    #[instrument(level = "trace", skip(self))]
     pub fn write_coil(&self, address: u16, value: bool) -> ModbusResult<()> {
         self.validate(RegisterType::Coil, address, 1)?;
 
-        let old_value = self.coils.insert(address, value).unwrap_or(false);
-
-        // Notify callbacks
-        if self.callbacks.is_enabled() {
-            let ctx = WriteContext {
+        if self.callbacks.has_write_callbacks() {
+            let old_value = self.coils.insert(address, value).unwrap_or(false);
+            self.callbacks.notify_write(WriteContext {
                 register_type: RegisterType::Coil,
                 address,
                 old_value: RegisterValue::Bool(old_value),
                 new_value: RegisterValue::Bool(value),
-            };
-            self.callbacks.notify_write(ctx);
+            });
+        } else {
+            self.coils.insert(address, value);
         }
 
-        trace!(address, value, "Wrote coil");
         Ok(())
     }
 
     /// Write multiple coils.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - Start address
-    /// * `values` - Boolean values to write
-    #[instrument(level = "trace", skip(self, values))]
     pub fn write_coils(&self, address: u16, values: &[bool]) -> ModbusResult<()> {
         self.validate(RegisterType::Coil, address, values.len() as u16)?;
 
-        for (i, &value) in values.iter().enumerate() {
-            let addr = address + i as u16;
-            let old_value = self.coils.insert(addr, value).unwrap_or(false);
-
-            if self.callbacks.is_enabled() {
-                let ctx = WriteContext {
+        if self.callbacks.has_write_callbacks() {
+            for (offset, value) in values.iter().copied().enumerate() {
+                let addr = address + offset as u16;
+                let old_value = self.coils.insert(addr, value).unwrap_or(false);
+                self.callbacks.notify_write(WriteContext {
                     register_type: RegisterType::Coil,
                     address: addr,
                     old_value: RegisterValue::Bool(old_value),
                     new_value: RegisterValue::Bool(value),
-                };
-                self.callbacks.notify_write(ctx);
+                });
             }
+        } else {
+            self.coils.write_range(address, values);
         }
 
-        trace!(address, count = values.len(), "Wrote coils");
         Ok(())
     }
 
@@ -374,56 +584,46 @@ impl SparseRegisterStore {
     // =========================================================================
 
     /// Read discrete inputs.
-    #[instrument(level = "trace", skip(self))]
     pub fn read_discrete_inputs(&self, address: u16, quantity: u16) -> ModbusResult<Vec<bool>> {
         self.validate(RegisterType::DiscreteInput, address, quantity)?;
 
         let default = self.config.discrete_inputs.default_value.get_bool();
-        let mut result = Vec::with_capacity(quantity as usize);
-        let mut values_for_callback = Vec::with_capacity(quantity as usize);
+        let result = if quantity == 1 {
+            vec![self.discrete_inputs.read_one(address, default)]
+        } else {
+            self.discrete_inputs.read_range(address, quantity, default)
+        };
 
-        for i in 0..quantity {
-            let addr = address + i;
-            let value = self
-                .discrete_inputs
-                .get(&addr)
-                .map(|v| *v)
-                .unwrap_or(default);
-            result.push(value);
-            values_for_callback.push(RegisterValue::Bool(value));
+        if self.callbacks.has_read_callbacks() {
+            let values = result
+                .iter()
+                .copied()
+                .map(RegisterValue::Bool)
+                .collect::<Vec<_>>();
+            self.callbacks.notify_read(
+                ReadContext {
+                    register_type: RegisterType::DiscreteInput,
+                    address,
+                    count: quantity,
+                },
+                &values,
+            );
         }
 
-        if self.callbacks.is_enabled() {
-            let ctx = ReadContext {
-                register_type: RegisterType::DiscreteInput,
-                address,
-                count: quantity,
-            };
-            self.callbacks.notify_read(ctx, &values_for_callback);
-        }
-
-        trace!(address, quantity, "Read discrete inputs");
         Ok(result)
     }
 
     /// Set a discrete input (simulator internal use).
-    ///
-    /// Discrete inputs are read-only from the Modbus client perspective,
-    /// but the simulator needs to be able to set their values.
-    #[instrument(level = "trace", skip(self))]
     pub fn set_discrete_input(&self, address: u16, value: bool) -> ModbusResult<()> {
         self.validate(RegisterType::DiscreteInput, address, 1)?;
         self.discrete_inputs.insert(address, value);
-        trace!(address, value, "Set discrete input");
         Ok(())
     }
 
     /// Set multiple discrete inputs (simulator internal use).
     pub fn set_discrete_inputs(&self, address: u16, values: &[bool]) -> ModbusResult<()> {
         self.validate(RegisterType::DiscreteInput, address, values.len() as u16)?;
-        for (i, &value) in values.iter().enumerate() {
-            self.discrete_inputs.insert(address + i as u16, value);
-        }
+        self.discrete_inputs.write_range(address, values);
         Ok(())
     }
 
@@ -432,85 +632,74 @@ impl SparseRegisterStore {
     // =========================================================================
 
     /// Read holding registers.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - Start address
-    /// * `quantity` - Number of registers to read (1-125)
-    #[instrument(level = "trace", skip(self))]
     pub fn read_holding_registers(&self, address: u16, quantity: u16) -> ModbusResult<Vec<u16>> {
         self.validate(RegisterType::HoldingRegister, address, quantity)?;
 
         let default = self.config.holding_registers.default_value.get_word();
-        let mut result = Vec::with_capacity(quantity as usize);
-        let mut values_for_callback = Vec::with_capacity(quantity as usize);
+        let result = if quantity == 1 {
+            vec![self.holding_registers.read_one(address, default)]
+        } else {
+            self.holding_registers
+                .read_range(address, quantity, default)
+        };
 
-        for i in 0..quantity {
-            let addr = address + i;
-            let value = self
-                .holding_registers
-                .get(&addr)
-                .map(|v| *v)
-                .unwrap_or(default);
-            result.push(value);
-            values_for_callback.push(RegisterValue::Word(value));
+        if self.callbacks.has_read_callbacks() {
+            let values = result
+                .iter()
+                .copied()
+                .map(RegisterValue::Word)
+                .collect::<Vec<_>>();
+            self.callbacks.notify_read(
+                ReadContext {
+                    register_type: RegisterType::HoldingRegister,
+                    address,
+                    count: quantity,
+                },
+                &values,
+            );
         }
 
-        if self.callbacks.is_enabled() {
-            let ctx = ReadContext {
-                register_type: RegisterType::HoldingRegister,
-                address,
-                count: quantity,
-            };
-            self.callbacks.notify_read(ctx, &values_for_callback);
-        }
-
-        trace!(address, quantity, "Read holding registers");
         Ok(result)
     }
 
     /// Write a single holding register.
-    #[instrument(level = "trace", skip(self))]
     pub fn write_holding_register(&self, address: u16, value: u16) -> ModbusResult<()> {
         self.validate(RegisterType::HoldingRegister, address, 1)?;
 
-        let old_value = self.holding_registers.insert(address, value).unwrap_or(0);
-
-        if self.callbacks.is_enabled() {
-            let ctx = WriteContext {
+        if self.callbacks.has_write_callbacks() {
+            let old_value = self.holding_registers.insert(address, value).unwrap_or(0);
+            self.callbacks.notify_write(WriteContext {
                 register_type: RegisterType::HoldingRegister,
                 address,
                 old_value: RegisterValue::Word(old_value),
                 new_value: RegisterValue::Word(value),
-            };
-            self.callbacks.notify_write(ctx);
+            });
+        } else {
+            self.holding_registers.insert(address, value);
         }
 
-        trace!(address, value, "Wrote holding register");
         Ok(())
     }
 
     /// Write multiple holding registers.
-    #[instrument(level = "trace", skip(self, values))]
     pub fn write_holding_registers(&self, address: u16, values: &[u16]) -> ModbusResult<()> {
         self.validate(RegisterType::HoldingRegister, address, values.len() as u16)?;
 
-        for (i, &value) in values.iter().enumerate() {
-            let addr = address + i as u16;
-            let old_value = self.holding_registers.insert(addr, value).unwrap_or(0);
-
-            if self.callbacks.is_enabled() {
-                let ctx = WriteContext {
+        if self.callbacks.has_write_callbacks() {
+            for (offset, value) in values.iter().copied().enumerate() {
+                let addr = address + offset as u16;
+                let old_value = self.holding_registers.insert(addr, value).unwrap_or(0);
+                self.callbacks.notify_write(WriteContext {
                     register_type: RegisterType::HoldingRegister,
                     address: addr,
                     old_value: RegisterValue::Word(old_value),
                     new_value: RegisterValue::Word(value),
-                };
-                self.callbacks.notify_write(ctx);
+                });
             }
+        } else {
+            self.holding_registers.write_range(address, values);
         }
 
-        trace!(address, count = values.len(), "Wrote holding registers");
         Ok(())
     }
 
@@ -519,53 +708,46 @@ impl SparseRegisterStore {
     // =========================================================================
 
     /// Read input registers.
-    #[instrument(level = "trace", skip(self))]
     pub fn read_input_registers(&self, address: u16, quantity: u16) -> ModbusResult<Vec<u16>> {
         self.validate(RegisterType::InputRegister, address, quantity)?;
 
         let default = self.config.input_registers.default_value.get_word();
-        let mut result = Vec::with_capacity(quantity as usize);
-        let mut values_for_callback = Vec::with_capacity(quantity as usize);
+        let result = if quantity == 1 {
+            vec![self.input_registers.read_one(address, default)]
+        } else {
+            self.input_registers.read_range(address, quantity, default)
+        };
 
-        for i in 0..quantity {
-            let addr = address + i;
-            let value = self
-                .input_registers
-                .get(&addr)
-                .map(|v| *v)
-                .unwrap_or(default);
-            result.push(value);
-            values_for_callback.push(RegisterValue::Word(value));
+        if self.callbacks.has_read_callbacks() {
+            let values = result
+                .iter()
+                .copied()
+                .map(RegisterValue::Word)
+                .collect::<Vec<_>>();
+            self.callbacks.notify_read(
+                ReadContext {
+                    register_type: RegisterType::InputRegister,
+                    address,
+                    count: quantity,
+                },
+                &values,
+            );
         }
 
-        if self.callbacks.is_enabled() {
-            let ctx = ReadContext {
-                register_type: RegisterType::InputRegister,
-                address,
-                count: quantity,
-            };
-            self.callbacks.notify_read(ctx, &values_for_callback);
-        }
-
-        trace!(address, quantity, "Read input registers");
         Ok(result)
     }
 
     /// Set an input register (simulator internal use).
-    #[instrument(level = "trace", skip(self))]
     pub fn set_input_register(&self, address: u16, value: u16) -> ModbusResult<()> {
         self.validate(RegisterType::InputRegister, address, 1)?;
         self.input_registers.insert(address, value);
-        trace!(address, value, "Set input register");
         Ok(())
     }
 
     /// Set multiple input registers (simulator internal use).
     pub fn set_input_registers(&self, address: u16, values: &[u16]) -> ModbusResult<()> {
         self.validate(RegisterType::InputRegister, address, values.len() as u16)?;
-        for (i, &value) in values.iter().enumerate() {
-            self.input_registers.insert(address + i as u16, value);
-        }
+        self.input_registers.write_range(address, values);
         Ok(())
     }
 
@@ -574,8 +756,6 @@ impl SparseRegisterStore {
     // =========================================================================
 
     /// Read bytes from holding or input registers.
-    ///
-    /// Useful for reading multi-register values like f32 or f64.
     pub fn read_bytes(
         &self,
         reg_type: RegisterType,
@@ -597,8 +777,8 @@ impl SparseRegisterStore {
         };
 
         let mut bytes = Vec::with_capacity(byte_count);
-        for reg in registers {
-            bytes.extend_from_slice(&reg.to_be_bytes());
+        for register in registers {
+            bytes.extend_from_slice(&register.to_be_bytes());
         }
         bytes.truncate(byte_count);
 
@@ -606,10 +786,8 @@ impl SparseRegisterStore {
     }
 
     /// Write bytes to holding registers.
-    ///
-    /// Useful for writing multi-register values like f32 or f64.
     pub fn write_bytes(&self, address: u16, bytes: &[u8]) -> ModbusResult<()> {
-        let mut registers = Vec::with_capacity((bytes.len() + 1) / 2);
+        let mut registers = Vec::with_capacity(bytes.len().div_ceil(2));
 
         for chunk in bytes.chunks(2) {
             let value = if chunk.len() == 2 {
@@ -675,75 +853,60 @@ impl SparseRegisterStore {
     }
 
     /// Estimate memory usage in bytes.
-    ///
-    /// This is an approximation based on DashMap overhead:
-    /// - Each entry: ~24 bytes (key + value + overhead)
-    /// - Base DashMap: ~1KB per map
     pub fn memory_usage(&self) -> usize {
-        const DASHMAP_BASE: usize = 1024; // Base overhead per DashMap
-        const BOOL_ENTRY_SIZE: usize = 24; // u16 key + bool value + overhead
-        const WORD_ENTRY_SIZE: usize = 24; // u16 key + u16 value + overhead
+        const STORE_BASE: usize = 256;
+        const ACTIVE_SHARD_BASE: usize = 24;
+        const BOOL_ENTRY_SIZE: usize = 16;
+        const WORD_ENTRY_SIZE: usize = 24;
 
-        let coils_mem = DASHMAP_BASE + self.coils.len() * BOOL_ENTRY_SIZE;
-        let di_mem = DASHMAP_BASE + self.discrete_inputs.len() * BOOL_ENTRY_SIZE;
-        let hr_mem = DASHMAP_BASE + self.holding_registers.len() * WORD_ENTRY_SIZE;
-        let ir_mem = DASHMAP_BASE + self.input_registers.len() * WORD_ENTRY_SIZE;
+        let coils_mem = self.coils.active_shard_count() * ACTIVE_SHARD_BASE
+            + self.coils.len() * BOOL_ENTRY_SIZE;
+        let discrete_mem = self.discrete_inputs.active_shard_count() * ACTIVE_SHARD_BASE
+            + self.discrete_inputs.len() * BOOL_ENTRY_SIZE;
+        let holding_mem = self.holding_registers.active_shard_count() * ACTIVE_SHARD_BASE
+            + self.holding_registers.len() * WORD_ENTRY_SIZE;
+        let input_mem = self.input_registers.active_shard_count() * ACTIVE_SHARD_BASE
+            + self.input_registers.len() * WORD_ENTRY_SIZE;
 
-        coils_mem + di_mem + hr_mem + ir_mem
+        STORE_BASE + coils_mem + discrete_mem + holding_mem + input_mem
     }
 
     /// Reset all registers to default values.
-    ///
-    /// Clears all stored values, returning to lazy initialization state.
     pub fn reset(&self) {
         self.coils.clear();
         self.discrete_inputs.clear();
         self.holding_registers.clear();
         self.input_registers.clear();
-
-        // Re-apply initialization
         self.apply_initialization();
     }
 
     /// Create a snapshot of current register values.
     pub fn snapshot(&self) -> RegisterSnapshot {
         RegisterSnapshot {
-            coils: self.coils.iter().map(|e| (*e.key(), *e.value())).collect(),
-            discrete_inputs: self
-                .discrete_inputs
-                .iter()
-                .map(|e| (*e.key(), *e.value()))
-                .collect(),
-            holding_registers: self
-                .holding_registers
-                .iter()
-                .map(|e| (*e.key(), *e.value()))
-                .collect(),
-            input_registers: self
-                .input_registers
-                .iter()
-                .map(|e| (*e.key(), *e.value()))
-                .collect(),
+            coils: self.coils.snapshot(),
+            discrete_inputs: self.discrete_inputs.snapshot(),
+            holding_registers: self.holding_registers.snapshot(),
+            input_registers: self.input_registers.snapshot(),
         }
     }
 
     /// Check if a specific register exists (has been accessed/written).
     pub fn exists(&self, reg_type: RegisterType, address: u16) -> bool {
         match reg_type {
-            RegisterType::Coil => self.coils.contains_key(&address),
-            RegisterType::DiscreteInput => self.discrete_inputs.contains_key(&address),
-            RegisterType::HoldingRegister => self.holding_registers.contains_key(&address),
-            RegisterType::InputRegister => self.input_registers.contains_key(&address),
+            RegisterType::Coil => self.coils.contains_key(address),
+            RegisterType::DiscreteInput => self.discrete_inputs.contains_key(address),
+            RegisterType::HoldingRegister => self.holding_registers.contains_key(address),
+            RegisterType::InputRegister => self.input_registers.contains_key(address),
         }
     }
 
     /// Remove a specific register (useful for testing sparse scenarios).
     pub fn remove(&self, reg_type: RegisterType, address: u16) -> bool {
         match reg_type {
-            RegisterType::Coil => self.coils.remove(&address).is_some(),
-            RegisterType::DiscreteInput => self.discrete_inputs.remove(&address).is_some(),
-            RegisterType::HoldingRegister => self.holding_registers.remove(&address).is_some(),
-            RegisterType::InputRegister => self.input_registers.remove(&address).is_some(),
+            RegisterType::Coil => self.coils.remove(address).is_some(),
+            RegisterType::DiscreteInput => self.discrete_inputs.remove(address).is_some(),
+            RegisterType::HoldingRegister => self.holding_registers.remove(address).is_some(),
+            RegisterType::InputRegister => self.input_registers.remove(address).is_some(),
         }
     }
 }
@@ -765,7 +928,3 @@ impl std::fmt::Debug for SparseRegisterStore {
             .finish()
     }
 }
-
-// Thread safety markers
-unsafe impl Send for SparseRegisterStore {}
-unsafe impl Sync for SparseRegisterStore {}

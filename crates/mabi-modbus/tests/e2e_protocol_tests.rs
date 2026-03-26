@@ -20,8 +20,8 @@ use mabi_modbus::{
     types::RegisterConverter,
 };
 
-use std::sync::Arc;
 use bytes::BytesMut;
+use std::sync::Arc;
 use tokio_util::codec::{Decoder, Encoder};
 
 // =============================================================================
@@ -174,13 +174,29 @@ fn test_pdu_exception_response_format() {
 fn test_all_exception_codes() {
     let exception_codes = [
         (ExceptionCode::IllegalFunction, 0x01, "Illegal Function"),
-        (ExceptionCode::IllegalDataAddress, 0x02, "Illegal Data Address"),
+        (
+            ExceptionCode::IllegalDataAddress,
+            0x02,
+            "Illegal Data Address",
+        ),
         (ExceptionCode::IllegalDataValue, 0x03, "Illegal Data Value"),
-        (ExceptionCode::SlaveDeviceFailure, 0x04, "Slave Device Failure"),
+        (
+            ExceptionCode::SlaveDeviceFailure,
+            0x04,
+            "Slave Device Failure",
+        ),
         (ExceptionCode::Acknowledge, 0x05, "Acknowledge"),
         (ExceptionCode::SlaveDeviceBusy, 0x06, "Slave Device Busy"),
-        (ExceptionCode::MemoryParityError, 0x08, "Memory Parity Error"),
-        (ExceptionCode::GatewayPathUnavailable, 0x0A, "Gateway Path Unavailable"),
+        (
+            ExceptionCode::MemoryParityError,
+            0x08,
+            "Memory Parity Error",
+        ),
+        (
+            ExceptionCode::GatewayPathUnavailable,
+            0x0A,
+            "Gateway Path Unavailable",
+        ),
         (
             ExceptionCode::GatewayTargetDeviceFailedToRespond,
             0x0B,
@@ -452,7 +468,7 @@ fn test_protocol_compliance_matrix() {
     println!("║   [✓] FC06 - Write Single Register         (0x06)                     ║");
     println!("║   [✓] FC15 - Write Multiple Coils          (0x0F)                     ║");
     println!("║   [✓] FC16 - Write Multiple Registers      (0x10)                     ║");
-    println!("║   [✓] FC17 - Report Slave ID               (0x11)                     ║");
+    println!("║   [✓] FC17 - Read/Write Multiple Registers (0x17)                     ║");
     println!("║                                                                       ║");
     println!("║ EXCEPTION CODES                                                       ║");
     println!("║ ─────────────────                                                     ║");
@@ -518,10 +534,7 @@ fn test_address_limits() {
     ];
 
     for (reg_type, start, end) in ranges {
-        println!(
-            "{:>25} 0x{:04X} 0x{:04X}",
-            reg_type, start, end
-        );
+        println!("{:>25} 0x{:04X} 0x{:04X}", reg_type, start, end);
     }
 }
 

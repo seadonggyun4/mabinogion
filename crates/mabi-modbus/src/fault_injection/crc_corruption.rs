@@ -109,8 +109,7 @@ impl ModbusFault for CrcCorruptionFault {
 
     fn should_activate(&self, ctx: &ModbusFaultContext) -> bool {
         self.stats.record_check();
-        self.target
-            .should_activate(ctx.unit_id, ctx.function_code)
+        self.target.should_activate(ctx.unit_id, ctx.function_code)
     }
 
     fn apply(&self, ctx: &ModbusFaultContext) -> FaultAction {
@@ -191,8 +190,7 @@ mod tests {
                 // Compute correct CRC
                 let frame_data = &bytes[..len - 2];
                 let correct_crc = CrcCorruptionFault::compute_crc(frame_data);
-                let actual_crc =
-                    (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
+                let actual_crc = (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
                 // Should be inverted
                 assert_eq!(actual_crc, !correct_crc);
             }
@@ -212,8 +210,7 @@ mod tests {
                 let frame_data = &bytes[..len - 2];
                 let correct_crc = CrcCorruptionFault::compute_crc(frame_data);
                 let expected = ((correct_crc & 0xFF) << 8) | ((correct_crc >> 8) & 0xFF);
-                let actual_crc =
-                    (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
+                let actual_crc = (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
                 assert_eq!(actual_crc, expected);
             }
             _ => panic!("Expected SendRawBytes"),
@@ -230,8 +227,7 @@ mod tests {
         match action {
             FaultAction::SendRawBytes(bytes) => {
                 let len = bytes.len();
-                let actual_crc =
-                    (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
+                let actual_crc = (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
                 assert_eq!(actual_crc, 0xBEEF);
             }
             _ => panic!("Expected SendRawBytes"),
@@ -249,8 +245,7 @@ mod tests {
                 let len = bytes.len();
                 let frame_data = &bytes[..len - 2];
                 let correct_crc = CrcCorruptionFault::compute_crc(frame_data);
-                let actual_crc =
-                    (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
+                let actual_crc = (bytes[len - 2] as u16) | ((bytes[len - 1] as u16) << 8);
                 // Should differ from correct CRC (XOR with non-zero)
                 assert_ne!(actual_crc, correct_crc);
             }

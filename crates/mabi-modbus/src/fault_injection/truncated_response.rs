@@ -142,10 +142,12 @@ mod tests {
     fn test_ctx() -> ModbusFaultContext {
         // FC 0x03 Read Holding Registers response: FC(1) + ByteCount(1) + Data(6)
         ModbusFaultContext::tcp(
-            1, 0x03,
+            1,
+            0x03,
             &[0x03, 0x00, 0x00, 0x00, 0x03],
             &[0x03, 0x06, 0x00, 0x64, 0x00, 0xC8, 0x01, 0x2C],
-            1, 1,
+            1,
+            1,
         )
     }
 

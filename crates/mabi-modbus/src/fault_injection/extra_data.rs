@@ -52,7 +52,9 @@ impl ExtraDataFault {
     /// Create from config.
     pub fn from_config(config: &FaultTypeConfig, target: FaultTarget) -> Self {
         Self {
-            mode: config.extra_data_mode.unwrap_or(ExtraDataMode::AppendRandom),
+            mode: config
+                .extra_data_mode
+                .unwrap_or(ExtraDataMode::AppendRandom),
             bytes: config.extra_bytes.clone().unwrap_or_default(),
             count: config.extra_count.unwrap_or(4),
             target,
@@ -131,10 +133,12 @@ mod tests {
 
     fn test_ctx() -> ModbusFaultContext {
         ModbusFaultContext::tcp(
-            1, 0x03,
+            1,
+            0x03,
             &[0x03, 0x00, 0x00, 0x00, 0x01],
             &[0x03, 0x02, 0x00, 0x64],
-            1, 1,
+            1,
+            1,
         )
     }
 

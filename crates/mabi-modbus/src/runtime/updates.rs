@@ -394,8 +394,8 @@ mod tests {
 
     #[test]
     fn test_update_record() {
-        let record = UpdateRecord::success(1, ConfigUpdate::MaxConnections(100))
-            .with_source("test_user");
+        let record =
+            UpdateRecord::success(1, ConfigUpdate::MaxConnections(100)).with_source("test_user");
 
         assert!(record.success);
         assert_eq!(record.source, Some("test_user".to_string()));
@@ -403,11 +403,8 @@ mod tests {
 
     #[test]
     fn test_update_record_failure() {
-        let record = UpdateRecord::failure(
-            2,
-            ConfigUpdate::MaxConnections(0),
-            "Invalid value".into(),
-        );
+        let record =
+            UpdateRecord::failure(2, ConfigUpdate::MaxConnections(0), "Invalid value".into());
 
         assert!(!record.success);
         assert!(record.error.is_some());

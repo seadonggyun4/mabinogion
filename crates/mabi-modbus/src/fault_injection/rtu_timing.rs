@@ -237,7 +237,9 @@ impl BusCollisionConfig {
     /// Generate garbage bytes for collision.
     pub fn generate_garbage(&self) -> Vec<u8> {
         let mut rng = rand::thread_rng();
-        (0..self.garbage_byte_count).map(|_| rng.gen::<u8>()).collect()
+        (0..self.garbage_byte_count)
+            .map(|_| rng.gen::<u8>())
+            .collect()
     }
 }
 
@@ -331,9 +333,7 @@ impl RtuTimingFaultConfig {
         let mut segments = Vec::new();
 
         // Start with the inter-frame delay override
-        let initial_delay = self
-            .violate_interframe_delay
-            .unwrap_or(Duration::ZERO);
+        let initial_delay = self.violate_interframe_delay.unwrap_or(Duration::ZERO);
 
         // Check for bus collision (prepend garbage)
         if let Some(ref collision) = self.bus_collision {
@@ -443,8 +443,8 @@ mod tests {
 
     #[test]
     fn test_interframe_violation() {
-        let config = RtuTimingFaultConfig::new()
-            .with_interframe_violation(Duration::from_micros(500));
+        let config =
+            RtuTimingFaultConfig::new().with_interframe_violation(Duration::from_micros(500));
 
         assert!(config.is_active());
 
@@ -485,11 +485,10 @@ mod tests {
 
     #[test]
     fn test_byte_jitter() {
-        let config = RtuTimingFaultConfig::new()
-            .with_byte_jitter(ByteJitterConfig::new(
-                Duration::from_micros(100),
-                Duration::from_micros(500),
-            ));
+        let config = RtuTimingFaultConfig::new().with_byte_jitter(ByteJitterConfig::new(
+            Duration::from_micros(100),
+            Duration::from_micros(500),
+        ));
 
         let frame = vec![0x01, 0x03, 0x02];
         let plan = config.build_timing_plan(&frame);
@@ -502,8 +501,8 @@ mod tests {
 
     #[test]
     fn test_bus_collision_garbage() {
-        let config = RtuTimingFaultConfig::new()
-            .with_bus_collision(BusCollisionConfig::garbage(4, 1.0)); // Always collide
+        let config =
+            RtuTimingFaultConfig::new().with_bus_collision(BusCollisionConfig::garbage(4, 1.0)); // Always collide
 
         let frame = vec![0x01, 0x03, 0x02, 0x00, 0x64, 0xB8, 0x44];
         let plan = config.build_timing_plan(&frame);
@@ -515,8 +514,8 @@ mod tests {
 
     #[test]
     fn test_bus_collision_no_trigger() {
-        let config = RtuTimingFaultConfig::new()
-            .with_bus_collision(BusCollisionConfig::garbage(4, 0.0)); // Never collide
+        let config =
+            RtuTimingFaultConfig::new().with_bus_collision(BusCollisionConfig::garbage(4, 0.0)); // Never collide
 
         let frame = vec![0x01, 0x03, 0x02];
         let plan = config.build_timing_plan(&frame);
@@ -561,10 +560,8 @@ mod tests {
 
     #[test]
     fn test_byte_jitter_interval() {
-        let jitter = ByteJitterConfig::new(
-            Duration::from_micros(100),
-            Duration::from_micros(100),
-        ).with_interval(2);
+        let jitter = ByteJitterConfig::new(Duration::from_micros(100), Duration::from_micros(100))
+            .with_interval(2);
 
         let config = RtuTimingFaultConfig::new().with_byte_jitter(jitter);
         let frame = vec![0x01, 0x02, 0x03, 0x04];
@@ -579,10 +576,7 @@ mod tests {
 
     #[test]
     fn test_byte_jitter_delay_range() {
-        let jitter = ByteJitterConfig::new(
-            Duration::from_micros(100),
-            Duration::from_micros(500),
-        );
+        let jitter = ByteJitterConfig::new(Duration::from_micros(100), Duration::from_micros(500));
 
         for _ in 0..100 {
             let delay = jitter.compute_delay();

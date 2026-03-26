@@ -25,10 +25,11 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use super::serial::{SerialConfig, VirtualSerialConfig};
+use super::serial::{SerialConfig, VirtualSerial, VirtualSerialConfig};
 
 /// Transport configuration types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,6 +274,126 @@ impl RtuTransport for ChannelTransport {
     }
 }
 
+#[cfg(unix)]
+pub struct VirtualSerialTransport {
+    io: tokio::fs::File,
+    config: VirtualSerialConfig,
+}
+
+#[cfg(unix)]
+impl VirtualSerialTransport {
+    fn new(io: tokio::fs::File, config: VirtualSerialConfig) -> Self {
+        Self { io, config }
+    }
+}
+
+#[cfg(unix)]
+#[async_trait]
+impl RtuTransport for VirtualSerialTransport {
+    fn transport_type(&self) -> TransportType {
+        TransportType::VirtualSerial
+    }
+
+    fn is_ready(&self) -> bool {
+        true
+    }
+
+    async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.io.read(buf).await
+    }
+
+    async fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        if self.config.simulate_delays {
+            tokio::time::sleep(self.config.serial.transmission_time(data.len())).await;
+        }
+        self.io.write(data).await
+    }
+
+    async fn flush(&mut self) -> io::Result<()> {
+        self.io.flush().await
+    }
+
+    fn serial_config(&self) -> &SerialConfig {
+        &self.config.serial
+    }
+
+    async fn close(&mut self) -> io::Result<()> {
+        self.io.flush().await
+    }
+}
+
+pub struct TcpBridgeTransport {
+    listener: TcpListener,
+    stream: Option<TcpStream>,
+    config: TcpBridgeConfig,
+}
+
+impl TcpBridgeTransport {
+    pub async fn bind(config: TcpBridgeConfig) -> io::Result<Self> {
+        let listener = TcpListener::bind(config.bind_address).await?;
+        Ok(Self {
+            listener,
+            stream: None,
+            config,
+        })
+    }
+
+    async fn ensure_stream(&mut self) -> io::Result<&mut TcpStream> {
+        if self.stream.is_none() {
+            let (stream, _) = self.listener.accept().await?;
+            self.stream = Some(stream);
+        }
+        Ok(self.stream.as_mut().expect("stream initialized"))
+    }
+}
+
+#[async_trait]
+impl RtuTransport for TcpBridgeTransport {
+    fn transport_type(&self) -> TransportType {
+        TransportType::TcpBridge
+    }
+
+    fn is_ready(&self) -> bool {
+        true
+    }
+
+    async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let result = {
+            let stream = self.ensure_stream().await?;
+            stream.read(buf).await
+        };
+        match result {
+            Ok(0) => {
+                self.stream = None;
+                Ok(0)
+            }
+            other => other,
+        }
+    }
+
+    async fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        let stream = self.ensure_stream().await?;
+        stream.write(data).await
+    }
+
+    async fn flush(&mut self) -> io::Result<()> {
+        if let Some(stream) = &mut self.stream {
+            stream.flush().await
+        } else {
+            Ok(())
+        }
+    }
+
+    fn serial_config(&self) -> &SerialConfig {
+        &self.config.serial
+    }
+
+    async fn close(&mut self) -> io::Result<()> {
+        self.stream.take();
+        Ok(())
+    }
+}
+
 /// Async I/O wrapper that implements AsyncRead and AsyncWrite.
 ///
 /// This allows using an RtuTransport with tokio's framed codecs.
@@ -362,30 +483,26 @@ impl TransportFactory {
                 let (transport, _peer) = ChannelTransport::pair(cfg);
                 Ok(Box::new(transport))
             }
-            TransportConfig::VirtualSerial(_cfg) => {
-                // Virtual serial implementation would go here
+            TransportConfig::VirtualSerial(cfg) => {
                 #[cfg(unix)]
                 {
-                    // TODO: Implement VirtualSerialTransport
-                    Err(io::Error::new(
-                        io::ErrorKind::Unsupported,
-                        "Virtual serial transport not yet implemented",
-                    ))
+                    let serial = VirtualSerial::create(cfg.clone())
+                        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+                    let io = serial.into_async_io()?;
+                    Ok(Box::new(VirtualSerialTransport::new(io, cfg)))
                 }
                 #[cfg(not(unix))]
                 {
+                    let _ = cfg;
                     Err(io::Error::new(
                         io::ErrorKind::Unsupported,
-                        "Virtual serial not supported on this platform",
+                        "virtual serial transport is not available on this platform",
                     ))
                 }
             }
-            TransportConfig::TcpBridge(_cfg) => {
-                // TCP bridge implementation would go here
-                Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "TCP bridge transport not yet implemented",
-                ))
+            TransportConfig::TcpBridge(cfg) => {
+                let transport = TcpBridgeTransport::bind(cfg).await?;
+                Ok(Box::new(transport))
             }
         }
     }

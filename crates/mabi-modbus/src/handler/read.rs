@@ -269,14 +269,16 @@ mod tests {
         let ctx = create_context();
 
         // Set some coils
-        ctx.registers.write_coils(0, &[true, false, true, true]).unwrap();
+        ctx.registers
+            .write_coils(0, &[true, false, true, true])
+            .unwrap();
 
         // Read 4 coils from address 0
         let pdu = [0x01, 0x00, 0x00, 0x00, 0x04];
         let response = handler.handle(&pdu, &ctx).unwrap();
 
         assert_eq!(response[0], 0x01); // Function code
-        assert_eq!(response[1], 1);    // Byte count
+        assert_eq!(response[1], 1); // Byte count
         assert_eq!(response[2], 0b00001101); // Coils: 1,0,1,1 = 0x0D
     }
 
@@ -298,14 +300,16 @@ mod tests {
         let ctx = create_context();
 
         // Set some registers
-        ctx.registers.write_holding_registers(0, &[100, 200, 300]).unwrap();
+        ctx.registers
+            .write_holding_registers(0, &[100, 200, 300])
+            .unwrap();
 
         // Read 3 registers from address 0
         let pdu = [0x03, 0x00, 0x00, 0x00, 0x03];
         let response = handler.handle(&pdu, &ctx).unwrap();
 
         assert_eq!(response[0], 0x03); // Function code
-        assert_eq!(response[1], 6);    // Byte count (3 regs * 2 bytes)
+        assert_eq!(response[1], 6); // Byte count (3 regs * 2 bytes)
         assert_eq!(u16::from_be_bytes([response[2], response[3]]), 100);
         assert_eq!(u16::from_be_bytes([response[4], response[5]]), 200);
         assert_eq!(u16::from_be_bytes([response[6], response[7]]), 300);
@@ -337,7 +341,7 @@ mod tests {
         let response = handler.handle(&pdu, &ctx).unwrap();
 
         assert_eq!(response[0], 0x04); // Function code
-        assert_eq!(response[1], 4);    // Byte count
+        assert_eq!(response[1], 4); // Byte count
         assert_eq!(u16::from_be_bytes([response[2], response[3]]), 1234);
         assert_eq!(u16::from_be_bytes([response[4], response[5]]), 5678);
     }

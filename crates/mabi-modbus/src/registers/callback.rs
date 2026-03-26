@@ -3,6 +3,7 @@
 //! This module provides a flexible callback system that allows external components
 //! (like the scenario engine or metrics collector) to observe register read/write operations.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -222,6 +223,10 @@ pub struct CallbackManager {
     read_callbacks: RwLock<Vec<ReadCallbackEntry>>,
     /// Write callbacks sorted by priority (high to low).
     write_callbacks: RwLock<Vec<WriteCallbackEntry>>,
+    /// Cached read callback count for hot-path checks.
+    read_callback_count: AtomicUsize,
+    /// Cached write callback count for hot-path checks.
+    write_callback_count: AtomicUsize,
     /// Whether callbacks are enabled.
     enabled: std::sync::atomic::AtomicBool,
 }
@@ -232,6 +237,8 @@ impl CallbackManager {
         Self {
             read_callbacks: RwLock::new(Vec::new()),
             write_callbacks: RwLock::new(Vec::new()),
+            read_callback_count: AtomicUsize::new(0),
+            write_callback_count: AtomicUsize::new(0),
             enabled: std::sync::atomic::AtomicBool::new(true),
         }
     }
@@ -261,6 +268,8 @@ impl CallbackManager {
         callbacks.push(entry);
         // Sort by priority descending (high priority first)
         callbacks.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.read_callback_count
+            .store(callbacks.len(), Ordering::Relaxed);
     }
 
     /// Add a write callback.
@@ -274,6 +283,8 @@ impl CallbackManager {
         let mut callbacks = self.write_callbacks.write();
         callbacks.push(entry);
         callbacks.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.write_callback_count
+            .store(callbacks.len(), Ordering::Relaxed);
     }
 
     /// Remove a read callback by ID.
@@ -281,6 +292,8 @@ impl CallbackManager {
         let mut callbacks = self.read_callbacks.write();
         let len_before = callbacks.len();
         callbacks.retain(|e| e.id != id);
+        self.read_callback_count
+            .store(callbacks.len(), Ordering::Relaxed);
         callbacks.len() < len_before
     }
 
@@ -289,6 +302,8 @@ impl CallbackManager {
         let mut callbacks = self.write_callbacks.write();
         let len_before = callbacks.len();
         callbacks.retain(|e| e.id != id);
+        self.write_callback_count
+            .store(callbacks.len(), Ordering::Relaxed);
         callbacks.len() < len_before
     }
 
@@ -296,6 +311,20 @@ impl CallbackManager {
     pub fn clear(&self) {
         self.read_callbacks.write().clear();
         self.write_callbacks.write().clear();
+        self.read_callback_count.store(0, Ordering::Relaxed);
+        self.write_callback_count.store(0, Ordering::Relaxed);
+    }
+
+    /// Check whether any read callbacks are currently active.
+    #[inline]
+    pub fn has_read_callbacks(&self) -> bool {
+        self.is_enabled() && self.read_callback_count.load(Ordering::Relaxed) > 0
+    }
+
+    /// Check whether any write callbacks are currently active.
+    #[inline]
+    pub fn has_write_callbacks(&self) -> bool {
+        self.is_enabled() && self.write_callback_count.load(Ordering::Relaxed) > 0
     }
 
     /// Notify read callbacks.
@@ -303,7 +332,7 @@ impl CallbackManager {
     /// This is called by the register store after a read operation.
     #[inline]
     pub fn notify_read(&self, ctx: ReadContext, values: &[RegisterValue]) {
-        if !self.is_enabled() {
+        if !self.has_read_callbacks() {
             return;
         }
 
@@ -318,7 +347,7 @@ impl CallbackManager {
     /// This is called by the register store after a write operation.
     #[inline]
     pub fn notify_write(&self, ctx: WriteContext) {
-        if !self.is_enabled() {
+        if !self.has_write_callbacks() {
             return;
         }
 
@@ -330,12 +359,12 @@ impl CallbackManager {
 
     /// Get the number of registered read callbacks.
     pub fn read_callback_count(&self) -> usize {
-        self.read_callbacks.read().len()
+        self.read_callback_count.load(Ordering::Relaxed)
     }
 
     /// Get the number of registered write callbacks.
     pub fn write_callback_count(&self) -> usize {
-        self.write_callbacks.read().len()
+        self.write_callback_count.load(Ordering::Relaxed)
     }
 }
 
@@ -395,9 +424,12 @@ mod tests {
 
         // Add read callback
         let read_counter_clone = read_counter.clone();
-        manager.add_read_callback(Arc::new(ReadCallbackFn::new("read_test", move |_ctx, _| {
-            read_counter_clone.fetch_add(1, Ordering::Relaxed);
-        })));
+        manager.add_read_callback(Arc::new(ReadCallbackFn::new(
+            "read_test",
+            move |_ctx, _| {
+                read_counter_clone.fetch_add(1, Ordering::Relaxed);
+            },
+        )));
 
         // Add write callback
         let write_counter_clone = write_counter.clone();

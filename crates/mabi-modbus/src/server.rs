@@ -14,6 +14,7 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::config::ModbusServerConfig;
+use crate::context::{AddressSpace, SharedAddressSpace};
 use crate::device::ModbusDevice;
 use crate::error::{ModbusError, ModbusResult};
 use crate::register::RegisterStore;
@@ -61,7 +62,7 @@ pub struct ModbusTcpServer {
     devices: DashMap<u8, Arc<ModbusDevice>>,
 
     /// Shared register store (for unit ID 0 / broadcast).
-    shared_registers: Arc<RegisterStore>,
+    shared_registers: SharedAddressSpace,
 
     /// Connection semaphore.
     connection_semaphore: Arc<Semaphore>,
@@ -106,8 +107,8 @@ impl ModbusTcpServer {
     }
 
     /// Get shared register store.
-    pub fn shared_registers(&self) -> &Arc<RegisterStore> {
-        &self.shared_registers
+    pub fn shared_registers(&self) -> SharedAddressSpace {
+        self.shared_registers.clone()
     }
 
     /// Get active connections count.
@@ -189,7 +190,7 @@ async fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
     devices: DashMap<u8, Arc<ModbusDevice>>,
-    shared_registers: Arc<RegisterStore>,
+    shared_registers: SharedAddressSpace,
     shutdown: Arc<AtomicBool>,
     timeout: std::time::Duration,
 ) -> ModbusResult<()> {
@@ -234,7 +235,7 @@ async fn handle_connection(
 
                 // Get registers for this unit ID
                 let registers = if let Some(device) = devices.get(&unit_id) {
-                    device.registers().clone()
+                    device.address_space()
                 } else if unit_id == 0 {
                     // Broadcast / shared
                     shared_registers.clone()
@@ -252,7 +253,7 @@ async fn handle_connection(
 
                 // Process request
                 let pdu = &buffer[7..];
-                let response = process_request(transaction_id, unit_id, pdu, &registers)?;
+                let response = process_request(transaction_id, unit_id, pdu, registers.as_ref())?;
 
                 stream.write_all(&response).await?;
             }
@@ -275,7 +276,7 @@ fn process_request(
     transaction_id: u16,
     unit_id: u8,
     pdu: &[u8],
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
 ) -> ModbusResult<Vec<u8>> {
     if pdu.is_empty() {
         return Err(ModbusError::InvalidData("Empty PDU".into()));
@@ -377,7 +378,7 @@ fn build_exception_response(
 
 // Function handlers
 
-fn read_coils(registers: &RegisterStore, address: u16, quantity: u16) -> ModbusResult<Vec<u8>> {
+fn read_coils(registers: &dyn AddressSpace, address: u16, quantity: u16) -> ModbusResult<Vec<u8>> {
     let coils = registers.read_coils(address, quantity)?;
     let byte_count = quantity.div_ceil(8);
 
@@ -395,7 +396,7 @@ fn read_coils(registers: &RegisterStore, address: u16, quantity: u16) -> ModbusR
 }
 
 fn read_discrete_inputs(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     address: u16,
     quantity: u16,
 ) -> ModbusResult<Vec<u8>> {
@@ -416,7 +417,7 @@ fn read_discrete_inputs(
 }
 
 fn read_holding_registers(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     address: u16,
     quantity: u16,
 ) -> ModbusResult<Vec<u8>> {
@@ -432,7 +433,7 @@ fn read_holding_registers(
 }
 
 fn read_input_registers(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     address: u16,
     quantity: u16,
 ) -> ModbusResult<Vec<u8>> {
@@ -447,7 +448,11 @@ fn read_input_registers(
     Ok(response)
 }
 
-fn write_single_coil(registers: &RegisterStore, address: u16, value: u16) -> ModbusResult<Vec<u8>> {
+fn write_single_coil(
+    registers: &dyn AddressSpace,
+    address: u16,
+    value: u16,
+) -> ModbusResult<Vec<u8>> {
     let coil_value = value == 0xFF00;
     registers.write_coil(address, coil_value)?;
 
@@ -459,7 +464,7 @@ fn write_single_coil(registers: &RegisterStore, address: u16, value: u16) -> Mod
 }
 
 fn write_single_register(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     address: u16,
     value: u16,
 ) -> ModbusResult<Vec<u8>> {
@@ -473,7 +478,7 @@ fn write_single_register(
 }
 
 fn write_multiple_coils(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     address: u16,
     quantity: u16,
     data: &[u8],
@@ -493,7 +498,7 @@ fn write_multiple_coils(
 }
 
 fn write_multiple_registers(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     address: u16,
     quantity: u16,
     data: &[u8],
@@ -513,7 +518,7 @@ fn write_multiple_registers(
 }
 
 fn read_write_multiple_registers(
-    registers: &RegisterStore,
+    registers: &dyn AddressSpace,
     read_address: u16,
     read_quantity: u16,
     write_address: u16,

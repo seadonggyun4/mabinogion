@@ -16,11 +16,11 @@
 
 #![cfg(feature = "performance-tests")]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mabi_modbus::registers::{RegisterStoreConfig, SparseRegisterStore};
+use mabi_modbus::registers::SparseRegisterStore;
 
 // =============================================================================
 // Configuration
@@ -34,6 +34,11 @@ const WARMUP_ITERATIONS: usize = 1_000;
 
 /// Margin multiplier for performance targets (2x = 100% margin)
 const PERFORMANCE_MARGIN: f64 = 3.0;
+static PERFORMANCE_TEST_GUARD: Mutex<()> = Mutex::new(());
+
+fn lock_performance_test() -> std::sync::MutexGuard<'static, ()> {
+    PERFORMANCE_TEST_GUARD.lock().unwrap()
+}
 
 // =============================================================================
 // Performance Target Tests
@@ -41,6 +46,7 @@ const PERFORMANCE_MARGIN: f64 = 3.0;
 
 #[test]
 fn test_single_register_read_performance() {
+    let _guard = lock_performance_test();
     // Target: < 100ns (with margin: < 300ns)
     let target_ns = 100.0 * PERFORMANCE_MARGIN;
 
@@ -88,6 +94,7 @@ fn test_single_register_read_performance() {
 
 #[test]
 fn test_125_register_read_performance() {
+    let _guard = lock_performance_test();
     // Target: < 5µs (with margin: < 15µs)
     let target_us = 5.0 * PERFORMANCE_MARGIN;
 
@@ -137,6 +144,7 @@ fn test_125_register_read_performance() {
 
 #[test]
 fn test_single_register_write_performance() {
+    let _guard = lock_performance_test();
     // Target: < 200ns (with margin: < 600ns)
     let target_ns = 200.0 * PERFORMANCE_MARGIN;
 
@@ -181,6 +189,7 @@ fn test_single_register_write_performance() {
 
 #[test]
 fn test_123_register_write_performance() {
+    let _guard = lock_performance_test();
     // Target: < 10µs (with margin: < 30µs)
     let target_us = 10.0 * PERFORMANCE_MARGIN;
 
@@ -226,6 +235,7 @@ fn test_123_register_write_performance() {
 
 #[test]
 fn test_16_thread_concurrent_access_performance() {
+    let _guard = lock_performance_test();
     // Target: < 100µs per 1000 operations (with margin: < 300µs)
     let target_us = 100.0 * PERFORMANCE_MARGIN;
     let thread_count = 16;
@@ -311,6 +321,7 @@ fn test_16_thread_concurrent_access_performance() {
 
 #[test]
 fn test_single_coil_read_performance() {
+    let _guard = lock_performance_test();
     let target_ns = 100.0 * PERFORMANCE_MARGIN;
 
     let store = SparseRegisterStore::with_defaults();
@@ -349,6 +360,7 @@ fn test_single_coil_read_performance() {
 
 #[test]
 fn test_2000_coil_read_performance() {
+    let _guard = lock_performance_test();
     // 2000 coils is the max per Modbus spec
     let target_us = 50.0 * PERFORMANCE_MARGIN; // Expect similar to 125 registers
 
@@ -392,6 +404,7 @@ fn test_2000_coil_read_performance() {
 
 #[test]
 fn test_single_coil_write_performance() {
+    let _guard = lock_performance_test();
     let target_ns = 200.0 * PERFORMANCE_MARGIN;
 
     let store = SparseRegisterStore::with_defaults();
@@ -433,6 +446,7 @@ fn test_single_coil_write_performance() {
 
 #[test]
 fn test_sparse_memory_efficiency() {
+    let _guard = lock_performance_test();
     let store = SparseRegisterStore::with_defaults();
 
     // Access only 100 registers out of possible 10,000
@@ -461,6 +475,7 @@ fn test_sparse_memory_efficiency() {
 
 #[test]
 fn test_large_scale_memory_usage() {
+    let _guard = lock_performance_test();
     // Simulate accessing 100,000 registers
     let store = SparseRegisterStore::with_defaults();
 
@@ -512,6 +527,7 @@ fn test_large_scale_memory_usage() {
 
 #[test]
 fn test_read_throughput() {
+    let _guard = lock_performance_test();
     let store = Arc::new(SparseRegisterStore::with_defaults());
 
     // Pre-populate
@@ -561,6 +577,7 @@ fn test_read_throughput() {
 
 #[test]
 fn test_write_throughput() {
+    let _guard = lock_performance_test();
     let store = Arc::new(SparseRegisterStore::with_defaults());
 
     let duration = Duration::from_secs(1);
@@ -604,6 +621,7 @@ fn test_write_throughput() {
 
 #[test]
 fn test_mixed_throughput() {
+    let _guard = lock_performance_test();
     let store = Arc::new(SparseRegisterStore::with_defaults());
 
     // Pre-populate
@@ -661,6 +679,7 @@ fn test_mixed_throughput() {
 
 #[test]
 fn test_batch_read_performance() {
+    let _guard = lock_performance_test();
     let store = SparseRegisterStore::with_defaults();
 
     // Pre-populate
@@ -695,6 +714,7 @@ fn test_batch_read_performance() {
 
 #[test]
 fn test_batch_write_performance() {
+    let _guard = lock_performance_test();
     let store = SparseRegisterStore::with_defaults();
 
     // Test various batch sizes
@@ -729,6 +749,7 @@ fn test_batch_write_performance() {
 
 #[test]
 fn test_performance_summary() {
+    let _guard = lock_performance_test();
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║           PHASE 2 PERFORMANCE VALIDATION SUMMARY                ║");

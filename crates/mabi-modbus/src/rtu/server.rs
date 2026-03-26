@@ -34,16 +34,105 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
+use crate::context::{BroadcastPolicy, ServerContext, SharedAddressSpace};
 use crate::device::ModbusDevice;
 use crate::error::{ModbusError, ModbusResult};
 use crate::fault_injection::rtu_timing::RtuTimingFaultConfig;
 use crate::fault_injection::{FaultAction, FaultPipeline, ModbusFaultContext};
-use crate::handler::{build_exception_pdu, ExceptionCode, HandlerContext, HandlerRegistry};
+use crate::handler::HandlerRegistry;
 use crate::register::RegisterStore;
+use crate::service::{
+    execute_transport_request, ExtensionRegistry, StandardModbusService, TransportDisposition,
+    TransportServicePolicy, UnknownUnitBehavior,
+};
 
 use super::codec::RtuTiming;
 use super::frame::{RtuFrame, RtuFrameError};
-use super::transport::{ChannelConfig, ChannelTransport, RtuTransport, TransportConfig, TransportMetrics};
+use super::transport::{
+    ChannelConfig, RtuTransport, TransportConfig, TransportFactory, TransportMetrics, TransportType,
+};
+
+/// Performance preset for the RTU server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PerformancePreset {
+    /// Full observability and compatibility behavior.
+    #[default]
+    Default,
+    /// Lower-overhead request processing for high-throughput workloads.
+    HighThroughput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventEmissionMode {
+    Always,
+    SubscriberAware,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RtuRuntimePolicy {
+    enforce_request_timeout: bool,
+    event_mode: EventEmissionMode,
+    record_transport_metrics: bool,
+}
+
+impl RtuRuntimePolicy {
+    fn resolve(
+        preset: PerformancePreset,
+        transport_type: TransportType,
+        has_fault_pipeline: bool,
+        has_timing_fault: bool,
+        simulate_response_delay: bool,
+    ) -> Self {
+        match preset {
+            PerformancePreset::Default => Self {
+                enforce_request_timeout: true,
+                event_mode: EventEmissionMode::Always,
+                record_transport_metrics: true,
+            },
+            PerformancePreset::HighThroughput => match transport_type {
+                TransportType::Channel => Self {
+                    // Channel transport is already CPU-local; keep default semantics to avoid regressions.
+                    enforce_request_timeout: true,
+                    event_mode: EventEmissionMode::Always,
+                    record_transport_metrics: true,
+                },
+                TransportType::TcpBridge => Self {
+                    enforce_request_timeout: false,
+                    event_mode: EventEmissionMode::SubscriberAware,
+                    record_transport_metrics: true,
+                },
+                TransportType::VirtualSerial => {
+                    let keep_timeout =
+                        has_fault_pipeline || has_timing_fault || simulate_response_delay;
+                    Self {
+                        enforce_request_timeout: keep_timeout,
+                        event_mode: EventEmissionMode::SubscriberAware,
+                        record_transport_metrics: true,
+                    }
+                }
+            },
+        }
+    }
+
+    #[inline]
+    fn request_timeout(self, timeout: Duration) -> Option<Duration> {
+        self.enforce_request_timeout.then_some(timeout)
+    }
+
+    #[inline]
+    fn should_emit_events(self, subscriber_count: usize) -> bool {
+        match self.event_mode {
+            EventEmissionMode::Always => true,
+            EventEmissionMode::SubscriberAware => subscriber_count > 0,
+        }
+    }
+
+    #[inline]
+    fn should_record_transport_metrics(self) -> bool {
+        self.record_transport_metrics
+    }
+}
 
 /// RTU server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +164,10 @@ pub struct RtuServerConfig {
     /// Additional response delay (beyond transmission time).
     #[serde(default)]
     pub additional_response_delay: Duration,
+
+    /// Performance tuning preset for request processing.
+    #[serde(default)]
+    pub performance_preset: PerformancePreset,
 }
 
 fn default_broadcast() -> bool {
@@ -99,6 +192,7 @@ impl Default for RtuServerConfig {
             shutdown_timeout: default_shutdown_timeout(),
             simulate_response_delay: true,
             additional_response_delay: Duration::ZERO,
+            performance_preset: PerformancePreset::Default,
         }
     }
 }
@@ -133,6 +227,12 @@ impl RtuServerConfig {
         self
     }
 
+    /// Set the performance preset.
+    pub fn with_performance_preset(mut self, preset: PerformancePreset) -> Self {
+        self.performance_preset = preset;
+        self
+    }
+
     /// Enable response delay simulation.
     pub fn with_response_delay_simulation(mut self, enabled: bool) -> Self {
         self.simulate_response_delay = enabled;
@@ -149,6 +249,7 @@ impl RtuServerConfig {
             shutdown_timeout: Duration::from_secs(1),
             simulate_response_delay: false,
             additional_response_delay: Duration::ZERO,
+            performance_preset: PerformancePreset::Default,
         }
     }
 }
@@ -228,6 +329,160 @@ pub struct RtuServerStats {
     pub avg_latency_us: f64,
 }
 
+#[derive(Debug, Default)]
+struct RtuStatsCounters {
+    requests_processed: AtomicU64,
+    requests_success: AtomicU64,
+    requests_exception: AtomicU64,
+    crc_errors: AtomicU64,
+    framing_errors: AtomicU64,
+    timeouts: AtomicU64,
+    bytes_received: AtomicU64,
+    bytes_sent: AtomicU64,
+}
+
+impl RtuStatsCounters {
+    #[inline]
+    fn record_request(
+        &self,
+        is_exception: bool,
+        latency_us: u64,
+        bytes_received: u64,
+        bytes_sent: u64,
+    ) {
+        let _ = latency_us;
+        self.requests_processed.fetch_add(1, Ordering::Relaxed);
+        if is_exception {
+            self.requests_exception.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.requests_success.fetch_add(1, Ordering::Relaxed);
+        }
+        self.bytes_received
+            .fetch_add(bytes_received, Ordering::Relaxed);
+        self.bytes_sent.fetch_add(bytes_sent, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_crc_error(&self) {
+        self.crc_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_framing_error(&self) {
+        self.framing_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_timeout(&self) {
+        self.timeouts.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self, request_count: u64, latency_sum: u64) -> RtuServerStats {
+        let avg_latency_us = if request_count > 0 {
+            latency_sum as f64 / request_count as f64
+        } else {
+            0.0
+        };
+
+        RtuServerStats {
+            requests_processed: self.requests_processed.load(Ordering::Relaxed),
+            requests_success: self.requests_success.load(Ordering::Relaxed),
+            requests_exception: self.requests_exception.load(Ordering::Relaxed),
+            crc_errors: self.crc_errors.load(Ordering::Relaxed),
+            framing_errors: self.framing_errors.load(Ordering::Relaxed),
+            timeouts: self.timeouts.load(Ordering::Relaxed),
+            bytes_received: self.bytes_received.load(Ordering::Relaxed),
+            bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
+            avg_latency_us,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct AtomicTransportMetrics {
+    bytes_received: AtomicU64,
+    bytes_sent: AtomicU64,
+    frames_received: AtomicU64,
+    frames_sent: AtomicU64,
+    crc_errors: AtomicU64,
+    framing_errors: AtomicU64,
+    timeouts: AtomicU64,
+}
+
+impl AtomicTransportMetrics {
+    #[inline]
+    fn record_bytes_received(&self, bytes: usize) {
+        self.bytes_received
+            .fetch_add(bytes as u64, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_bytes_sent(&self, bytes: usize) {
+        self.bytes_sent.fetch_add(bytes as u64, Ordering::Relaxed);
+        self.frames_sent.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_frame_received(&self) {
+        self.frames_received.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_crc_error(&self) {
+        self.crc_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_framing_error(&self) {
+        self.framing_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn record_timeout(&self) {
+        self.timeouts.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> TransportMetrics {
+        TransportMetrics {
+            bytes_received: self.bytes_received.load(Ordering::Relaxed),
+            bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
+            frames_received: self.frames_received.load(Ordering::Relaxed),
+            frames_sent: self.frames_sent.load(Ordering::Relaxed),
+            crc_errors: self.crc_errors.load(Ordering::Relaxed),
+            framing_errors: self.framing_errors.load(Ordering::Relaxed),
+            timeouts: self.timeouts.load(Ordering::Relaxed),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum UnitFilter {
+    All,
+    Selected(Box<[bool; 256]>),
+}
+
+impl UnitFilter {
+    fn new(unit_ids: &[u8]) -> Self {
+        if unit_ids.is_empty() {
+            Self::All
+        } else {
+            let mut selected = Box::new([false; 256]);
+            for unit_id in unit_ids {
+                selected[*unit_id as usize] = true;
+            }
+            Self::Selected(selected)
+        }
+    }
+
+    #[inline]
+    fn allows(&self, unit_id: u8) -> bool {
+        match self {
+            Self::All => true,
+            Self::Selected(selected) => selected[unit_id as usize],
+        }
+    }
+}
+
 /// Modbus RTU server.
 ///
 /// Provides a high-performance RTU server implementation with
@@ -236,14 +491,17 @@ pub struct ModbusRtuServer {
     /// Server configuration.
     config: RtuServerConfig,
 
-    /// Handler registry.
-    handlers: Arc<HandlerRegistry>,
+    /// Shared request execution service.
+    service: Arc<StandardModbusService>,
 
     /// Devices by unit ID.
     devices: DashMap<u8, Arc<ModbusDevice>>,
 
-    /// Default register store (for unknown units).
-    default_registers: Arc<RegisterStore>,
+    /// Shared server context for request routing.
+    server_context: Arc<ServerContext>,
+
+    /// Fast unit-id filter for request admission.
+    unit_filter: UnitFilter,
 
     /// Server state.
     state: RwLock<RtuServerState>,
@@ -254,11 +512,11 @@ pub struct ModbusRtuServer {
     /// Event broadcaster.
     event_tx: broadcast::Sender<RtuServerEvent>,
 
-    /// Statistics.
-    stats: RwLock<RtuServerStats>,
+    /// Low-overhead request statistics.
+    stats: RtuStatsCounters,
 
-    /// Transport metrics.
-    transport_metrics: RwLock<TransportMetrics>,
+    /// Low-overhead transport metrics.
+    transport_metrics: AtomicTransportMetrics,
 
     /// Request counter for latency tracking.
     request_count: AtomicU64,
@@ -275,17 +533,21 @@ impl ModbusRtuServer {
     /// Create a new RTU server.
     pub fn new(config: RtuServerConfig) -> Self {
         let (event_tx, _) = broadcast::channel(256);
+        let server_context = Arc::new(ServerContext::new(Arc::new(RegisterStore::with_defaults())));
+        server_context.set_broadcast_enabled(config.broadcast_enabled);
+        let unit_filter = UnitFilter::new(&config.unit_ids);
 
         Self {
             config,
-            handlers: Arc::new(HandlerRegistry::with_defaults()),
+            service: Arc::new(StandardModbusService::default()),
             devices: DashMap::new(),
-            default_registers: Arc::new(RegisterStore::with_defaults()),
+            server_context,
+            unit_filter,
             state: RwLock::new(RtuServerState::Stopped),
             shutdown: Arc::new(AtomicBool::new(false)),
             event_tx,
-            stats: RwLock::new(RtuServerStats::default()),
-            transport_metrics: RwLock::new(TransportMetrics::new()),
+            stats: RtuStatsCounters::default(),
+            transport_metrics: AtomicTransportMetrics::default(),
             request_count: AtomicU64::new(0),
             latency_sum: AtomicU64::new(0),
             fault_pipeline: None,
@@ -307,24 +569,33 @@ impl ModbusRtuServer {
 
     /// Create with custom handler registry.
     pub fn with_handlers(mut self, handlers: HandlerRegistry) -> Self {
-        self.handlers = Arc::new(handlers);
+        self.service = Arc::new(StandardModbusService::new(handlers));
+        self
+    }
+
+    /// Set a typed extension registry.
+    pub fn with_extensions(mut self, extensions: ExtensionRegistry) -> Self {
+        self.service = Arc::new(StandardModbusService::with_extensions(extensions));
         self
     }
 
     /// Create with custom default registers.
-    pub fn with_default_registers(mut self, registers: RegisterStore) -> Self {
-        self.default_registers = Arc::new(registers);
+    pub fn with_default_registers(self, registers: RegisterStore) -> Self {
+        self.server_context.set_default_space(Arc::new(registers));
         self
     }
 
     /// Add a device to the server.
     pub fn add_device(&self, device: ModbusDevice) {
         let unit_id = device.unit_id();
-        self.devices.insert(unit_id, Arc::new(device));
+        let device = Arc::new(device);
+        self.server_context.register(device.context().clone());
+        self.devices.insert(unit_id, device);
     }
 
     /// Remove a device from the server.
     pub fn remove_device(&self, unit_id: u8) -> Option<Arc<ModbusDevice>> {
+        self.server_context.remove(unit_id);
         self.devices.remove(&unit_id).map(|(_, d)| d)
     }
 
@@ -333,14 +604,96 @@ impl ModbusRtuServer {
         self.devices.get(&unit_id).map(|d| d.clone())
     }
 
-    /// Get default registers.
-    pub fn default_registers(&self) -> &Arc<RegisterStore> {
-        &self.default_registers
+    /// Get all configured unit IDs.
+    pub fn device_ids(&self) -> Vec<u8> {
+        self.devices.iter().map(|entry| *entry.key()).collect()
+    }
+
+    /// Get default register space.
+    pub fn default_registers(&self) -> SharedAddressSpace {
+        self.server_context.default_space()
+    }
+
+    /// Set whether broadcast requests are accepted.
+    pub fn set_broadcast_enabled(&self, enabled: bool) {
+        self.server_context.set_broadcast_enabled(enabled);
+    }
+
+    /// Set the canonical broadcast routing policy.
+    pub fn set_broadcast_policy(&self, policy: BroadcastPolicy) {
+        self.server_context.set_broadcast_policy(policy);
     }
 
     /// Subscribe to server events.
     pub fn subscribe(&self) -> broadcast::Receiver<RtuServerEvent> {
         self.event_tx.subscribe()
+    }
+
+    fn runtime_policy(&self, transport_type: TransportType) -> RtuRuntimePolicy {
+        RtuRuntimePolicy::resolve(
+            self.config.performance_preset,
+            transport_type,
+            self.fault_pipeline.is_some(),
+            self.rtu_timing_fault
+                .as_ref()
+                .map(|config| config.is_active())
+                .unwrap_or(false),
+            self.config.simulate_response_delay,
+        )
+    }
+
+    #[inline]
+    fn should_emit_events(&self, policy: RtuRuntimePolicy) -> bool {
+        policy.should_emit_events(self.event_tx.receiver_count())
+    }
+
+    #[inline]
+    fn emit_event(&self, policy: RtuRuntimePolicy, event: RtuServerEvent) {
+        if self.should_emit_events(policy) {
+            let _ = self.event_tx.send(event);
+        }
+    }
+
+    #[inline]
+    fn record_transport_bytes_received(&self, policy: RtuRuntimePolicy, bytes: usize) {
+        if policy.should_record_transport_metrics() {
+            self.transport_metrics.record_bytes_received(bytes);
+        }
+    }
+
+    #[inline]
+    fn record_transport_bytes_sent(&self, policy: RtuRuntimePolicy, bytes: usize) {
+        if policy.should_record_transport_metrics() {
+            self.transport_metrics.record_bytes_sent(bytes);
+        }
+    }
+
+    #[inline]
+    fn record_transport_frame_received(&self, policy: RtuRuntimePolicy) {
+        if policy.should_record_transport_metrics() {
+            self.transport_metrics.record_frame_received();
+        }
+    }
+
+    #[inline]
+    fn record_transport_crc_error(&self, policy: RtuRuntimePolicy) {
+        if policy.should_record_transport_metrics() {
+            self.transport_metrics.record_crc_error();
+        }
+    }
+
+    #[inline]
+    fn record_transport_framing_error(&self, policy: RtuRuntimePolicy) {
+        if policy.should_record_transport_metrics() {
+            self.transport_metrics.record_framing_error();
+        }
+    }
+
+    #[inline]
+    fn record_transport_timeout(&self, policy: RtuRuntimePolicy) {
+        if policy.should_record_transport_metrics() {
+            self.transport_metrics.record_timeout();
+        }
     }
 
     /// Get current server state.
@@ -362,45 +715,36 @@ impl ModbusRtuServer {
 
     /// Get server statistics.
     pub fn stats(&self) -> RtuServerStats {
-        let mut stats = self.stats.read().clone();
-
-        // Calculate average latency
         let count = self.request_count.load(Ordering::Relaxed);
-        if count > 0 {
-            let sum = self.latency_sum.load(Ordering::Relaxed);
-            stats.avg_latency_us = sum as f64 / count as f64;
-        }
-
-        stats
+        let sum = self.latency_sum.load(Ordering::Relaxed);
+        self.stats.snapshot(count, sum)
     }
 
     /// Get transport metrics.
     pub fn transport_metrics(&self) -> TransportMetrics {
-        self.transport_metrics.read().clone()
+        self.transport_metrics.snapshot()
     }
 
     /// Run the server with the configured transport.
     pub async fn run(&self) -> ModbusResult<()> {
-        // For now, we'll use the channel transport for testing
-        // In production, this would create the appropriate transport
-        match &self.config.transport {
-            TransportConfig::Channel(config) => {
-                let (transport, _peer) = ChannelTransport::pair(config.clone());
-                self.run_with_transport(transport).await
-            }
-            _ => {
-                Err(ModbusError::Internal(
-                    "Only channel transport is currently supported".into(),
-                ))
-            }
-        }
+        let transport = TransportFactory::create(self.config.transport.clone()).await?;
+        self.run_with_boxed_transport(transport).await
     }
 
     /// Run with a specific transport.
     pub async fn run_with_transport<T: RtuTransport + 'static>(
         &self,
-        mut transport: T,
+        transport: T,
     ) -> ModbusResult<()> {
+        self.run_with_boxed_transport(Box::new(transport)).await
+    }
+
+    async fn run_with_boxed_transport(
+        &self,
+        mut transport: Box<dyn RtuTransport>,
+    ) -> ModbusResult<()> {
+        let policy = self.runtime_policy(transport.transport_type());
+
         // Update state
         {
             let mut state = self.state.write();
@@ -411,7 +755,7 @@ impl ModbusRtuServer {
         }
 
         self.shutdown.store(false, Ordering::SeqCst);
-        let _ = self.event_tx.send(RtuServerEvent::Started);
+        self.emit_event(policy, RtuServerEvent::Started);
 
         {
             let mut state = self.state.write();
@@ -449,13 +793,17 @@ impl ModbusRtuServer {
                 Ok(Ok(n)) => {
                     // Data received
                     frame_buffer.extend_from_slice(&read_buffer[..n]);
-                    self.transport_metrics.write().record_bytes_received(n);
+                    self.record_transport_bytes_received(policy, n);
 
                     // Try to parse frame
-                    if let Some(frame) = self.try_parse_frame(&mut frame_buffer)? {
+                    if let Some(frame) = self.try_parse_frame(&mut frame_buffer, policy)? {
                         // Process request
-                        let response = self.process_request(&frame).await;
+                        let response = self.process_request(&frame, policy).await;
                         rtu_request_number += 1;
+
+                        if response.pdu.is_empty() {
+                            continue;
+                        }
 
                         // Apply fault injection pipeline (if configured)
                         let fault_action = if let Some(ref pipeline) = self.fault_pipeline {
@@ -478,19 +826,26 @@ impl ModbusRtuServer {
                                 // Silent drop - no response sent
                                 debug!("Fault: dropping RTU response");
                             }
-                            Some(FaultAction::DelayThenSend { delay, response: fault_pdu }) => {
+                            Some(FaultAction::DelayThenSend {
+                                delay,
+                                response: fault_pdu,
+                            }) => {
                                 tokio::time::sleep(delay).await;
                                 // Re-encode with faulted PDU
                                 let fault_frame = RtuFrame::response(&frame, fault_pdu);
                                 let response_bytes = fault_frame.encode();
                                 if self.config.simulate_response_delay {
-                                    let tx_delay = transport.transmission_delay(response_bytes.len());
-                                    tokio::time::sleep(tx_delay + self.config.additional_response_delay).await;
+                                    let tx_delay =
+                                        transport.transmission_delay(response_bytes.len());
+                                    tokio::time::sleep(
+                                        tx_delay + self.config.additional_response_delay,
+                                    )
+                                    .await;
                                 }
                                 if let Err(e) = transport.write(&response_bytes).await {
                                     error!("Failed to send delayed response: {}", e);
                                 } else {
-                                    self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                    self.record_transport_bytes_sent(policy, response_bytes.len());
                                 }
                             }
                             Some(FaultAction::SendRawBytes(raw_bytes)) => {
@@ -505,32 +860,45 @@ impl ModbusRtuServer {
                                                 tokio::time::sleep(segment.delay_before).await;
                                             }
                                             if let Err(e) = transport.write(&segment.data).await {
-                                                error!("Failed to send timing segment (raw): {}", e);
+                                                error!(
+                                                    "Failed to send timing segment (raw): {}",
+                                                    e
+                                                );
                                                 break;
                                             }
                                             total_sent += segment.data.len();
                                         }
-                                        self.transport_metrics.write().record_bytes_sent(total_sent);
+                                        self.record_transport_bytes_sent(policy, total_sent);
                                     } else {
                                         if self.config.simulate_response_delay {
-                                            let delay = transport.transmission_delay(raw_bytes.len());
-                                            tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                            let delay =
+                                                transport.transmission_delay(raw_bytes.len());
+                                            tokio::time::sleep(
+                                                delay + self.config.additional_response_delay,
+                                            )
+                                            .await;
                                         }
                                         if let Err(e) = transport.write(&raw_bytes).await {
                                             error!("Failed to send raw bytes: {}", e);
                                         } else {
-                                            self.transport_metrics.write().record_bytes_sent(raw_bytes.len());
+                                            self.record_transport_bytes_sent(
+                                                policy,
+                                                raw_bytes.len(),
+                                            );
                                         }
                                     }
                                 } else {
                                     if self.config.simulate_response_delay {
                                         let delay = transport.transmission_delay(raw_bytes.len());
-                                        tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                        tokio::time::sleep(
+                                            delay + self.config.additional_response_delay,
+                                        )
+                                        .await;
                                     }
                                     if let Err(e) = transport.write(&raw_bytes).await {
                                         error!("Failed to send raw bytes: {}", e);
                                     } else {
-                                        self.transport_metrics.write().record_bytes_sent(raw_bytes.len());
+                                        self.record_transport_bytes_sent(policy, raw_bytes.len());
                                     }
                                 }
                             }
@@ -538,12 +906,15 @@ impl ModbusRtuServer {
                                 // Send partial frame bytes
                                 if self.config.simulate_response_delay {
                                     let delay = transport.transmission_delay(bytes.len());
-                                    tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                    tokio::time::sleep(
+                                        delay + self.config.additional_response_delay,
+                                    )
+                                    .await;
                                 }
                                 if let Err(e) = transport.write(&bytes).await {
                                     error!("Failed to send partial frame: {}", e);
                                 } else {
-                                    self.transport_metrics.write().record_bytes_sent(bytes.len());
+                                    self.record_transport_bytes_sent(policy, bytes.len());
                                 }
                             }
                             Some(FaultAction::SendResponse(fault_pdu)) => {
@@ -551,12 +922,15 @@ impl ModbusRtuServer {
                                 let response_bytes = fault_frame.encode();
                                 if self.config.simulate_response_delay {
                                     let delay = transport.transmission_delay(response_bytes.len());
-                                    tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                    tokio::time::sleep(
+                                        delay + self.config.additional_response_delay,
+                                    )
+                                    .await;
                                 }
                                 if let Err(e) = transport.write(&response_bytes).await {
                                     error!("Failed to send faulted response: {}", e);
                                 } else {
-                                    self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                    self.record_transport_bytes_sent(policy, response_bytes.len());
                                 }
                             }
                             Some(FaultAction::OverrideTransactionId { .. }) => {
@@ -564,12 +938,15 @@ impl ModbusRtuServer {
                                 let response_bytes = response.encode();
                                 if self.config.simulate_response_delay {
                                     let delay = transport.transmission_delay(response_bytes.len());
-                                    tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                    tokio::time::sleep(
+                                        delay + self.config.additional_response_delay,
+                                    )
+                                    .await;
                                 }
                                 if let Err(e) = transport.write(&response_bytes).await {
                                     error!("Failed to send response: {}", e);
                                 } else {
-                                    self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                    self.record_transport_bytes_sent(policy, response_bytes.len());
                                 }
                             }
                             None => {
@@ -587,44 +964,65 @@ impl ModbusRtuServer {
                                             }
                                             if let Err(e) = transport.write(&segment.data).await {
                                                 error!("Failed to send timing segment: {}", e);
-                                                let _ = self.event_tx.send(RtuServerEvent::Error {
-                                                    message: e.to_string(),
-                                                });
+                                                self.emit_event(
+                                                    policy,
+                                                    RtuServerEvent::Error {
+                                                        message: e.to_string(),
+                                                    },
+                                                );
                                                 break;
                                             }
                                             total_sent += segment.data.len();
                                         }
-                                        self.transport_metrics.write().record_bytes_sent(total_sent);
+                                        self.record_transport_bytes_sent(policy, total_sent);
                                     } else {
                                         // Timing config present but not active
                                         if self.config.simulate_response_delay {
-                                            let delay = transport.transmission_delay(response_bytes.len());
-                                            tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                            let delay =
+                                                transport.transmission_delay(response_bytes.len());
+                                            tokio::time::sleep(
+                                                delay + self.config.additional_response_delay,
+                                            )
+                                            .await;
                                         }
                                         if let Err(e) = transport.write(&response_bytes).await {
                                             error!("Failed to send response: {}", e);
-                                            let _ = self.event_tx.send(RtuServerEvent::Error {
-                                                message: e.to_string(),
-                                            });
+                                            self.emit_event(
+                                                policy,
+                                                RtuServerEvent::Error {
+                                                    message: e.to_string(),
+                                                },
+                                            );
                                         } else {
-                                            self.transport_metrics.write().record_bytes_sent(response_bytes.len());
+                                            self.record_transport_bytes_sent(
+                                                policy,
+                                                response_bytes.len(),
+                                            );
                                         }
                                     }
                                 } else {
                                     // No timing config
                                     if self.config.simulate_response_delay {
-                                        let delay = transport.transmission_delay(response_bytes.len());
-                                        tokio::time::sleep(delay + self.config.additional_response_delay).await;
+                                        let delay =
+                                            transport.transmission_delay(response_bytes.len());
+                                        tokio::time::sleep(
+                                            delay + self.config.additional_response_delay,
+                                        )
+                                        .await;
                                     }
                                     if let Err(e) = transport.write(&response_bytes).await {
                                         error!("Failed to send response: {}", e);
-                                        let _ = self.event_tx.send(RtuServerEvent::Error {
-                                            message: e.to_string(),
-                                        });
+                                        self.emit_event(
+                                            policy,
+                                            RtuServerEvent::Error {
+                                                message: e.to_string(),
+                                            },
+                                        );
                                     } else {
-                                        self.transport_metrics
-                                            .write()
-                                            .record_bytes_sent(response_bytes.len());
+                                        self.record_transport_bytes_sent(
+                                            policy,
+                                            response_bytes.len(),
+                                        );
                                     }
                                 }
                             }
@@ -633,9 +1031,12 @@ impl ModbusRtuServer {
                 }
                 Ok(Err(e)) => {
                     error!("Transport read error: {}", e);
-                    let _ = self.event_tx.send(RtuServerEvent::Error {
-                        message: e.to_string(),
-                    });
+                    self.emit_event(
+                        policy,
+                        RtuServerEvent::Error {
+                            message: e.to_string(),
+                        },
+                    );
                 }
                 Err(_) => {
                     // Timeout - check for partial frame
@@ -643,7 +1044,7 @@ impl ModbusRtuServer {
                         // Incomplete frame, discard
                         debug!("Discarding incomplete frame ({} bytes)", frame_buffer.len());
                         frame_buffer.clear();
-                        self.stats.write().framing_errors += 1;
+                        self.stats.record_framing_error();
                     }
                 }
             }
@@ -662,14 +1063,18 @@ impl ModbusRtuServer {
             *state = RtuServerState::Stopped;
         }
 
-        let _ = self.event_tx.send(RtuServerEvent::Stopped);
+        self.emit_event(policy, RtuServerEvent::Stopped);
         info!("RTU server stopped");
 
         Ok(())
     }
 
     /// Try to parse a complete frame from the buffer.
-    fn try_parse_frame(&self, buffer: &mut Vec<u8>) -> ModbusResult<Option<RtuFrame>> {
+    fn try_parse_frame(
+        &self,
+        buffer: &mut Vec<u8>,
+        policy: RtuRuntimePolicy,
+    ) -> ModbusResult<Option<RtuFrame>> {
         if buffer.len() < 4 {
             return Ok(None);
         }
@@ -681,7 +1086,7 @@ impl ModbusRtuServer {
                 let frame_size = frame.frame_size();
                 buffer.drain(..frame_size);
 
-                self.transport_metrics.write().record_frame_received();
+                self.record_transport_frame_received(policy);
 
                 Ok(Some(frame))
             }
@@ -692,24 +1097,28 @@ impl ModbusRtuServer {
             Err(RtuFrameError::CrcMismatch { .. }) => {
                 // CRC error - discard frame
                 buffer.clear();
-                self.stats.write().crc_errors += 1;
-                self.transport_metrics.write().record_crc_error();
-
-                let _ = self.event_tx.send(RtuServerEvent::FrameError {
-                    error: "CRC mismatch".into(),
-                });
+                self.stats.record_crc_error();
+                self.record_transport_crc_error(policy);
+                self.emit_event(
+                    policy,
+                    RtuServerEvent::FrameError {
+                        error: "CRC mismatch".into(),
+                    },
+                );
 
                 Ok(None)
             }
             Err(e) => {
                 // Other error
                 buffer.clear();
-                self.stats.write().framing_errors += 1;
-                self.transport_metrics.write().record_framing_error();
-
-                let _ = self.event_tx.send(RtuServerEvent::FrameError {
-                    error: e.to_string(),
-                });
+                self.stats.record_framing_error();
+                self.record_transport_framing_error(policy);
+                self.emit_event(
+                    policy,
+                    RtuServerEvent::FrameError {
+                        error: e.to_string(),
+                    },
+                );
 
                 Ok(None)
             }
@@ -717,17 +1126,21 @@ impl ModbusRtuServer {
     }
 
     /// Process a request and generate a response.
-    async fn process_request(&self, request: &RtuFrame) -> RtuFrame {
+    async fn process_request(&self, request: &RtuFrame, policy: RtuRuntimePolicy) -> RtuFrame {
         let start = Instant::now();
         let unit_id = request.unit_id;
         let function_code = request.function_code().unwrap_or(0);
+        let is_broadcast = unit_id == 0;
+        let emit_events = self.should_emit_events(policy);
 
         // Emit request event
-        let _ = self.event_tx.send(RtuServerEvent::RequestReceived {
-            unit_id,
-            function_code,
-            timestamp: start,
-        });
+        if emit_events {
+            let _ = self.event_tx.send(RtuServerEvent::RequestReceived {
+                unit_id,
+                function_code,
+                timestamp: start,
+            });
+        }
 
         // Check unit ID
         if !self.should_respond_to_unit(unit_id) {
@@ -736,63 +1149,57 @@ impl ModbusRtuServer {
             return RtuFrame::new(unit_id, vec![]);
         }
 
-        // Get registers for this unit
-        let registers = if let Some(device) = self.devices.get(&unit_id) {
-            device.registers().clone()
-        } else if unit_id == 0 {
-            // Broadcast - use default
-            self.default_registers.clone()
-        } else {
-            // Unknown unit but in our filter - use default
-            self.default_registers.clone()
-        };
-
-        // Create handler context
-        let ctx = HandlerContext::new(unit_id, registers, 0);
-
-        // Process with timeout
-        let response_pdu = match tokio::time::timeout(
-            self.config.request_timeout,
-            async { self.handlers.dispatch(&request.pdu, &ctx) },
+        let execution = execute_transport_request(
+            self.service.as_ref(),
+            self.server_context.as_ref(),
+            unit_id,
+            0,
+            request.pdu.as_slice(),
+            TransportServicePolicy::new(UnknownUnitBehavior::Ignore)
+                .with_request_timeout(policy.request_timeout(self.config.request_timeout)),
         )
-        .await
-        {
-            Ok(Ok(pdu)) => pdu,
-            Ok(Err(exception_code)) => {
-                build_exception_pdu(function_code, exception_code)
+        .await;
+
+        if execution.timed_out {
+            self.stats.record_timeout();
+            self.record_transport_timeout(policy);
+        }
+
+        let (is_exception, response) = match execution.disposition {
+            TransportDisposition::Ignore => return RtuFrame::new(unit_id, vec![]),
+            TransportDisposition::BroadcastSuppressed(response) => {
+                (response.is_exception(), RtuFrame::new(unit_id, vec![]))
             }
-            Err(_) => {
-                self.stats.write().timeouts += 1;
-                build_exception_pdu(function_code, ExceptionCode::SlaveDeviceBusy)
+            TransportDisposition::Reply(response) => {
+                let is_exception = response.is_exception();
+                (
+                    is_exception,
+                    RtuFrame::response(request, response.into_bytes()),
+                )
             }
         };
-
-        // Create response frame
-        let response = RtuFrame::response(request, response_pdu);
-        let is_exception = response.is_exception();
 
         // Update statistics
         let latency_us = start.elapsed().as_micros() as u64;
         self.request_count.fetch_add(1, Ordering::Relaxed);
         self.latency_sum.fetch_add(latency_us, Ordering::Relaxed);
 
-        {
-            let mut stats = self.stats.write();
-            stats.requests_processed += 1;
-            if is_exception {
-                stats.requests_exception += 1;
-            } else {
-                stats.requests_success += 1;
-            }
-        }
-
-        // Emit response event
-        let _ = self.event_tx.send(RtuServerEvent::ResponseSent {
-            unit_id,
-            function_code,
+        self.stats.record_request(
             is_exception,
             latency_us,
-        });
+            request.frame_size() as u64,
+            response.frame_size() as u64,
+        );
+
+        // Emit response event
+        if emit_events && !is_broadcast {
+            let _ = self.event_tx.send(RtuServerEvent::ResponseSent {
+                unit_id,
+                function_code,
+                is_exception,
+                latency_us,
+            });
+        }
 
         response
     }
@@ -801,16 +1208,10 @@ impl ModbusRtuServer {
     fn should_respond_to_unit(&self, unit_id: u8) -> bool {
         // Broadcast
         if unit_id == 0 {
-            return self.config.broadcast_enabled;
+            return self.server_context.broadcast_enabled();
         }
 
-        // Empty filter = accept all
-        if self.config.unit_ids.is_empty() {
-            return true;
-        }
-
-        // Check filter
-        self.config.unit_ids.contains(&unit_id)
+        self.unit_filter.allows(unit_id)
     }
 }
 
@@ -905,6 +1306,74 @@ mod tests {
         assert!(server.should_respond_to_unit(1));
         assert!(server.should_respond_to_unit(100));
         assert!(server.should_respond_to_unit(255));
+    }
+
+    #[test]
+    fn test_runtime_policy_default_is_fully_observable() {
+        let policy = RtuRuntimePolicy::resolve(
+            PerformancePreset::Default,
+            TransportType::Channel,
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(
+            policy.request_timeout(Duration::from_secs(1)),
+            Some(Duration::from_secs(1))
+        );
+        assert!(policy.should_emit_events(0));
+        assert!(policy.should_record_transport_metrics());
+    }
+
+    #[test]
+    fn test_runtime_policy_channel_high_throughput_matches_default() {
+        let policy = RtuRuntimePolicy::resolve(
+            PerformancePreset::HighThroughput,
+            TransportType::Channel,
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(
+            policy.request_timeout(Duration::from_secs(1)),
+            Some(Duration::from_secs(1))
+        );
+        assert!(policy.should_emit_events(0));
+    }
+
+    #[test]
+    fn test_runtime_policy_tcp_bridge_high_throughput_is_subscriber_aware() {
+        let policy = RtuRuntimePolicy::resolve(
+            PerformancePreset::HighThroughput,
+            TransportType::TcpBridge,
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(policy.request_timeout(Duration::from_secs(1)), None);
+        assert!(!policy.should_emit_events(0));
+        assert!(policy.should_emit_events(1));
+    }
+
+    #[test]
+    fn test_runtime_policy_virtual_serial_keeps_timeout_when_timing_semantics_are_active() {
+        let policy = RtuRuntimePolicy::resolve(
+            PerformancePreset::HighThroughput,
+            TransportType::VirtualSerial,
+            true,
+            true,
+            true,
+        );
+
+        assert_eq!(
+            policy.request_timeout(Duration::from_secs(1)),
+            Some(Duration::from_secs(1))
+        );
+        assert!(!policy.should_emit_events(0));
+        assert!(policy.should_emit_events(2));
     }
 
     #[tokio::test]

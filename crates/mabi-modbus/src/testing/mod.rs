@@ -25,14 +25,14 @@
 //! }
 //! ```
 
-pub mod performance;
-pub mod memory;
 pub mod load_generator;
+pub mod memory;
+pub mod performance;
 pub mod report;
 
+pub use load_generator::{ConnectionSimulator, LoadConfig, LoadGenerator, LoadPattern};
+pub use memory::{AllocationTracker, MemoryProfiler, MemoryReport, MemorySnapshot};
 pub use performance::{
-    PerformanceValidator, PerformanceConfig, PerformanceTarget, ValidationResult,
+    PerformanceConfig, PerformanceTarget, PerformanceValidator, ValidationResult,
 };
-pub use memory::{MemoryProfiler, MemorySnapshot, MemoryReport, AllocationTracker};
-pub use load_generator::{LoadGenerator, LoadConfig, LoadPattern, ConnectionSimulator};
-pub use report::{TestReport, TestMetrics, TestSummary};
+pub use report::{TestMetrics, TestReport, TestSummary};

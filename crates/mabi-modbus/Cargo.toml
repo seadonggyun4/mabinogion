@@ -14,7 +14,10 @@ keywords = ["modbus", "protocol", "simulator", "industrial", "plc"]
 categories = ["simulation", "network-programming"]
 
 [features]
-default = []
+default = ["faults"]
+faults = []
+testing = []
+experimental-scaling = []
 performance-tests = []
 
 [dependencies]
@@ -33,6 +36,7 @@ tokio-modbus = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
@@ -66,3 +70,20 @@ tempfile = "3.10"
 [[bench]]
 name = "scalability_bench"
 harness = false
+required-features = ["experimental-scaling"]
+
+[[bench]]
+name = "hot_path_bench"
+harness = false
+
+[[bench]]
+name = "transport_end_to_end_bench"
+harness = false
+
+[[test]]
+name = "large_scale_validation"
+required-features = ["testing"]
+
+[[test]]
+name = "performance_validation"
+required-features = ["performance-tests"]

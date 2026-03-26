@@ -6,22 +6,21 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use parking_lot::RwLock;
-
 /// Histogram bucket boundaries for latency measurements (in microseconds).
 const LATENCY_BUCKETS_US: &[u64] = &[
-    50,      // 50 µs
-    100,     // 100 µs
-    250,     // 250 µs
-    500,     // 500 µs
-    1000,    // 1 ms
-    2500,    // 2.5 ms
-    5000,    // 5 ms
-    10000,   // 10 ms
-    25000,   // 25 ms
-    50000,   // 50 ms
-    100000,  // 100 ms
+    50,     // 50 µs
+    100,    // 100 µs
+    250,    // 250 µs
+    500,    // 500 µs
+    1000,   // 1 ms
+    2500,   // 2.5 ms
+    5000,   // 5 ms
+    10000,  // 10 ms
+    25000,  // 25 ms
+    50000,  // 50 ms
+    100000, // 100 ms
 ];
+const LATENCY_BUCKET_COUNT: usize = LATENCY_BUCKETS_US.len() + 1;
 
 /// Metrics for the Modbus TCP server.
 #[derive(Debug)]
@@ -39,7 +38,7 @@ pub struct ServerMetrics {
     pub requests_total: AtomicU64,
 
     /// Requests by function code.
-    pub requests_by_function: RwLock<Vec<AtomicU64>>,
+    pub requests_by_function: Box<[AtomicU64; 256]>,
 
     /// Total successful responses.
     pub responses_success: AtomicU64,
@@ -63,7 +62,7 @@ pub struct ServerMetrics {
     pub bytes_sent: AtomicU64,
 
     /// Latency histogram buckets.
-    latency_buckets: RwLock<Vec<AtomicU64>>,
+    latency_buckets: Box<[AtomicU64; LATENCY_BUCKET_COUNT]>,
 
     /// Sum of all latencies (for calculating average).
     latency_sum_us: AtomicU64,
@@ -75,22 +74,12 @@ pub struct ServerMetrics {
 impl ServerMetrics {
     /// Create new server metrics.
     pub fn new() -> Self {
-        // Initialize function code counters (0-255)
-        let requests_by_function: Vec<AtomicU64> = (0..256).map(|_| AtomicU64::new(0)).collect();
-
-        // Initialize latency histogram buckets
-        let latency_buckets: Vec<AtomicU64> = LATENCY_BUCKETS_US
-            .iter()
-            .map(|_| AtomicU64::new(0))
-            .chain(std::iter::once(AtomicU64::new(0))) // +Inf bucket
-            .collect();
-
         Self {
             connections_total: AtomicU64::new(0),
             connections_active: AtomicU64::new(0),
             connections_rejected: AtomicU64::new(0),
             requests_total: AtomicU64::new(0),
-            requests_by_function: RwLock::new(requests_by_function),
+            requests_by_function: Box::new(std::array::from_fn(|_| AtomicU64::new(0))),
             responses_success: AtomicU64::new(0),
             responses_exception: AtomicU64::new(0),
             errors_total: AtomicU64::new(0),
@@ -98,7 +87,7 @@ impl ServerMetrics {
             timeout_errors: AtomicU64::new(0),
             bytes_received: AtomicU64::new(0),
             bytes_sent: AtomicU64::new(0),
-            latency_buckets: RwLock::new(latency_buckets),
+            latency_buckets: Box::new(std::array::from_fn(|_| AtomicU64::new(0))),
             latency_sum_us: AtomicU64::new(0),
             start_time: Instant::now(),
         }
@@ -122,26 +111,58 @@ impl ServerMetrics {
 
     /// Record a request.
     pub fn record_request(&self, function_code: u8) {
+        self.record_request_with_options(function_code, true);
+    }
+
+    /// Record a request with optional per-function breakdown.
+    pub fn record_request_with_options(&self, function_code: u8, detailed_breakdown: bool) {
         self.requests_total.fetch_add(1, Ordering::Relaxed);
 
-        let requests = self.requests_by_function.read();
-        requests[function_code as usize].fetch_add(1, Ordering::Relaxed);
+        if detailed_breakdown {
+            self.requests_by_function[function_code as usize].fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     /// Record a successful response.
     pub fn record_success(&self, latency_us: u64, bytes_in: u64, bytes_out: u64) {
+        self.record_success_with_options(latency_us, bytes_in, bytes_out, true);
+    }
+
+    /// Record a successful response with optional latency sampling.
+    pub fn record_success_with_options(
+        &self,
+        latency_us: u64,
+        bytes_in: u64,
+        bytes_out: u64,
+        record_latency: bool,
+    ) {
         self.responses_success.fetch_add(1, Ordering::Relaxed);
         self.bytes_received.fetch_add(bytes_in, Ordering::Relaxed);
         self.bytes_sent.fetch_add(bytes_out, Ordering::Relaxed);
-        self.record_latency(latency_us);
+        if record_latency {
+            self.record_latency(latency_us);
+        }
     }
 
     /// Record an exception response.
     pub fn record_exception(&self, latency_us: u64, bytes_in: u64, bytes_out: u64) {
+        self.record_exception_with_options(latency_us, bytes_in, bytes_out, true);
+    }
+
+    /// Record an exception response with optional latency sampling.
+    pub fn record_exception_with_options(
+        &self,
+        latency_us: u64,
+        bytes_in: u64,
+        bytes_out: u64,
+        record_latency: bool,
+    ) {
         self.responses_exception.fetch_add(1, Ordering::Relaxed);
         self.bytes_received.fetch_add(bytes_in, Ordering::Relaxed);
         self.bytes_sent.fetch_add(bytes_out, Ordering::Relaxed);
-        self.record_latency(latency_us);
+        if record_latency {
+            self.record_latency(latency_us);
+        }
     }
 
     /// Record an internal error.
@@ -163,18 +184,16 @@ impl ServerMetrics {
     fn record_latency(&self, latency_us: u64) {
         self.latency_sum_us.fetch_add(latency_us, Ordering::Relaxed);
 
-        let buckets = self.latency_buckets.read();
-
         // Find the appropriate bucket
         for (i, &boundary) in LATENCY_BUCKETS_US.iter().enumerate() {
             if latency_us <= boundary {
-                buckets[i].fetch_add(1, Ordering::Relaxed);
+                self.latency_buckets[i].fetch_add(1, Ordering::Relaxed);
                 return;
             }
         }
 
         // +Inf bucket
-        buckets[LATENCY_BUCKETS_US.len()].fetch_add(1, Ordering::Relaxed);
+        self.latency_buckets[LATENCY_BUCKETS_US.len()].fetch_add(1, Ordering::Relaxed);
     }
 
     /// Get server uptime.
@@ -195,8 +214,8 @@ impl ServerMetrics {
 
     /// Get average latency in microseconds.
     pub fn average_latency_us(&self) -> f64 {
-        let total_responses =
-            self.responses_success.load(Ordering::Relaxed) + self.responses_exception.load(Ordering::Relaxed);
+        let total_responses = self.responses_success.load(Ordering::Relaxed)
+            + self.responses_exception.load(Ordering::Relaxed);
         let sum = self.latency_sum_us.load(Ordering::Relaxed);
 
         if total_responses > 0 {
@@ -208,8 +227,8 @@ impl ServerMetrics {
 
     /// Get latency percentile (approximate).
     pub fn latency_percentile(&self, percentile: f64) -> u64 {
-        let total_responses =
-            self.responses_success.load(Ordering::Relaxed) + self.responses_exception.load(Ordering::Relaxed);
+        let total_responses = self.responses_success.load(Ordering::Relaxed)
+            + self.responses_exception.load(Ordering::Relaxed);
 
         if total_responses == 0 {
             return 0;
@@ -217,16 +236,16 @@ impl ServerMetrics {
 
         let target = ((total_responses as f64) * percentile / 100.0).ceil() as u64;
 
-        let buckets = self.latency_buckets.read();
         let mut cumulative = 0u64;
 
-        for (i, bucket) in buckets.iter().enumerate() {
+        for (i, bucket) in self.latency_buckets.iter().enumerate() {
             cumulative += bucket.load(Ordering::Relaxed);
             if cumulative >= target {
                 if i < LATENCY_BUCKETS_US.len() {
                     return LATENCY_BUCKETS_US[i];
                 } else {
-                    return LATENCY_BUCKETS_US[LATENCY_BUCKETS_US.len() - 1] * 2; // Beyond max
+                    return LATENCY_BUCKETS_US[LATENCY_BUCKETS_US.len() - 1] * 2;
+                    // Beyond max
                 }
             }
         }
@@ -415,9 +434,14 @@ mod tests {
 
         assert_eq!(metrics.requests_total.load(Ordering::Relaxed), 3);
 
-        let by_function = metrics.requests_by_function.read();
-        assert_eq!(by_function[0x03].load(Ordering::Relaxed), 2);
-        assert_eq!(by_function[0x06].load(Ordering::Relaxed), 1);
+        assert_eq!(
+            metrics.requests_by_function[0x03].load(Ordering::Relaxed),
+            2
+        );
+        assert_eq!(
+            metrics.requests_by_function[0x06].load(Ordering::Relaxed),
+            1
+        );
     }
 
     #[test]
@@ -425,10 +449,10 @@ mod tests {
         let metrics = ServerMetrics::new();
 
         // Record some requests with different latencies
-        metrics.record_success(100, 10, 20);   // 100 µs
-        metrics.record_success(500, 10, 20);   // 500 µs
-        metrics.record_success(1000, 10, 20);  // 1000 µs
-        metrics.record_success(5000, 10, 20);  // 5000 µs
+        metrics.record_success(100, 10, 20); // 100 µs
+        metrics.record_success(500, 10, 20); // 500 µs
+        metrics.record_success(1000, 10, 20); // 1000 µs
+        metrics.record_success(5000, 10, 20); // 5000 µs
 
         assert_eq!(metrics.responses_success.load(Ordering::Relaxed), 4);
         assert_eq!(metrics.average_latency_us(), 1650.0); // (100+500+1000+5000)/4

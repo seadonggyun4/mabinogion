@@ -58,9 +58,7 @@ pub struct LatencyHistogram {
 impl LatencyHistogram {
     /// Create a new histogram with the given bucket boundaries (in microseconds).
     pub fn new(buckets: Vec<u64>) -> Self {
-        let counts = (0..=buckets.len())
-            .map(|_| AtomicU64::new(0))
-            .collect();
+        let counts = (0..=buckets.len()).map(|_| AtomicU64::new(0)).collect();
 
         Self {
             buckets,
@@ -92,7 +90,8 @@ impl LatencyHistogram {
     /// Record a latency value (in microseconds).
     pub fn record(&self, latency_us: u64) {
         // Find bucket
-        let bucket_index = self.buckets
+        let bucket_index = self
+            .buckets
             .iter()
             .position(|&b| latency_us <= b)
             .unwrap_or(self.buckets.len());
@@ -110,12 +109,16 @@ impl LatencyHistogram {
             if latency_us >= current_min {
                 break;
             }
-            if self.min.compare_exchange_weak(
-                current_min,
-                latency_us,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .min
+                .compare_exchange_weak(
+                    current_min,
+                    latency_us,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
                 break;
             }
         }
@@ -125,12 +128,16 @@ impl LatencyHistogram {
             if latency_us <= current_max {
                 break;
             }
-            if self.max.compare_exchange_weak(
-                current_max,
-                latency_us,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .max
+                .compare_exchange_weak(
+                    current_max,
+                    latency_us,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
                 break;
             }
         }
@@ -296,9 +303,7 @@ pub struct ThroughputCounter {
 impl ThroughputCounter {
     /// Create a new throughput counter with the given window size.
     pub fn new(window_secs: usize) -> Self {
-        let slots = (0..window_secs)
-            .map(|_| AtomicU64::new(0))
-            .collect();
+        let slots = (0..window_secs).map(|_| AtomicU64::new(0)).collect();
 
         Self {
             window_secs,
@@ -354,10 +359,7 @@ impl ThroughputCounter {
     pub fn throughput(&self) -> f64 {
         self.advance_slots();
 
-        let total: u64 = self.slots
-            .iter()
-            .map(|s| s.load(Ordering::Relaxed))
-            .sum();
+        let total: u64 = self.slots.iter().map(|s| s.load(Ordering::Relaxed)).sum();
 
         total as f64 / self.window_secs as f64
     }
@@ -542,12 +544,11 @@ impl PerformanceProfiler {
             if bytes <= current_peak {
                 break;
             }
-            if self.peak_memory_bytes.compare_exchange_weak(
-                current_peak,
-                bytes,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .peak_memory_bytes
+                .compare_exchange_weak(current_peak, bytes, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
                 break;
             }
         }
@@ -563,12 +564,11 @@ impl PerformanceProfiler {
             if count <= current_peak {
                 break;
             }
-            if self.peak_connections.compare_exchange_weak(
-                current_peak,
-                count,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .peak_connections
+                .compare_exchange_weak(current_peak, count, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
                 break;
             }
         }
@@ -629,7 +629,9 @@ impl PerformanceProfiler {
     /// Analyze performance snapshot.
     fn analyze(&self, snapshot: &ProfileSnapshot) -> PerformanceSummary {
         // Target: p99 < 10ms
-        let latency_ok = snapshot.latency.p99_us
+        let latency_ok = snapshot
+            .latency
+            .p99_us
             .map(|p99| p99 < 10_000)
             .unwrap_or(true);
 
@@ -739,8 +741,8 @@ impl PerformanceProfiler {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::config::ProfilerConfig;
+    use super::*;
 
     #[test]
     fn test_histogram_basic() {
@@ -779,9 +781,9 @@ mod tests {
     fn test_histogram_buckets() {
         let histogram = LatencyHistogram::new(vec![100, 500, 1000]);
 
-        histogram.record(50);   // Bucket 0 (≤100)
-        histogram.record(200);  // Bucket 1 (≤500)
-        histogram.record(800);  // Bucket 2 (≤1000)
+        histogram.record(50); // Bucket 0 (≤100)
+        histogram.record(200); // Bucket 1 (≤500)
+        histogram.record(800); // Bucket 2 (≤1000)
         histogram.record(5000); // Bucket 3 (>1000)
 
         let buckets = histogram.bucket_counts();
@@ -841,7 +843,11 @@ mod tests {
 
         // Should have sampled roughly half
         let count = profiler.latency.count();
-        assert!(count > 30 && count < 70, "Expected ~50 samples, got {}", count);
+        assert!(
+            count > 30 && count < 70,
+            "Expected ~50 samples, got {}",
+            count
+        );
 
         // But total requests should be all of them
         assert_eq!(profiler.total_requests(), 100);

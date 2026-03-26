@@ -181,7 +181,9 @@ impl ConnectionDisruptionState {
         // Check hold_open_timeout
         if let Some(hold_duration) = self.config.hold_open_timeout {
             if count >= self.config.drop_after_requests.unwrap_or(u64::MAX) {
-                return DisruptionAction::HoldOpen { duration: hold_duration };
+                return DisruptionAction::HoldOpen {
+                    duration: hold_duration,
+                };
             }
         }
 

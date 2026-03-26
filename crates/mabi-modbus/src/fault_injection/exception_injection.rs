@@ -102,10 +102,12 @@ mod tests {
 
     fn test_ctx() -> ModbusFaultContext {
         ModbusFaultContext::tcp(
-            1, 0x03,
+            1,
+            0x03,
             &[0x03, 0x00, 0x00, 0x00, 0x01],
             &[0x03, 0x02, 0x00, 0x64],
-            1, 1,
+            1,
+            1,
         )
     }
 

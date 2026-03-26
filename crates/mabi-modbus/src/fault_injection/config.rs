@@ -478,13 +478,12 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let config = FaultInjectionConfig::new()
-            .with_fault(FaultConfig::crc_corruption(
-                CrcCorruptionMode::Zero,
-                FaultTarget::new()
-                    .with_unit_ids(vec![1, 2])
-                    .with_probability(0.25),
-            ));
+        let config = FaultInjectionConfig::new().with_fault(FaultConfig::crc_corruption(
+            CrcCorruptionMode::Zero,
+            FaultTarget::new()
+                .with_unit_ids(vec![1, 2])
+                .with_probability(0.25),
+        ));
 
         let json = serde_json::to_string_pretty(&config).unwrap();
         let deserialized: FaultInjectionConfig = serde_json::from_str(&json).unwrap();
