@@ -100,6 +100,7 @@
 //! ```
 
 pub mod config;
+mod behavior;
 mod connection_core;
 pub mod context;
 pub mod control;
@@ -113,6 +114,7 @@ pub mod register;
 pub mod registers;
 pub mod rtu;
 pub mod runtime;
+mod semantic;
 #[cfg(feature = "experimental-scaling")]
 pub mod scalability;
 pub mod server;
@@ -121,6 +123,7 @@ pub mod simulator;
 pub mod tcp;
 #[cfg(feature = "testing")]
 pub mod testing;
+mod transport_runtime;
 pub mod types;
 pub mod unit;
 
@@ -128,8 +131,8 @@ pub use context::{
     AddressSpace, BroadcastPolicy, DenseRegisterStore, DeviceContext, ServerContext,
 };
 pub use control::{
-    FaultPresetPort, ModbusControlSession, PointCatalogPort, PointCatalogQuery, PointDescriptor,
-    PointTarget, RegisterControlPort, ResponseProfilePort, SessionControlPort,
+    BehaviorSetPort, FaultPresetPort, ModbusControlSession, PointCatalogPort, PointCatalogQuery,
+    PointDescriptor, PointTarget, RegisterControlPort, ResponseProfilePort, SessionControlPort,
     SessionMetadataPort, SessionSnapshot, SessionStatus, TraceEntry, TraceOperation, TracePort,
     TraceStatus,
 };
@@ -144,12 +147,14 @@ pub use profile::{
 pub use register::{RegisterStore, RegisterType};
 pub use server::ModbusTcpServer;
 pub use simulator::{
-    schema_summary, ActionBindingDefinition, ActionBindingSummary, ActionDefinition,
-    ActionTrigger, CompiledModbusSession, CompiledPointMetadata, CompiledTransportKind,
-    DatastoreAddressRange, DatastoreDefinition, DatastoreInitialization, DatastorePolicySummary,
-    DatastoreRepeatPolicy, DatastoreSelector, DatastoreTypedBlock, DeviceBundleDefinition,
-    GeneratedPresetDefinition, MalformedResponseDefinition, ModbusConfigSummary,
-    ModbusSchemaSummary, ModbusServiceLaunchConfig, ModbusSimulatorConfig, ModbusTransportLaunch,
+    schema_summary, ActionBindingDefinition, ActionBindingSummary, ActionDefinition, ActionTrigger,
+    BehaviorBindingSummary, BehaviorCondition, BehaviorConditionOperator, BehaviorDefinition,
+    BehaviorSetDefinition, BehaviorTarget, BehaviorTrigger, CompiledModbusSession,
+    CompiledPointMetadata, CompiledTransportKind, DatastoreAddressRange, DatastoreDefinition,
+    DatastoreInitialization, DatastorePolicySummary, DatastoreRepeatPolicy, DatastoreSelector,
+    DatastoreTypedBlock, DeviceBundleDefinition, GeneratedPresetDefinition,
+    MalformedResponseDefinition, ModbusConfigSummary, ModbusSchemaSummary,
+    ModbusServiceLaunchConfig, ModbusSimulatorConfig, ModbusTransportLaunch,
     PartialResponseDefinition, PointActionBinding, ResponseProfileDefinition, SchemaSection,
     SessionControlConfig, SessionDefinition, SessionResetPolicy, SessionSummary,
     SessionTraceConfig, SimulatorDefaults, SplitResponseDefinition, TransportDefinition,

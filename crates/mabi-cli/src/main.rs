@@ -12,9 +12,9 @@ use mabi_cli::prelude::*;
 use mabi_cli::runtime_registry::{protocol_catalog, workspace_protocol_registry};
 use mabi_cli::validation::{parse_nonzero_count, parse_port};
 use mabi_modbus::{
-    CompiledModbusSession, FaultPresetPort, ModbusConfigSummary, ModbusControlSession,
-    ModbusSimulatorConfig, PointCatalogPort, PointCatalogQuery, PointTarget, RegisterControlPort,
-    SessionControlPort, TracePort,
+    BehaviorSetPort, CompiledModbusSession, FaultPresetPort, ModbusConfigSummary,
+    ModbusControlSession, ModbusSimulatorConfig, PointCatalogPort, PointCatalogQuery,
+    PointTarget, RegisterControlPort, SessionControlPort, TracePort,
 };
 use mabi_runtime::{ProtocolLaunchSpec, RuntimeSession};
 use mabi_scenario::prelude::ScenarioValidator;
@@ -480,6 +480,7 @@ enum ModbusControlSubcommand {
     Point(ModbusPointCommandArgs),
     Trace(ModbusTraceCommandArgs),
     Faults(ModbusFaultCommandArgs),
+    Behavior(ModbusBehaviorCommandArgs),
 }
 
 #[derive(Args)]
@@ -595,6 +596,25 @@ enum ModbusFaultSubcommand {
 struct ModbusFaultApplyArgs {
     /// Named fault preset from the selected session
     preset: String,
+}
+
+#[derive(Args)]
+struct ModbusBehaviorCommandArgs {
+    #[command(subcommand)]
+    command: ModbusBehaviorSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModbusBehaviorSubcommand {
+    List,
+    Apply(ModbusBehaviorApplyArgs),
+    Clear,
+}
+
+#[derive(Args)]
+struct ModbusBehaviorApplyArgs {
+    /// Named behavior set from the selected session
+    behavior_set: String,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -1005,6 +1025,7 @@ async fn inspect_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         points: usize,
         trace_enabled: bool,
         active_fault_preset: Option<String>,
+        active_behavior_set: Option<String>,
     }
 
     #[derive(Serialize)]
@@ -1038,6 +1059,7 @@ async fn inspect_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
                 .sum(),
             trace_enabled: compiled.trace.enabled,
             active_fault_preset: compiled.active_fault_preset.clone(),
+            active_behavior_set: compiled.active_behavior_set.clone(),
         });
     }
 
@@ -1067,13 +1089,14 @@ async fn inspect_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         ctx.output().kv(
             format!("Session {}", session.name),
             format!(
-                "service={}, transport={}, units={}, points={}, trace={}, fault={}",
+                "service={}, transport={}, units={}, points={}, trace={}, fault={}, behavior={}",
                 session.service_name.as_deref().unwrap_or(&session.name),
                 session.transport,
                 session.units,
                 session.points,
                 session.trace_enabled,
-                session.active_fault_preset.as_deref().unwrap_or("none")
+                session.active_fault_preset.as_deref().unwrap_or("none"),
+                session.active_behavior_set.as_deref().unwrap_or("none")
             ),
         );
     }
@@ -1088,6 +1111,7 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
         devices: usize,
         sessions: usize,
         presets: usize,
+        behaviors: usize,
     }
 
     let (resolved, config) = load_modbus_config(ctx, &file)?;
@@ -1097,6 +1121,7 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
         devices: config.devices.len(),
         sessions: config.sessions.len(),
         presets: config.presets.len(),
+        behaviors: config.behaviors.len(),
     };
 
     if matches!(
@@ -1111,6 +1136,7 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
         ctx.output().kv("Devices", view.devices);
         ctx.output().kv("Sessions", view.sessions);
         ctx.output().kv("Presets", view.presets);
+        ctx.output().kv("Behaviors", view.behaviors);
     }
 
     if !ctx.is_quiet() {
@@ -1161,6 +1187,10 @@ async fn control_modbus(
                         "Active Fault Preset",
                         status.active_fault_preset.as_deref().unwrap_or("none"),
                     );
+                    ctx.output().kv(
+                        "Active Behavior Set",
+                        status.active_behavior_set.as_deref().unwrap_or("none"),
+                    );
                 }
                 Ok(CommandOutput::quiet_success())
             }
@@ -1193,6 +1223,14 @@ async fn control_modbus(
                             .as_deref()
                             .unwrap_or("none"),
                     );
+                    ctx.output().kv(
+                        "Active Behavior Set",
+                        snapshot
+                            .status
+                            .active_behavior_set
+                            .as_deref()
+                            .unwrap_or("none"),
+                    );
                 }
                 Ok(CommandOutput::quiet_success())
             }
@@ -1222,6 +1260,14 @@ async fn control_modbus(
                         snapshot
                             .status
                             .active_fault_preset
+                            .as_deref()
+                            .unwrap_or("none"),
+                    );
+                    ctx.output().kv(
+                        "Active Behavior Set",
+                        snapshot
+                            .status
+                            .active_behavior_set
                             .as_deref()
                             .unwrap_or("none"),
                     );
@@ -1328,6 +1374,35 @@ async fn control_modbus(
             }
             ModbusFaultSubcommand::Clear => {
                 let snapshot = session.clear_fault_preset().await.map_err(|error| {
+                    CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    }
+                })?;
+                ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+        ModbusControlSubcommand::Behavior(args) => match args.command {
+            ModbusBehaviorSubcommand::List => {
+                let payload = json!({
+                    "available": session.available_behavior_sets(),
+                    "active": session.active_behavior_set(),
+                });
+                ctx.output().write(&payload)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusBehaviorSubcommand::Apply(args) => {
+                let snapshot = session
+                    .apply_behavior_set(&args.behavior_set)
+                    .await
+                    .map_err(|error| CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    })?;
+                ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            ModbusBehaviorSubcommand::Clear => {
+                let snapshot = session.clear_behavior_set().await.map_err(|error| {
                     CliError::ExecutionFailed {
                         message: error.to_string(),
                     }

@@ -3,12 +3,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 
 use mabi_runtime::{ProtocolLaunchSpec, RuntimeExtensions};
 
+use crate::behavior::BehaviorLayer;
 use crate::error::{ModbusError, ModbusResult};
 use crate::fault_injection::{
     ExtraDataMode, FaultConfig, FaultInjectionConfig, FaultTarget, FaultTypeConfig,
@@ -36,6 +38,8 @@ pub struct ModbusSimulatorConfig {
     pub presets: BTreeMap<String, GeneratedPresetDefinition>,
     #[serde(default)]
     pub actions: BTreeMap<String, ActionDefinition>,
+    #[serde(default)]
+    pub behaviors: BTreeMap<String, BehaviorDefinition>,
     #[serde(default)]
     pub response_profiles: BTreeMap<String, ResponseProfileDefinition>,
 }
@@ -121,6 +125,14 @@ impl ModbusSimulatorConfig {
                     )));
                 }
             }
+            if let Some(active) = &session.active_behavior_set {
+                if !session.behavior_sets.contains_key(active) {
+                    return Err(ModbusError::Config(format!(
+                        "session '{}' references unknown behavior set '{}'",
+                        name, active
+                    )));
+                }
+            }
 
             let mut unit_ids = BTreeSet::new();
             let compiled_profile = self.compile_profile(session)?;
@@ -168,6 +180,33 @@ impl ModbusSimulatorConfig {
                                 )));
                             }
                         }
+                    }
+                }
+            }
+
+            for (set_name, behavior_set) in &session.behavior_sets {
+                for behavior_name in &behavior_set.behaviors {
+                    let behavior = self.behaviors.get(behavior_name).ok_or_else(|| {
+                        ModbusError::Config(format!(
+                            "session '{}' behavior set '{}' references unknown behavior '{}'",
+                            name, set_name, behavior_name
+                        ))
+                    })?;
+                    for action_name in &behavior.actions {
+                        if !self.actions.contains_key(action_name) {
+                            return Err(ModbusError::Config(format!(
+                                "behavior '{}' references unknown action '{}'",
+                                behavior_name, action_name
+                            )));
+                        }
+                    }
+
+                    let matches = matching_behavior_targets(behavior, &compiled_profile);
+                    if matches.is_empty() {
+                        return Err(ModbusError::Config(format!(
+                            "behavior '{}' does not match any point in session '{}'",
+                            behavior_name, name
+                        )));
                     }
                 }
             }
@@ -223,9 +262,14 @@ impl ModbusSimulatorConfig {
             response_profiles: self.response_profiles.clone(),
             active_response_profile: session.active_response_profile.clone(),
             actions: self.actions.clone(),
+            behaviors: self.behaviors.clone(),
+            behavior_sets: session.behavior_sets.clone(),
+            active_behavior_set: session.active_behavior_set.clone(),
             point_catalog: metadata.point_catalog,
             datastore_policies: metadata.datastore_policies,
             action_binding_summaries: metadata.action_bindings,
+            behavior_binding_summaries: metadata.behavior_bindings,
+            compiled_behavior_bindings: metadata.compiled_behavior_bindings,
             readiness_timeout_ms: session
                 .readiness_timeout_ms
                 .or(self.defaults.readiness_timeout_ms),
@@ -248,10 +292,12 @@ impl ModbusSimulatorConfig {
                     preset: session.preset.clone(),
                     active_fault_preset: session.active_fault_preset.clone(),
                     active_response_profile: session.active_response_profile.clone(),
+                    active_behavior_set: session.active_behavior_set.clone(),
                 })
                 .collect(),
             presets: self.presets.keys().cloned().collect(),
             actions: self.actions.keys().cloned().collect(),
+            behaviors: self.behaviors.keys().cloned().collect(),
             response_profiles: self.response_profiles.keys().cloned().collect(),
         }
     }
@@ -299,6 +345,7 @@ impl ModbusSimulatorConfig {
                         ),
                         invalid: false,
                         action_bindings: Vec::new(),
+                        behavior_bindings: Vec::new(),
                     },
                 );
             }
@@ -306,6 +353,8 @@ impl ModbusSimulatorConfig {
 
         let mut datastore_policies = BTreeMap::new();
         let mut action_bindings = Vec::new();
+        let mut behavior_bindings = Vec::new();
+        let mut compiled_behavior_bindings = Vec::new();
 
         if let Some(preset_name) = &session.preset {
             if let Some(datastore) = self
@@ -355,6 +404,7 @@ impl ModbusSimulatorConfig {
                 datastore_policies.insert(summary_name, datastore.policy_summary(datastore_name.as_deref()));
 
                 let binding_map = unit.binding_summary_map();
+                let binding_defs = unit.binding_definition_map();
                 for point in &unit.points {
                     let key = point_catalog_key(&device_id, &point.id);
                     let actions = binding_map.get(&point.id).cloned().unwrap_or_default();
@@ -364,6 +414,7 @@ impl ModbusSimulatorConfig {
                             entry.read_only || datastore.is_read_only(point.register_type, point.address);
                         entry.invalid = datastore.is_invalid(point.register_type, point.address);
                         entry.action_bindings = actions.clone();
+                        entry.behavior_bindings = actions.clone();
                     }
                     if !actions.is_empty() {
                         action_bindings.push(ActionBindingSummary {
@@ -372,6 +423,51 @@ impl ModbusSimulatorConfig {
                             bindings: actions,
                         });
                     }
+                    if let Some(definitions) = binding_defs.get(&point.id) {
+                        for definition in definitions {
+                            compiled_behavior_bindings.push(CompiledBehaviorBinding {
+                                name: definition.action.clone(),
+                                behavior_set: "__compat".to_string(),
+                                device_id: device_id.clone(),
+                                point_id: point.id.clone(),
+                                trigger: definition.trigger,
+                                condition: None,
+                                interval_ms: None,
+                                actions: vec![definition.action.clone()],
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        for (set_name, behavior_set) in &session.behavior_sets {
+            for behavior_name in &behavior_set.behaviors {
+                let behavior = self.behaviors.get(behavior_name).ok_or_else(|| {
+                    ModbusError::Config(format!("unknown behavior '{}'", behavior_name))
+                })?;
+                for target in matching_behavior_targets(behavior, profile) {
+                    let key = point_catalog_key(&target.device_id, &target.point_id);
+                    if let Some(entry) = point_catalog.get_mut(&key) {
+                        entry.behavior_bindings.push(format!("{}@{}", behavior_name, set_name));
+                    }
+                    behavior_bindings.push(BehaviorBindingSummary {
+                        device_id: target.device_id.clone(),
+                        point_id: target.point_id.clone(),
+                        behavior: behavior_name.clone(),
+                        behavior_set: set_name.clone(),
+                        trigger: behavior.trigger,
+                    });
+                    compiled_behavior_bindings.push(CompiledBehaviorBinding {
+                        name: behavior_name.clone(),
+                        behavior_set: set_name.clone(),
+                        device_id: target.device_id,
+                        point_id: target.point_id,
+                        trigger: behavior.trigger,
+                        condition: behavior.condition.clone(),
+                        interval_ms: behavior.interval_ms,
+                        actions: behavior.actions.clone(),
+                    });
                 }
             }
         }
@@ -380,6 +476,8 @@ impl ModbusSimulatorConfig {
             point_catalog,
             datastore_policies: datastore_policies.into_values().collect(),
             action_bindings,
+            behavior_bindings,
+            compiled_behavior_bindings,
         })
     }
 }
@@ -598,32 +696,71 @@ impl DatastoreSelector {
     }
 }
 
-/// Deterministic built-in action triggers.
+/// Target selector for deterministic behaviors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehaviorTarget {
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub unit_id: Option<u8>,
+    pub point_id: String,
+}
+
+/// Supported deterministic comparison operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BehaviorConditionOperator {
+    Eq,
+    Ne,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    Changed,
+}
+
+/// Optional deterministic guard used by a behavior definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehaviorCondition {
+    pub operator: BehaviorConditionOperator,
+    #[serde(default)]
+    pub value: Option<JsonValue>,
+}
+
+/// Deterministic behavior triggers.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ActionTrigger {
+pub enum BehaviorTrigger {
     OnRead,
     #[default]
     OnWrite,
     OnInterval,
-    OnBoot,
+    #[serde(alias = "on_boot")]
+    OnStartup,
+    OnReset,
 }
 
-impl ActionTrigger {
+impl BehaviorTrigger {
     fn as_str(self) -> &'static str {
         match self {
             Self::OnRead => "on_read",
             Self::OnWrite => "on_write",
             Self::OnInterval => "on_interval",
-            Self::OnBoot => "on_boot",
+            Self::OnStartup => "on_startup",
+            Self::OnReset => "on_reset",
         }
     }
 }
+
+/// Backward-compatible alias for older action binding configs.
+pub type ActionTrigger = BehaviorTrigger;
 
 /// Deterministic action catalog definition inspired by PyModbus simulator hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ActionDefinition {
+    SetValue { value: JsonValue },
+    CopyToPoint { target_point_id: String },
     Clamp { min: f64, max: f64 },
     Mirror { target_point_id: String },
     Scale {
@@ -631,9 +768,44 @@ pub enum ActionDefinition {
         #[serde(default)]
         offset: f64,
     },
+    Offset { value: f64 },
+    Map {
+        mapping: BTreeMap<String, JsonValue>,
+        #[serde(default)]
+        default: Option<JsonValue>,
+    },
+    MaskBits {
+        #[serde(default)]
+        and_mask: Option<u64>,
+        #[serde(default)]
+        or_mask: Option<u64>,
+    },
+    MarkInvalid,
+    ClearInvalid,
     Latch,
     Pulse { duration_ms: u64 },
     Rotate { values: Vec<JsonValue> },
+}
+
+/// Deterministic behavior definition referencing a catalog of actions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehaviorDefinition {
+    pub target: BehaviorTarget,
+    #[serde(default)]
+    pub trigger: BehaviorTrigger,
+    #[serde(default)]
+    pub condition: Option<BehaviorCondition>,
+    #[serde(default)]
+    pub interval_ms: Option<u64>,
+    #[serde(default)]
+    pub actions: Vec<String>,
+}
+
+/// Named behavior set scoped to a session.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BehaviorSetDefinition {
+    #[serde(default)]
+    pub behaviors: Vec<String>,
 }
 
 /// Action binding applied to a point definition.
@@ -641,7 +813,7 @@ pub enum ActionDefinition {
 pub struct ActionBindingDefinition {
     pub action: String,
     #[serde(default)]
-    pub trigger: ActionTrigger,
+    pub trigger: BehaviorTrigger,
 }
 
 impl ActionBindingDefinition {
@@ -927,6 +1099,13 @@ impl UnitDefinition {
             })
             .collect()
     }
+
+    fn binding_definition_map(&self) -> BTreeMap<String, Vec<ActionBindingDefinition>> {
+        self.action_bindings
+            .iter()
+            .map(|binding| (binding.point_id.clone(), binding.bindings.clone()))
+            .collect()
+    }
 }
 
 /// Generated quickstart preset replacing the old numeric CLI surface.
@@ -974,6 +1153,10 @@ pub struct SessionDefinition {
     pub active_fault_preset: Option<String>,
     #[serde(default)]
     pub active_response_profile: Option<String>,
+    #[serde(default)]
+    pub behavior_sets: BTreeMap<String, BehaviorSetDefinition>,
+    #[serde(default)]
+    pub active_behavior_set: Option<String>,
     #[serde(default)]
     pub readiness_timeout_ms: Option<u64>,
     #[serde(default)]
@@ -1023,6 +1206,8 @@ pub struct SessionResetPolicy {
     #[serde(default = "default_true")]
     pub clear_response_profile: bool,
     #[serde(default = "default_true")]
+    pub clear_behavior_set: bool,
+    #[serde(default = "default_true")]
     pub clear_trace_buffer: bool,
 }
 
@@ -1031,6 +1216,7 @@ impl Default for SessionResetPolicy {
         Self {
             clear_fault_preset: true,
             clear_response_profile: true,
+            clear_behavior_set: true,
             clear_trace_buffer: true,
         }
     }
@@ -1143,9 +1329,14 @@ pub struct CompiledModbusSession {
     pub response_profiles: BTreeMap<String, ResponseProfileDefinition>,
     pub active_response_profile: Option<String>,
     pub actions: BTreeMap<String, ActionDefinition>,
+    pub behaviors: BTreeMap<String, BehaviorDefinition>,
+    pub behavior_sets: BTreeMap<String, BehaviorSetDefinition>,
+    pub active_behavior_set: Option<String>,
     pub point_catalog: BTreeMap<String, CompiledPointMetadata>,
     pub datastore_policies: Vec<DatastorePolicySummary>,
     pub action_binding_summaries: Vec<ActionBindingSummary>,
+    pub behavior_binding_summaries: Vec<BehaviorBindingSummary>,
+    pub compiled_behavior_bindings: Vec<CompiledBehaviorBinding>,
     pub readiness_timeout_ms: Option<u64>,
 }
 
@@ -1160,6 +1351,9 @@ impl CompiledModbusSession {
                     "fault_injection": config,
                 }),
             );
+        }
+        if let Some(layer) = BehaviorLayer::from_compiled(self) {
+            extensions.add_device_layer(Arc::new(layer));
         }
         extensions
     }
@@ -1193,6 +1387,22 @@ impl CompiledModbusSession {
 
         let mut cloned = self.clone();
         cloned.active_response_profile = profile.map(|value| value.to_string());
+        Ok(cloned)
+    }
+
+    /// Returns a cloned session with a different active behavior set.
+    pub fn with_active_behavior_set(&self, behavior_set: Option<&str>) -> ModbusResult<Self> {
+        if let Some(name) = behavior_set {
+            if !self.behavior_sets.contains_key(name) {
+                return Err(ModbusError::Config(format!(
+                    "unknown behavior set '{}'",
+                    name
+                )));
+            }
+        }
+
+        let mut cloned = self.clone();
+        cloned.active_behavior_set = behavior_set.map(|value| value.to_string());
         Ok(cloned)
     }
 
@@ -1253,6 +1463,7 @@ pub struct ModbusConfigSummary {
     pub sessions: Vec<SessionSummary>,
     pub presets: Vec<String>,
     pub actions: Vec<String>,
+    pub behaviors: Vec<String>,
     pub response_profiles: Vec<String>,
 }
 
@@ -1265,6 +1476,7 @@ pub struct SessionSummary {
     pub preset: Option<String>,
     pub active_fault_preset: Option<String>,
     pub active_response_profile: Option<String>,
+    pub active_behavior_set: Option<String>,
 }
 
 /// Session transport kind compiled alongside immutable runtime metadata.
@@ -1283,6 +1495,7 @@ pub struct CompiledPointMetadata {
     pub read_only: bool,
     pub invalid: bool,
     pub action_bindings: Vec<String>,
+    pub behavior_bindings: Vec<String>,
 }
 
 /// Summary of a compiled datastore policy.
@@ -1306,14 +1519,76 @@ pub struct ActionBindingSummary {
     pub bindings: Vec<String>,
 }
 
+/// Summary of behavior bindings compiled into a session.
+#[derive(Debug, Clone, Serialize)]
+pub struct BehaviorBindingSummary {
+    pub device_id: String,
+    pub point_id: String,
+    pub behavior: String,
+    pub behavior_set: String,
+    pub trigger: BehaviorTrigger,
+}
+
+/// Runtime-ready compiled behavior binding.
+#[derive(Debug, Clone)]
+pub struct CompiledBehaviorBinding {
+    pub name: String,
+    pub behavior_set: String,
+    pub device_id: String,
+    pub point_id: String,
+    pub trigger: BehaviorTrigger,
+    pub condition: Option<BehaviorCondition>,
+    pub interval_ms: Option<u64>,
+    pub actions: Vec<String>,
+}
+
 struct CompiledSessionMetadata {
     point_catalog: BTreeMap<String, CompiledPointMetadata>,
     datastore_policies: Vec<DatastorePolicySummary>,
     action_bindings: Vec<ActionBindingSummary>,
+    behavior_bindings: Vec<BehaviorBindingSummary>,
+    compiled_behavior_bindings: Vec<CompiledBehaviorBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct MatchedBehaviorTarget {
+    device_id: String,
+    point_id: String,
 }
 
 fn point_catalog_key(device_id: &str, point_id: &str) -> String {
     format!("{}/{}", device_id, point_id)
+}
+
+fn matching_behavior_targets(
+    behavior: &BehaviorDefinition,
+    profile: &SimulatorProfile,
+) -> Vec<MatchedBehaviorTarget> {
+    let mut matches = Vec::new();
+    for unit in &profile.units {
+        let device_id = format!("modbus-{}", unit.unit_id);
+        if let Some(expected_device) = &behavior.target.device_id {
+            if &device_id != expected_device {
+                continue;
+            }
+        }
+        if let Some(expected_unit) = behavior.target.unit_id {
+            if unit.unit_id != expected_unit {
+                continue;
+            }
+        }
+        if unit
+            .points
+            .iter()
+            .any(|point| point.id == behavior.target.point_id)
+        {
+            matches.push(MatchedBehaviorTarget {
+                device_id,
+                point_id: behavior.target.point_id.clone(),
+            });
+        }
+    }
+    matches
 }
 
 /// Typed schema surface used by `inspect modbus-schema`.
@@ -1366,8 +1641,13 @@ pub fn schema_summary() -> ModbusSchemaSummary {
                 required: false,
             },
             SchemaSection {
+                name: "behaviors",
+                purpose: "Deterministic behavior graph referencing actions, triggers, conditions, and point targets",
+                required: false,
+            },
+            SchemaSection {
                 name: "sessions",
-                purpose: "Canonical run targets selecting transport, devices, control defaults, trace, reset, fault presets, and response profiles",
+                purpose: "Canonical run targets selecting transport, devices, control defaults, trace, reset, fault presets, response profiles, and behavior sets",
                 required: true,
             },
             SchemaSection {
@@ -1391,7 +1671,7 @@ pub fn schema_summary() -> ModbusSchemaSummary {
             "Config files are source-of-truth and stay file-backed",
             "Runtime mutations do not rewrite config files",
             "Named fault presets are scoped to a session definition",
-            "Deterministic actions and response profiles compile into immutable session metadata",
+            "Deterministic actions, behaviors, and response profiles compile into immutable session metadata",
         ],
     }
 }
@@ -1456,6 +1736,8 @@ sessions:
                     fault_presets: BTreeMap::new(),
                     active_fault_preset: None,
                     active_response_profile: None,
+                    behavior_sets: BTreeMap::new(),
+                    active_behavior_set: None,
                     readiness_timeout_ms: None,
                 },
             )]),
@@ -1496,9 +1778,14 @@ sessions:
             response_profiles: BTreeMap::new(),
             active_response_profile: None,
             actions: BTreeMap::new(),
+            behaviors: BTreeMap::new(),
+            behavior_sets: BTreeMap::new(),
+            active_behavior_set: None,
             point_catalog: BTreeMap::new(),
             datastore_policies: Vec::new(),
             action_binding_summaries: Vec::new(),
+            behavior_binding_summaries: Vec::new(),
+            compiled_behavior_bindings: Vec::new(),
             readiness_timeout_ms: None,
         };
 
@@ -1550,9 +1837,14 @@ sessions:
             )]),
             active_response_profile: Some("slow".into()),
             actions: BTreeMap::new(),
+            behaviors: BTreeMap::new(),
+            behavior_sets: BTreeMap::new(),
+            active_behavior_set: None,
             point_catalog: BTreeMap::new(),
             datastore_policies: Vec::new(),
             action_binding_summaries: Vec::new(),
+            behavior_binding_summaries: Vec::new(),
+            compiled_behavior_bindings: Vec::new(),
             readiness_timeout_ms: None,
         };
 

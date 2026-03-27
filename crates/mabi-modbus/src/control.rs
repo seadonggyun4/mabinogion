@@ -20,7 +20,7 @@ use mabi_runtime::{
 
 use crate::error::{ModbusError, ModbusResult};
 use crate::simulator::{
-    ActionBindingSummary, CompiledModbusSession, DatastorePolicySummary,
+    ActionBindingSummary, BehaviorBindingSummary, CompiledModbusSession, DatastorePolicySummary,
 };
 
 /// Lifecycle-oriented control surface for a simulator session.
@@ -68,9 +68,19 @@ pub trait ResponseProfilePort: Send {
     async fn clear_response_profile(&mut self) -> ModbusResult<SessionSnapshot>;
 }
 
+/// Named behavior-set control surface.
+#[async_trait]
+pub trait BehaviorSetPort: Send {
+    fn available_behavior_sets(&self) -> Vec<String>;
+    fn active_behavior_set(&self) -> Option<String>;
+    async fn apply_behavior_set(&mut self, name: &str) -> ModbusResult<SessionSnapshot>;
+    async fn clear_behavior_set(&mut self) -> ModbusResult<SessionSnapshot>;
+}
+
 /// Static simulator metadata exposed through the control plane.
 pub trait SessionMetadataPort {
     fn action_binding_summaries(&self) -> &[ActionBindingSummary];
+    fn behavior_binding_summaries(&self) -> &[BehaviorBindingSummary];
     fn datastore_policy_summaries(&self) -> &[DatastorePolicySummary];
 }
 
@@ -97,6 +107,7 @@ pub struct PointDescriptor {
     pub read_only: bool,
     pub invalid: bool,
     pub action_bindings: Vec<String>,
+    pub behavior_bindings: Vec<String>,
     pub source_datastore: Option<String>,
     pub tags: Tags,
 }
@@ -123,6 +134,7 @@ pub struct SessionStatus {
     pub session_name: String,
     pub active_fault_preset: Option<String>,
     pub active_response_profile: Option<String>,
+    pub active_behavior_set: Option<String>,
     pub trace_enabled: bool,
     pub trace_entries: usize,
     pub services: usize,
@@ -503,6 +515,7 @@ impl SessionControlPort for ModbusControlSession {
             session_name: self.compiled.session_name.clone(),
             active_fault_preset: self.compiled.active_fault_preset.clone(),
             active_response_profile: self.compiled.active_response_profile.clone(),
+            active_behavior_set: self.compiled.active_behavior_set.clone(),
             trace_enabled: self.compiled.trace.enabled,
             trace_entries: self.trace_store.len(),
             services: self.runtime_session.handles().len(),
@@ -527,6 +540,9 @@ impl SessionControlPort for ModbusControlSession {
         }
         if self.compiled.reset.clear_response_profile {
             compiled = compiled.with_active_response_profile(None)?;
+        }
+        if self.compiled.reset.clear_behavior_set {
+            compiled = compiled.with_active_behavior_set(None)?;
         }
         self.rebuild(compiled, self.compiled.reset.clear_trace_buffer)
             .await?;
@@ -579,6 +595,11 @@ impl PointCatalogPort for ModbusControlSession {
                         .compiled
                         .point_metadata(&info.id, &point.id)
                         .map(|metadata| metadata.action_bindings.clone())
+                        .unwrap_or_default(),
+                    behavior_bindings: self
+                        .compiled
+                        .point_metadata(&info.id, &point.id)
+                        .map(|metadata| metadata.behavior_bindings.clone())
                         .unwrap_or_default(),
                     source_datastore: self
                         .compiled
@@ -694,8 +715,35 @@ impl SessionMetadataPort for ModbusControlSession {
         &self.compiled.action_binding_summaries
     }
 
+    fn behavior_binding_summaries(&self) -> &[BehaviorBindingSummary] {
+        &self.compiled.behavior_binding_summaries
+    }
+
     fn datastore_policy_summaries(&self) -> &[DatastorePolicySummary] {
         &self.compiled.datastore_policies
+    }
+}
+
+#[async_trait]
+impl BehaviorSetPort for ModbusControlSession {
+    fn available_behavior_sets(&self) -> Vec<String> {
+        self.compiled.behavior_sets.keys().cloned().collect()
+    }
+
+    fn active_behavior_set(&self) -> Option<String> {
+        self.compiled.active_behavior_set.clone()
+    }
+
+    async fn apply_behavior_set(&mut self, name: &str) -> ModbusResult<SessionSnapshot> {
+        let compiled = self.compiled.with_active_behavior_set(Some(name))?;
+        self.rebuild(compiled, false).await?;
+        self.snapshot().await
+    }
+
+    async fn clear_behavior_set(&mut self) -> ModbusResult<SessionSnapshot> {
+        let compiled = self.compiled.with_active_behavior_set(None)?;
+        self.rebuild(compiled, false).await?;
+        self.snapshot().await
     }
 }
 
@@ -714,8 +762,8 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        FaultPresetPort, ModbusControlSession, PointCatalogPort, PointTarget, RegisterControlPort,
-        ResponseProfilePort, SessionControlPort, TracePort,
+        BehaviorSetPort, FaultPresetPort, ModbusControlSession, PointCatalogPort, PointTarget,
+        RegisterControlPort, ResponseProfilePort, SessionControlPort, TracePort,
     };
     use crate::fault_injection::FaultInjectionConfig;
     use crate::profile::{PointProfile, SimulatorProfile, UnitProfile};
@@ -780,6 +828,14 @@ mod tests {
             )]),
             active_response_profile: None,
             actions: BTreeMap::new(),
+            behaviors: BTreeMap::new(),
+            behavior_sets: BTreeMap::from([(
+                "maintenance".to_string(),
+                crate::simulator::BehaviorSetDefinition {
+                    behaviors: vec!["temperature_guard".into()],
+                },
+            )]),
+            active_behavior_set: None,
             point_catalog: BTreeMap::from([(
                 "modbus-1/temperature".to_string(),
                 CompiledPointMetadata {
@@ -789,10 +845,13 @@ mod tests {
                     read_only: false,
                     invalid: false,
                     action_bindings: vec!["clamp_temp@on_write".into()],
+                    behavior_bindings: vec!["temperature_guard@maintenance".into()],
                 },
             )]),
             datastore_policies: Vec::new(),
             action_binding_summaries: Vec::new(),
+            behavior_binding_summaries: Vec::new(),
+            compiled_behavior_bindings: Vec::new(),
             readiness_timeout_ms: Some(500),
         }
     }
@@ -807,6 +866,7 @@ mod tests {
         let points = session.list_points(&Default::default()).unwrap();
         assert_eq!(points.len(), 1);
         assert_eq!(points[0].action_bindings, vec!["clamp_temp@on_write"]);
+        assert_eq!(points[0].behavior_bindings, vec!["temperature_guard@maintenance"]);
         assert_eq!(points[0].source_datastore.as_deref(), Some("inline"));
 
         session
@@ -854,6 +914,7 @@ mod tests {
         let mut compiled = compiled_session();
         compiled.active_fault_preset = Some("drop".into());
         compiled.active_response_profile = Some("slow".into());
+        compiled.active_behavior_set = Some("maintenance".into());
 
         let mut session = ModbusControlSession::new(registry(), compiled, Duration::from_secs(1))
             .await
@@ -873,6 +934,7 @@ mod tests {
         let snapshot = session.reset().await.unwrap();
         assert!(snapshot.status.active_fault_preset.is_none());
         assert!(snapshot.status.active_response_profile.is_none());
+        assert!(snapshot.status.active_behavior_set.is_none());
         assert_eq!(snapshot.status.trace_entries, 0);
 
         session.stop().await.unwrap();
@@ -893,6 +955,25 @@ mod tests {
 
         let snapshot = session.clear_response_profile().await.unwrap();
         assert!(snapshot.status.active_response_profile.is_none());
+
+        session.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn control_session_can_apply_and_clear_behavior_sets() {
+        let mut session =
+            ModbusControlSession::new(registry(), compiled_session(), Duration::from_secs(1))
+                .await
+                .unwrap();
+
+        let snapshot = session.apply_behavior_set("maintenance").await.unwrap();
+        assert_eq!(
+            snapshot.status.active_behavior_set.as_deref(),
+            Some("maintenance")
+        );
+
+        let snapshot = session.clear_behavior_set().await.unwrap();
+        assert!(snapshot.status.active_behavior_set.is_none());
 
         session.stop().await.unwrap();
     }

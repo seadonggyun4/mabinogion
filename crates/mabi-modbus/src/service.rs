@@ -2,16 +2,19 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
-use crate::context::{AddressSpace, RequestTarget, ServerContext, SharedAddressSpace};
+use crate::context::{RequestTarget, SharedAddressSpace};
 use crate::core::{
-    build_exception_pdu, parse_semantic_request, ExceptionCode, FunctionCode, RequestPdu,
-    ResponsePdu, SemanticRequest, SemanticResponse,
+    parse_semantic_request, ExceptionCode, FunctionCode, RequestPdu, ResponsePdu,
 };
 use crate::error::ModbusError;
 use crate::handler::{HandlerContext, HandlerRegistry};
 use crate::handler::FunctionHandler;
+use crate::semantic::{SemanticCore, SemanticFailure};
+pub use crate::transport_runtime::{
+    execute_transport_request, ExecutedTransportRequest, TransportDisposition,
+    TransportServicePolicy, UnknownUnitBehavior,
+};
 use crate::types::WordOrder;
 
 #[derive(Clone)]
@@ -158,13 +161,16 @@ pub enum ServiceOutcome {
 }
 
 impl ServiceOutcome {
-    fn into_transport_disposition(self, function_code: u8, is_broadcast: bool) -> TransportDisposition {
+    pub(crate) fn into_transport_disposition(
+        self,
+        function_code: u8,
+        is_broadcast: bool,
+    ) -> TransportDisposition {
         let disposition = match self {
             Self::Reply(response) => TransportDisposition::Reply(response),
             Self::Ignore => TransportDisposition::Ignore,
             Self::Exception(code) => {
-                let response = ResponsePdu::new(build_exception_pdu(function_code, code))
-                    .expect("exception PDUs are always valid");
+                let response = crate::transport_runtime::exception_response(function_code, code);
                 TransportDisposition::Reply(response)
             }
         };
@@ -463,7 +469,9 @@ impl ExtensionHandler for LegacyExtensionHandler {
         {
             Ok(response) => match ResponsePdu::new(response) {
                 Ok(response) => ServiceOutcome::Reply(response),
-                Err(error) => ServiceOutcome::Exception(map_modbus_error(error)),
+                Err(error) => ServiceOutcome::Exception(
+                    SemanticFailure::from_modbus_error(error).exception_code(),
+                ),
             },
             Err(error) => ServiceOutcome::Exception(error),
         }
@@ -489,130 +497,10 @@ pub trait ModbusService: Send + Sync {
     fn call_view(&self, request: ServiceRequestView<'_>) -> ServiceOutcome {
         match request.to_owned() {
             Ok(request) => self.call(&request),
-            Err(error) => ServiceOutcome::Exception(map_modbus_error(error)),
+            Err(error) => ServiceOutcome::Exception(
+                SemanticFailure::from_modbus_error(error).exception_code(),
+            ),
         }
-    }
-}
-
-/// Behavior for requests that target an unknown unit.
-#[derive(Debug, Clone, Copy)]
-pub enum UnknownUnitBehavior {
-    Ignore,
-    Exception(ExceptionCode),
-}
-
-/// Shared transport policy used by both TCP and RTU request loops.
-#[derive(Debug, Clone, Copy)]
-pub struct TransportServicePolicy {
-    pub request_timeout: Option<Duration>,
-    pub unknown_unit_behavior: UnknownUnitBehavior,
-}
-
-impl TransportServicePolicy {
-    pub fn new(unknown_unit_behavior: UnknownUnitBehavior) -> Self {
-        Self {
-            request_timeout: None,
-            unknown_unit_behavior,
-        }
-    }
-
-    pub fn with_request_timeout(mut self, timeout: Option<Duration>) -> Self {
-        self.request_timeout = timeout;
-        self
-    }
-}
-
-/// Shared result returned by the transport-neutral request skeleton.
-#[derive(Debug, Clone)]
-pub struct ExecutedTransportRequest {
-    pub function_code: u8,
-    pub unit_id: u8,
-    pub timed_out: bool,
-    pub disposition: TransportDisposition,
-}
-
-impl ExecutedTransportRequest {
-    pub fn is_broadcast(&self) -> bool {
-        matches!(
-            self.disposition,
-            TransportDisposition::BroadcastSuppressed(_)
-        )
-    }
-
-    pub fn response_pdu(&self) -> Option<&ResponsePdu> {
-        match &self.disposition {
-            TransportDisposition::Reply(response)
-            | TransportDisposition::BroadcastSuppressed(response) => Some(response),
-            TransportDisposition::Ignore => None,
-        }
-    }
-}
-
-/// Transport disposition after semantic execution.
-#[derive(Debug, Clone)]
-pub enum TransportDisposition {
-    Reply(ResponsePdu),
-    BroadcastSuppressed(ResponsePdu),
-    Ignore,
-}
-
-/// Execute a raw transport request against the shared semantic service core.
-pub async fn execute_transport_request(
-    service: &dyn ModbusService,
-    server_context: &ServerContext,
-    unit_id: u8,
-    transaction_id: u16,
-    raw_pdu: &[u8],
-    policy: TransportServicePolicy,
-) -> ExecutedTransportRequest {
-    let function_code = raw_pdu.first().copied().unwrap_or(0);
-    let is_broadcast = unit_id == 0;
-
-    if raw_pdu.is_empty() {
-        return ExecutedTransportRequest {
-            function_code,
-            unit_id,
-            timed_out: false,
-            disposition: ServiceOutcome::Exception(ExceptionCode::IllegalDataValue)
-                .into_transport_disposition(function_code, is_broadcast),
-        };
-    }
-
-    let broadcast_targets;
-    let unicast_target;
-    let service_request = if is_broadcast {
-        broadcast_targets = server_context.broadcast_targets();
-        ServiceRequestView::broadcast(transaction_id, raw_pdu, &broadcast_targets)
-    } else if let Some(target) = server_context.target_for_unit(unit_id) {
-        unicast_target = target;
-        ServiceRequestView::new(unit_id, transaction_id, raw_pdu, &unicast_target)
-    } else {
-        return ExecutedTransportRequest {
-            function_code,
-            unit_id,
-            timed_out: false,
-            disposition: match policy.unknown_unit_behavior {
-                UnknownUnitBehavior::Ignore => ServiceOutcome::Ignore,
-                UnknownUnitBehavior::Exception(code) => ServiceOutcome::Exception(code),
-            }
-            .into_transport_disposition(function_code, is_broadcast),
-        };
-    };
-
-    let (outcome, timed_out) = if let Some(timeout) = policy.request_timeout {
-        match tokio::time::timeout(timeout, async { service.call_view(service_request) }).await {
-            Ok(outcome) => (outcome, false),
-            Err(_) => (ServiceOutcome::Exception(ExceptionCode::SlaveDeviceBusy), true),
-        }
-    } else {
-        (service.call_view(service_request), false)
-    };
-
-    ExecutedTransportRequest {
-        function_code,
-        unit_id,
-        timed_out,
-        disposition: outcome.into_transport_disposition(function_code, is_broadcast),
     }
 }
 
@@ -620,77 +508,23 @@ pub async fn execute_transport_request(
 /// compatibility registry for custom function handlers.
 #[derive(Clone, Default)]
 pub struct StandardModbusService {
+    semantic_core: SemanticCore,
     custom_extensions: Option<Arc<ExtensionRegistry>>,
 }
 
 impl StandardModbusService {
     pub fn new(handlers: HandlerRegistry) -> Self {
         Self {
+            semantic_core: SemanticCore,
             custom_extensions: Some(Arc::new(ExtensionRegistry::from(handlers))),
         }
     }
 
     pub fn with_extensions(extensions: ExtensionRegistry) -> Self {
         Self {
+            semantic_core: SemanticCore,
             custom_extensions: Some(Arc::new(extensions)),
         }
-    }
-
-    fn execute_builtin_unicast(
-        &self,
-        request: &SemanticRequest,
-        target: &RequestTarget,
-    ) -> Result<SemanticResponse, ExceptionCode> {
-        execute_builtin(request, target.address_space().as_ref())
-    }
-
-    fn execute_builtin_broadcast(
-        &self,
-        request: &SemanticRequest,
-        targets: &[RequestTarget],
-    ) -> Result<SemanticResponse, ExceptionCode> {
-        for target in targets {
-            execute_builtin_write_only(request, target.address_space().as_ref())?;
-        }
-
-        Ok(match request {
-            SemanticRequest::WriteSingleCoil { address, value } => {
-                SemanticResponse::WriteSingleCoilAck {
-                    address: *address,
-                    value: *value,
-                }
-            }
-            SemanticRequest::WriteSingleRegister { address, value } => {
-                SemanticResponse::WriteSingleRegisterAck {
-                    address: *address,
-                    value: *value,
-                }
-            }
-            SemanticRequest::WriteMultipleCoils { address, values } => {
-                SemanticResponse::WriteMultipleAck {
-                    function: FunctionCode::WriteMultipleCoils,
-                    address: *address,
-                    quantity: values.len() as u16,
-                }
-            }
-            SemanticRequest::WriteMultipleRegisters { address, values } => {
-                SemanticResponse::WriteMultipleAck {
-                    function: FunctionCode::WriteMultipleRegisters,
-                    address: *address,
-                    quantity: values.len() as u16,
-                }
-            }
-            SemanticRequest::MaskWriteRegister {
-                address,
-                and_mask,
-                or_mask,
-            } => SemanticResponse::MaskWriteAck {
-                address: *address,
-                and_mask: *and_mask,
-                or_mask: *or_mask,
-            },
-            _ => return Err(ExceptionCode::IllegalFunction),
-        })
     }
 
     fn dispatch_custom_raw(
@@ -730,7 +564,7 @@ impl StandardModbusService {
             Err(error) => return ServiceOutcome::Exception(error),
         };
         let response = if is_broadcast {
-            match self.execute_builtin_broadcast(
+            match self.semantic_core.execute_broadcast(
                 &semantic,
                 match targets {
                     ServiceTargetsRef::Broadcast(targets) => targets,
@@ -738,16 +572,16 @@ impl StandardModbusService {
                 },
             ) {
                 Ok(response) => response,
-                Err(error) => return ServiceOutcome::Exception(error),
+                Err(error) => return ServiceOutcome::Exception(error.exception_code()),
             }
         } else {
             let target = match targets {
                 ServiceTargetsRef::Unicast(target) => target,
                 ServiceTargetsRef::Broadcast(_) => unreachable!("broadcast handled separately"),
             };
-            match self.execute_builtin_unicast(&semantic, target) {
+            match self.semantic_core.execute_unicast(&semantic, target) {
                 Ok(response) => response,
-                Err(error) => return ServiceOutcome::Exception(error),
+                Err(error) => return ServiceOutcome::Exception(error.exception_code()),
             }
         };
 
@@ -785,154 +619,6 @@ impl ModbusService for StandardModbusService {
             request.pdu(),
             targets,
         )
-    }
-}
-
-fn execute_builtin(
-    request: &SemanticRequest,
-    address_space: &dyn AddressSpace,
-) -> Result<SemanticResponse, ExceptionCode> {
-    match request {
-        SemanticRequest::ReadCoils { address, quantity } => address_space
-            .read_coils(*address, *quantity)
-            .map(|values| SemanticResponse::Bits {
-                function: FunctionCode::ReadCoils,
-                values,
-            })
-            .map_err(map_modbus_error),
-        SemanticRequest::ReadDiscreteInputs { address, quantity } => address_space
-            .read_discrete_inputs(*address, *quantity)
-            .map(|values| SemanticResponse::Bits {
-                function: FunctionCode::ReadDiscreteInputs,
-                values,
-            })
-            .map_err(map_modbus_error),
-        SemanticRequest::ReadHoldingRegisters { address, quantity } => address_space
-            .read_holding_registers(*address, *quantity)
-            .map(|values| SemanticResponse::Registers {
-                function: FunctionCode::ReadHoldingRegisters,
-                values,
-            })
-            .map_err(map_modbus_error),
-        SemanticRequest::ReadInputRegisters { address, quantity } => address_space
-            .read_input_registers(*address, *quantity)
-            .map(|values| SemanticResponse::Registers {
-                function: FunctionCode::ReadInputRegisters,
-                values,
-            })
-            .map_err(map_modbus_error),
-        SemanticRequest::WriteSingleCoil { address, value } => {
-            address_space
-                .write_coil(*address, *value)
-                .map_err(map_modbus_error)?;
-            Ok(SemanticResponse::WriteSingleCoilAck {
-                address: *address,
-                value: *value,
-            })
-        }
-        SemanticRequest::WriteSingleRegister { address, value } => {
-            address_space
-                .write_holding_register(*address, *value)
-                .map_err(map_modbus_error)?;
-            Ok(SemanticResponse::WriteSingleRegisterAck {
-                address: *address,
-                value: *value,
-            })
-        }
-        SemanticRequest::WriteMultipleCoils { address, values } => {
-            address_space
-                .write_coils(*address, values)
-                .map_err(map_modbus_error)?;
-            Ok(SemanticResponse::WriteMultipleAck {
-                function: FunctionCode::WriteMultipleCoils,
-                address: *address,
-                quantity: values.len() as u16,
-            })
-        }
-        SemanticRequest::WriteMultipleRegisters { address, values } => {
-            address_space
-                .write_holding_registers(*address, values)
-                .map_err(map_modbus_error)?;
-            Ok(SemanticResponse::WriteMultipleAck {
-                function: FunctionCode::WriteMultipleRegisters,
-                address: *address,
-                quantity: values.len() as u16,
-            })
-        }
-        SemanticRequest::MaskWriteRegister {
-            address,
-            and_mask,
-            or_mask,
-        } => {
-            address_space
-                .mask_write_holding_register(*address, *and_mask, *or_mask)
-                .map_err(map_modbus_error)?;
-            Ok(SemanticResponse::MaskWriteAck {
-                address: *address,
-                and_mask: *and_mask,
-                or_mask: *or_mask,
-            })
-        }
-        SemanticRequest::ReadWriteMultipleRegisters {
-            read_address,
-            read_quantity,
-            write_address,
-            values,
-        } => {
-            address_space
-                .write_holding_registers(*write_address, values)
-                .map_err(map_modbus_error)?;
-            let registers = address_space
-                .read_holding_registers(*read_address, *read_quantity)
-                .map_err(map_modbus_error)?;
-            Ok(SemanticResponse::Registers {
-                function: FunctionCode::ReadWriteMultipleRegisters,
-                values: registers,
-            })
-        }
-        SemanticRequest::Custom { function_code, .. } => {
-            let _ = function_code;
-            Err(ExceptionCode::IllegalFunction)
-        }
-    }
-}
-
-fn execute_builtin_write_only(
-    request: &SemanticRequest,
-    address_space: &dyn AddressSpace,
-) -> Result<(), ExceptionCode> {
-    match request {
-        SemanticRequest::WriteSingleCoil { address, value } => address_space
-            .write_coil(*address, *value)
-            .map_err(map_modbus_error),
-        SemanticRequest::WriteSingleRegister { address, value } => address_space
-            .write_holding_register(*address, *value)
-            .map_err(map_modbus_error),
-        SemanticRequest::WriteMultipleCoils { address, values } => address_space
-            .write_coils(*address, values)
-            .map_err(map_modbus_error),
-        SemanticRequest::WriteMultipleRegisters { address, values } => address_space
-            .write_holding_registers(*address, values)
-            .map_err(map_modbus_error),
-        SemanticRequest::MaskWriteRegister {
-            address,
-            and_mask,
-            or_mask,
-        } => address_space
-            .mask_write_holding_register(*address, *and_mask, *or_mask)
-            .map_err(map_modbus_error),
-        _ => Err(ExceptionCode::IllegalFunction),
-    }
-}
-
-fn map_modbus_error(error: ModbusError) -> ExceptionCode {
-    match error {
-        ModbusError::InvalidAddress { .. } | ModbusError::DeviceNotFound { .. } => {
-            ExceptionCode::IllegalDataAddress
-        }
-        ModbusError::InvalidQuantity { .. } => ExceptionCode::IllegalDataAddress,
-        ModbusError::InvalidData(_) => ExceptionCode::IllegalDataValue,
-        _ => ExceptionCode::SlaveDeviceFailure,
     }
 }
 
