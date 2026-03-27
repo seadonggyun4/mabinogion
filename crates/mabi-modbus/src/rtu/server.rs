@@ -45,6 +45,7 @@ use crate::service::{
     execute_transport_request, ExtensionRegistry, StandardModbusService, TransportDisposition,
     TransportServicePolicy, UnknownUnitBehavior,
 };
+use crate::transport_runtime::TransportHookBundle;
 
 use super::codec::RtuTiming;
 use super::frame::{RtuFrame, RtuFrameError};
@@ -131,6 +132,33 @@ impl RtuRuntimePolicy {
     #[inline]
     fn should_record_transport_metrics(self) -> bool {
         self.record_transport_metrics
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RtuHookBundle {
+    transport: TransportHookBundle,
+    simulate_response_delay: bool,
+    additional_response_delay: Duration,
+    apply_timing_faults: bool,
+}
+
+impl RtuHookBundle {
+    fn new(
+        policy: RtuRuntimePolicy,
+        request_timeout: Duration,
+        simulate_response_delay: bool,
+        additional_response_delay: Duration,
+        apply_timing_faults: bool,
+    ) -> Self {
+        Self {
+            transport: TransportHookBundle::new()
+                .with_request_timeout(policy.request_timeout(request_timeout))
+                .with_transport_metrics(policy.should_record_transport_metrics()),
+            simulate_response_delay,
+            additional_response_delay,
+            apply_timing_faults,
+        }
     }
 }
 
@@ -690,9 +718,74 @@ impl ModbusRtuServer {
     }
 
     #[inline]
-    fn record_transport_timeout(&self, policy: RtuRuntimePolicy) {
-        if policy.should_record_transport_metrics() {
-            self.transport_metrics.record_timeout();
+    fn record_request_observation(
+        &self,
+        is_exception: bool,
+        latency_us: u64,
+        request_bytes: u64,
+        response_bytes: u64,
+    ) {
+        self.request_count.fetch_add(1, Ordering::Relaxed);
+        self.latency_sum.fetch_add(latency_us, Ordering::Relaxed);
+        self.stats
+            .record_request(is_exception, latency_us, request_bytes, response_bytes);
+    }
+
+    async fn send_response_bytes(
+        &self,
+        transport: &mut dyn RtuTransport,
+        policy: RtuRuntimePolicy,
+        hooks: RtuHookBundle,
+        bytes: &[u8],
+        allow_timing_faults: bool,
+        error_context: &str,
+    ) -> bool {
+        if allow_timing_faults && hooks.apply_timing_faults {
+            if let Some(ref timing_config) = self.rtu_timing_fault {
+                let plan = timing_config.build_timing_plan(bytes);
+                let mut total_sent = 0usize;
+                for segment in &plan.segments {
+                    if !segment.delay_before.is_zero() {
+                        tokio::time::sleep(segment.delay_before).await;
+                    }
+                    if let Err(error) = transport.write(&segment.data).await {
+                        error!("{error_context}: {error}");
+                        self.emit_event(
+                            policy,
+                            RtuServerEvent::Error {
+                                message: error.to_string(),
+                            },
+                        );
+                        return false;
+                    }
+                    total_sent += segment.data.len();
+                }
+                self.record_transport_bytes_sent(policy, total_sent);
+                return true;
+            }
+        }
+
+        if hooks.simulate_response_delay {
+            let delay =
+                transport.transmission_delay(bytes.len()) + hooks.additional_response_delay;
+            tokio::time::sleep(delay).await;
+        }
+
+        match transport.write(bytes).await {
+            Ok(_) => {
+                self.record_transport_bytes_sent(policy, bytes.len());
+                true
+            }
+            Err(error) => {
+                error!("{error_context}: {error}");
+                self.emit_event(
+                    policy,
+                    RtuServerEvent::Error {
+                        message: error.to_string(),
+                    },
+                );
+                false
+            }
         }
     }
 
@@ -744,6 +837,16 @@ impl ModbusRtuServer {
         mut transport: Box<dyn RtuTransport>,
     ) -> ModbusResult<()> {
         let policy = self.runtime_policy(transport.transport_type());
+        let hooks = RtuHookBundle::new(
+            policy,
+            self.config.request_timeout,
+            self.config.simulate_response_delay,
+            self.config.additional_response_delay,
+            self.rtu_timing_fault
+                .as_ref()
+                .map(|config| config.is_active())
+                .unwrap_or(false),
+        );
 
         // Update state
         {
@@ -797,8 +900,9 @@ impl ModbusRtuServer {
 
                     // Try to parse frame
                     if let Some(frame) = self.try_parse_frame(&mut frame_buffer, policy)? {
+                        let emit_events = self.should_emit_events(policy);
                         // Process request
-                        let response = self.process_request(&frame, policy).await;
+                        let response = self.process_request(&frame, hooks, emit_events).await;
                         rtu_request_number += 1;
 
                         if response.pdu.is_empty() {
@@ -831,200 +935,81 @@ impl ModbusRtuServer {
                                 response: fault_pdu,
                             }) => {
                                 tokio::time::sleep(delay).await;
-                                // Re-encode with faulted PDU
-                                let fault_frame = RtuFrame::response(&frame, fault_pdu);
-                                let response_bytes = fault_frame.encode();
-                                if self.config.simulate_response_delay {
-                                    let tx_delay =
-                                        transport.transmission_delay(response_bytes.len());
-                                    tokio::time::sleep(
-                                        tx_delay + self.config.additional_response_delay,
+                                let response_bytes = RtuFrame::response(&frame, fault_pdu).encode();
+                                let _ = self
+                                    .send_response_bytes(
+                                        transport.as_mut(),
+                                        policy,
+                                        hooks,
+                                        &response_bytes,
+                                        false,
+                                        "Failed to send delayed response",
                                     )
                                     .await;
-                                }
-                                if let Err(e) = transport.write(&response_bytes).await {
-                                    error!("Failed to send delayed response: {}", e);
-                                } else {
-                                    self.record_transport_bytes_sent(policy, response_bytes.len());
-                                }
                             }
                             Some(FaultAction::SendRawBytes(raw_bytes)) => {
-                                // Send raw wire bytes (used for CRC corruption, wrong unit_id)
-                                // Apply RTU timing faults if configured
-                                if let Some(ref timing_config) = self.rtu_timing_fault {
-                                    if timing_config.is_active() {
-                                        let plan = timing_config.build_timing_plan(&raw_bytes);
-                                        let mut total_sent = 0usize;
-                                        for segment in &plan.segments {
-                                            if !segment.delay_before.is_zero() {
-                                                tokio::time::sleep(segment.delay_before).await;
-                                            }
-                                            if let Err(e) = transport.write(&segment.data).await {
-                                                error!(
-                                                    "Failed to send timing segment (raw): {}",
-                                                    e
-                                                );
-                                                break;
-                                            }
-                                            total_sent += segment.data.len();
-                                        }
-                                        self.record_transport_bytes_sent(policy, total_sent);
-                                    } else {
-                                        if self.config.simulate_response_delay {
-                                            let delay =
-                                                transport.transmission_delay(raw_bytes.len());
-                                            tokio::time::sleep(
-                                                delay + self.config.additional_response_delay,
-                                            )
-                                            .await;
-                                        }
-                                        if let Err(e) = transport.write(&raw_bytes).await {
-                                            error!("Failed to send raw bytes: {}", e);
-                                        } else {
-                                            self.record_transport_bytes_sent(
-                                                policy,
-                                                raw_bytes.len(),
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    if self.config.simulate_response_delay {
-                                        let delay = transport.transmission_delay(raw_bytes.len());
-                                        tokio::time::sleep(
-                                            delay + self.config.additional_response_delay,
-                                        )
-                                        .await;
-                                    }
-                                    if let Err(e) = transport.write(&raw_bytes).await {
-                                        error!("Failed to send raw bytes: {}", e);
-                                    } else {
-                                        self.record_transport_bytes_sent(policy, raw_bytes.len());
-                                    }
-                                }
+                                let _ = self
+                                    .send_response_bytes(
+                                        transport.as_mut(),
+                                        policy,
+                                        hooks,
+                                        &raw_bytes,
+                                        true,
+                                        "Failed to send raw bytes",
+                                    )
+                                    .await;
                             }
                             Some(FaultAction::SendPartial { bytes }) => {
-                                // Send partial frame bytes
-                                if self.config.simulate_response_delay {
-                                    let delay = transport.transmission_delay(bytes.len());
-                                    tokio::time::sleep(
-                                        delay + self.config.additional_response_delay,
+                                let _ = self
+                                    .send_response_bytes(
+                                        transport.as_mut(),
+                                        policy,
+                                        hooks,
+                                        &bytes,
+                                        false,
+                                        "Failed to send partial frame",
                                     )
                                     .await;
-                                }
-                                if let Err(e) = transport.write(&bytes).await {
-                                    error!("Failed to send partial frame: {}", e);
-                                } else {
-                                    self.record_transport_bytes_sent(policy, bytes.len());
-                                }
                             }
                             Some(FaultAction::SendResponse(fault_pdu)) => {
-                                let fault_frame = RtuFrame::response(&frame, fault_pdu);
-                                let response_bytes = fault_frame.encode();
-                                if self.config.simulate_response_delay {
-                                    let delay = transport.transmission_delay(response_bytes.len());
-                                    tokio::time::sleep(
-                                        delay + self.config.additional_response_delay,
+                                let response_bytes = RtuFrame::response(&frame, fault_pdu).encode();
+                                let _ = self
+                                    .send_response_bytes(
+                                        transport.as_mut(),
+                                        policy,
+                                        hooks,
+                                        &response_bytes,
+                                        false,
+                                        "Failed to send faulted response",
                                     )
                                     .await;
-                                }
-                                if let Err(e) = transport.write(&response_bytes).await {
-                                    error!("Failed to send faulted response: {}", e);
-                                } else {
-                                    self.record_transport_bytes_sent(policy, response_bytes.len());
-                                }
                             }
                             Some(FaultAction::OverrideTransactionId { .. }) => {
                                 // TID override is TCP-only, send normal response for RTU
                                 let response_bytes = response.encode();
-                                if self.config.simulate_response_delay {
-                                    let delay = transport.transmission_delay(response_bytes.len());
-                                    tokio::time::sleep(
-                                        delay + self.config.additional_response_delay,
+                                let _ = self
+                                    .send_response_bytes(
+                                        transport.as_mut(),
+                                        policy,
+                                        hooks,
+                                        &response_bytes,
+                                        false,
+                                        "Failed to send response",
                                     )
                                     .await;
-                                }
-                                if let Err(e) = transport.write(&response_bytes).await {
-                                    error!("Failed to send response: {}", e);
-                                } else {
-                                    self.record_transport_bytes_sent(policy, response_bytes.len());
-                                }
                             }
                             None => {
-                                // Normal response path (no fault)
                                 let response_bytes = response.encode();
-
-                                // Apply RTU timing faults if configured
-                                if let Some(ref timing_config) = self.rtu_timing_fault {
-                                    if timing_config.is_active() {
-                                        let plan = timing_config.build_timing_plan(&response_bytes);
-                                        let mut total_sent = 0usize;
-                                        for segment in &plan.segments {
-                                            if !segment.delay_before.is_zero() {
-                                                tokio::time::sleep(segment.delay_before).await;
-                                            }
-                                            if let Err(e) = transport.write(&segment.data).await {
-                                                error!("Failed to send timing segment: {}", e);
-                                                self.emit_event(
-                                                    policy,
-                                                    RtuServerEvent::Error {
-                                                        message: e.to_string(),
-                                                    },
-                                                );
-                                                break;
-                                            }
-                                            total_sent += segment.data.len();
-                                        }
-                                        self.record_transport_bytes_sent(policy, total_sent);
-                                    } else {
-                                        // Timing config present but not active
-                                        if self.config.simulate_response_delay {
-                                            let delay =
-                                                transport.transmission_delay(response_bytes.len());
-                                            tokio::time::sleep(
-                                                delay + self.config.additional_response_delay,
-                                            )
-                                            .await;
-                                        }
-                                        if let Err(e) = transport.write(&response_bytes).await {
-                                            error!("Failed to send response: {}", e);
-                                            self.emit_event(
-                                                policy,
-                                                RtuServerEvent::Error {
-                                                    message: e.to_string(),
-                                                },
-                                            );
-                                        } else {
-                                            self.record_transport_bytes_sent(
-                                                policy,
-                                                response_bytes.len(),
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    // No timing config
-                                    if self.config.simulate_response_delay {
-                                        let delay =
-                                            transport.transmission_delay(response_bytes.len());
-                                        tokio::time::sleep(
-                                            delay + self.config.additional_response_delay,
-                                        )
-                                        .await;
-                                    }
-                                    if let Err(e) = transport.write(&response_bytes).await {
-                                        error!("Failed to send response: {}", e);
-                                        self.emit_event(
-                                            policy,
-                                            RtuServerEvent::Error {
-                                                message: e.to_string(),
-                                            },
-                                        );
-                                    } else {
-                                        self.record_transport_bytes_sent(
-                                            policy,
-                                            response_bytes.len(),
-                                        );
-                                    }
-                                }
+                                let _ = self
+                                    .send_response_bytes(
+                                        transport.as_mut(),
+                                        policy,
+                                        hooks,
+                                        &response_bytes,
+                                        true,
+                                        "Failed to send response",
+                                    )
+                                    .await;
                             }
                         }
                     }
@@ -1126,12 +1111,16 @@ impl ModbusRtuServer {
     }
 
     /// Process a request and generate a response.
-    async fn process_request(&self, request: &RtuFrame, policy: RtuRuntimePolicy) -> RtuFrame {
+    async fn process_request(
+        &self,
+        request: &RtuFrame,
+        hooks: RtuHookBundle,
+        emit_events: bool,
+    ) -> RtuFrame {
         let start = Instant::now();
         let unit_id = request.unit_id;
         let function_code = request.function_code().unwrap_or(0);
         let is_broadcast = unit_id == 0;
-        let emit_events = self.should_emit_events(policy);
 
         // Emit request event
         if emit_events {
@@ -1156,13 +1145,15 @@ impl ModbusRtuServer {
             0,
             request.pdu.as_slice(),
             TransportServicePolicy::new(UnknownUnitBehavior::Ignore)
-                .with_request_timeout(policy.request_timeout(self.config.request_timeout)),
+                .with_request_timeout(hooks.transport.request_timeout),
         )
         .await;
 
         if execution.timed_out {
             self.stats.record_timeout();
-            self.record_transport_timeout(policy);
+            if hooks.transport.record_transport_metrics {
+                self.transport_metrics.record_timeout();
+            }
         }
 
         let (is_exception, response) = match execution.disposition {
@@ -1181,10 +1172,7 @@ impl ModbusRtuServer {
 
         // Update statistics
         let latency_us = start.elapsed().as_micros() as u64;
-        self.request_count.fetch_add(1, Ordering::Relaxed);
-        self.latency_sum.fetch_add(latency_us, Ordering::Relaxed);
-
-        self.stats.record_request(
+        self.record_request_observation(
             is_exception,
             latency_us,
             request.frame_size() as u64,

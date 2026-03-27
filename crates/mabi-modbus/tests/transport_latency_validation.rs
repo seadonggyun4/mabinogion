@@ -1,5 +1,6 @@
 mod support;
 
+use std::sync::Mutex;
 use std::time::Instant;
 
 use mabi_modbus::rtu::PerformancePreset as RtuPerformancePreset;
@@ -13,6 +14,7 @@ const WARMUP_REQUESTS: usize = 200;
 const LATENCY_SAMPLES: usize = 2_000;
 const TCP_CHURN_WARMUP: usize = 24;
 const TCP_CHURN_SAMPLES: usize = 128;
+static TRANSPORT_LATENCY_GUARD: Mutex<()> = Mutex::new(());
 
 fn print_summary(label: &str, summary: LatencySummary) {
     println!(
@@ -81,6 +83,7 @@ async fn measure_rtu_bridge(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn report_transport_latency_profiles() {
+    let _guard = TRANSPORT_LATENCY_GUARD.lock().unwrap();
     let tcp_units = vec![1, 2, 3, 4];
     for (label, preset) in [
         ("tcp_default", TcpPerformancePreset::Default),

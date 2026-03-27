@@ -35,6 +35,7 @@ use crate::service::{
     execute_transport_request, ExtensionRegistry, StandardModbusService, TransportDisposition,
     TransportServicePolicy, UnknownUnitBehavior,
 };
+use crate::transport_runtime::TransportHookBundle;
 
 use super::codec::{MbapCodec, MbapFrame};
 use super::connection::{ConnectionPool, LifecycleEventOptions, RequestRecordOptions};
@@ -114,6 +115,7 @@ impl TcpRuntimePolicy {
         self.detailed_metrics
     }
 
+    #[cfg(test)]
     #[inline]
     fn should_record_latency(self, request_number: u64) -> bool {
         request_number & self.latency_sample_mask == 0
@@ -131,6 +133,46 @@ impl TcpRuntimePolicy {
         } else {
             LifecycleEventOptions::disabled()
         }
+    }
+
+    #[cfg(test)]
+    #[inline]
+    fn connection_record_options(self, request_number: u64) -> RequestRecordOptions {
+        if self.connection_metadata_sample_mask == 0 {
+            RequestRecordOptions::default()
+        } else {
+            RequestRecordOptions {
+                update_last_activity: request_number & self.connection_metadata_sample_mask == 0,
+                track_unit_access: false,
+                emit_event: false,
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TcpRequestHooks {
+    transport: TransportHookBundle,
+    detailed_metrics: bool,
+    latency_sample_mask: u64,
+    connection_metadata_sample_mask: u64,
+}
+
+impl TcpRequestHooks {
+    fn new(policy: TcpRuntimePolicy, request_timeout: Duration) -> Self {
+        Self {
+            transport: TransportHookBundle::new().with_request_timeout(
+                policy.request_timeout(request_timeout),
+            ),
+            detailed_metrics: policy.detailed_metrics(),
+            latency_sample_mask: policy.latency_sample_mask,
+            connection_metadata_sample_mask: policy.connection_metadata_sample_mask,
+        }
+    }
+
+    #[inline]
+    fn should_record_latency(self, request_number: u64) -> bool {
+        request_number & self.latency_sample_mask == 0
     }
 
     #[inline]
@@ -555,6 +597,7 @@ async fn handle_connection(
 ) -> ModbusResult<()> {
     debug!(peer = %peer_addr, connection_id, "Connection established");
     let runtime_policy = config.performance_preset.runtime_policy();
+    let request_hooks = TcpRequestHooks::new(runtime_policy, config.request_timeout);
 
     // Configure TCP socket
     if config.tcp_nodelay {
@@ -569,6 +612,7 @@ async fn handle_connection(
     let disruption_state = connection_disruption
         .as_ref()
         .map(|cfg| ConnectionDisruptionState::new((**cfg).clone()));
+    let fast_response_path = fault_pipeline.is_none() && disruption_state.is_none();
 
     loop {
         // Check shutdown
@@ -604,11 +648,11 @@ async fn handle_connection(
         let unit_id = frame.header.unit_id;
         let function_code = frame.function_code().unwrap_or(0);
 
-        metrics.record_request_with_options(function_code, runtime_policy.detailed_metrics());
+        metrics.record_request_with_options(function_code, request_hooks.detailed_metrics);
 
         request_number += 1;
-        let record_latency = runtime_policy.should_record_latency(request_number);
-        let connection_record_options = runtime_policy.connection_record_options(request_number);
+        let record_latency = request_hooks.should_record_latency(request_number);
+        let connection_record_options = request_hooks.connection_record_options(request_number);
 
         let execution = execute_transport_request(
             service.as_ref(),
@@ -619,7 +663,7 @@ async fn handle_connection(
             TransportServicePolicy::new(UnknownUnitBehavior::Exception(
                 ExceptionCode::GatewayTargetDeviceFailedToRespond,
             ))
-            .with_request_timeout(runtime_policy.request_timeout(config.request_timeout)),
+            .with_request_timeout(request_hooks.transport.request_timeout),
         )
         .await;
 
@@ -628,25 +672,21 @@ async fn handle_connection(
             metrics.record_timeout();
         }
 
-        let is_broadcast = execution.is_broadcast();
+        let execution_summary = execution.summary();
         let response_pdu = match execution.disposition {
             TransportDisposition::Ignore => continue,
-            TransportDisposition::BroadcastSuppressed(response) => {
-                let is_exception = response.is_exception();
+            TransportDisposition::BroadcastSuppressed(_response) => {
                 let latency = timer.elapsed_us();
-                if is_exception {
-                    metrics.record_exception(latency, request_bytes, 0);
-                } else {
-                    metrics.record_success_with_options(latency, request_bytes, 0, record_latency);
-                }
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    !is_exception,
                     latency,
                     request_bytes,
-                    0,
+                    TcpRecordedOutcome::new(execution_summary.is_exception, 0),
+                    record_latency,
                     connection_record_options,
                 );
                 continue;
@@ -654,25 +694,26 @@ async fn handle_connection(
             TransportDisposition::Reply(response) => response.into_bytes(),
         };
 
-        if is_broadcast {
-            let is_exception = response_pdu
-                .first()
-                .map(|fc| fc & 0x80 != 0)
-                .unwrap_or(false);
+        if fast_response_path {
+            let response_bytes = match send_tcp_response(&mut framed, &frame, response_pdu).await {
+                Ok(response_bytes) => response_bytes,
+                Err(e) => {
+                    warn!(peer = %peer_addr, error = %e, "Failed to send response");
+                    break;
+                }
+            };
+
             let latency = timer.elapsed_us();
-            if is_exception {
-                metrics.record_exception(latency, request_bytes, 0);
-            } else {
-                metrics.record_success_with_options(latency, request_bytes, 0, record_latency);
-            }
-            connections.record_request_with_options(
+            record_tcp_outcome(
+                metrics.as_ref(),
+                connections.as_ref(),
                 connection_id,
                 unit_id,
                 function_code,
-                !is_exception,
                 latency,
                 request_bytes,
-                0,
+                TcpRecordedOutcome::new(execution_summary.is_exception, response_bytes),
+                record_latency,
                 connection_record_options,
             );
             continue;
@@ -698,7 +739,18 @@ async fn handle_connection(
                 // Silent drop - no response sent
                 debug!(peer = %peer_addr, unit_id, fc = function_code, "Fault: dropping response");
                 let latency = timer.elapsed_us();
-                metrics.record_success_with_options(latency, request_bytes, 0, record_latency);
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
+                    connection_id,
+                    unit_id,
+                    function_code,
+                    latency,
+                    request_bytes,
+                    TcpRecordedOutcome::success(0),
+                    record_latency,
+                    connection_record_options,
+                );
                 continue;
             }
             Some(FaultAction::DelayThenSend {
@@ -706,37 +758,25 @@ async fn handle_connection(
                 response: fault_pdu,
             }) => {
                 tokio::time::sleep(delay).await;
-                let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
-                let response = MbapFrame::response(&frame, fault_pdu);
-                let response_bytes = response.frame_size() as u64;
-                if let Err(e) = framed.send(response).await {
-                    warn!(peer = %peer_addr, error = %e, "Failed to send delayed response");
-                    break;
-                }
+                let outcome = TcpRecordedOutcome::from_pdu(&fault_pdu, 0);
+                let response_bytes = match send_tcp_response(&mut framed, &frame, fault_pdu).await {
+                    Ok(response_bytes) => response_bytes,
+                    Err(e) => {
+                        warn!(peer = %peer_addr, error = %e, "Failed to send delayed response");
+                        break;
+                    }
+                };
                 let latency = timer.elapsed_us();
-                if is_exception {
-                    metrics.record_exception_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                } else {
-                    metrics.record_success_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                }
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    !is_exception,
                     latency,
                     request_bytes,
-                    response_bytes,
+                    outcome.with_response_bytes(response_bytes),
+                    record_latency,
                     connection_record_options,
                 );
             }
@@ -744,7 +784,7 @@ async fn handle_connection(
                 transaction_id,
                 response: fault_pdu,
             }) => {
-                let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
+                let outcome = TcpRecordedOutcome::from_pdu(&fault_pdu, 0);
                 let mut response = MbapFrame::response(&frame, fault_pdu);
                 response.header.transaction_id = transaction_id;
                 let response_bytes = response.frame_size() as u64;
@@ -753,163 +793,107 @@ async fn handle_connection(
                     break;
                 }
                 let latency = timer.elapsed_us();
-                if is_exception {
-                    metrics.record_exception_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                } else {
-                    metrics.record_success_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                }
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    !is_exception,
                     latency,
                     request_bytes,
-                    response_bytes,
+                    outcome.with_response_bytes(response_bytes),
+                    record_latency,
                     connection_record_options,
                 );
             }
             Some(FaultAction::SendRawBytes(raw_bytes)) => {
                 // For TCP: raw bytes include the complete MBAP frame, send directly
-                use tokio::io::AsyncWriteExt;
-                let inner = framed.get_mut();
-                let response_bytes = raw_bytes.len() as u64;
-                if let Err(e) = inner.write_all(&raw_bytes).await {
-                    warn!(peer = %peer_addr, error = %e, "Failed to send raw bytes");
-                    break;
-                }
-                let _ = inner.flush().await;
+                let response_bytes = match write_tcp_raw_bytes(&mut framed, &raw_bytes).await {
+                    Ok(response_bytes) => response_bytes,
+                    Err(e) => {
+                        warn!(peer = %peer_addr, error = %e, "Failed to send raw bytes");
+                        break;
+                    }
+                };
                 let latency = timer.elapsed_us();
-                metrics.record_success_with_options(
-                    latency,
-                    request_bytes,
-                    response_bytes,
-                    record_latency,
-                );
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    true,
                     latency,
                     request_bytes,
-                    response_bytes,
+                    TcpRecordedOutcome::success(response_bytes),
+                    record_latency,
                     connection_record_options,
                 );
             }
             Some(FaultAction::SendResponse(fault_pdu)) => {
-                let is_exception = fault_pdu.first().map(|&fc| fc & 0x80 != 0).unwrap_or(false);
-                let response = MbapFrame::response(&frame, fault_pdu);
-                let response_bytes = response.frame_size() as u64;
-                if let Err(e) = framed.send(response).await {
-                    warn!(peer = %peer_addr, error = %e, "Failed to send faulted response");
-                    break;
-                }
+                let outcome = TcpRecordedOutcome::from_pdu(&fault_pdu, 0);
+                let response_bytes = match send_tcp_response(&mut framed, &frame, fault_pdu).await {
+                    Ok(response_bytes) => response_bytes,
+                    Err(e) => {
+                        warn!(peer = %peer_addr, error = %e, "Failed to send faulted response");
+                        break;
+                    }
+                };
                 let latency = timer.elapsed_us();
-                if is_exception {
-                    metrics.record_exception_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                } else {
-                    metrics.record_success_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                }
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    !is_exception,
                     latency,
                     request_bytes,
-                    response_bytes,
+                    outcome.with_response_bytes(response_bytes),
+                    record_latency,
                     connection_record_options,
                 );
             }
             Some(FaultAction::SendPartial { bytes }) => {
                 // Partial frames are RTU-only, but handle gracefully for TCP
-                use tokio::io::AsyncWriteExt;
-                let inner = framed.get_mut();
-                let response_bytes = bytes.len() as u64;
-                if let Err(e) = inner.write_all(&bytes).await {
-                    warn!(peer = %peer_addr, error = %e, "Failed to send partial bytes");
-                    break;
-                }
-                let _ = inner.flush().await;
+                let response_bytes = match write_tcp_raw_bytes(&mut framed, &bytes).await {
+                    Ok(response_bytes) => response_bytes,
+                    Err(e) => {
+                        warn!(peer = %peer_addr, error = %e, "Failed to send partial bytes");
+                        break;
+                    }
+                };
                 let latency = timer.elapsed_us();
-                metrics.record_success_with_options(
-                    latency,
-                    request_bytes,
-                    response_bytes,
-                    record_latency,
-                );
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    true,
                     latency,
                     request_bytes,
-                    response_bytes,
+                    TcpRecordedOutcome::success(response_bytes),
+                    record_latency,
                     connection_record_options,
                 );
             }
             None => {
-                // No fault — normal response path
-                let is_exception = response_pdu
-                    .first()
-                    .map(|&fc| fc & 0x80 != 0)
-                    .unwrap_or(false);
-                let response = MbapFrame::response(&frame, response_pdu);
-                let response_bytes = response.frame_size() as u64;
-
-                if let Err(e) = framed.send(response).await {
-                    warn!(peer = %peer_addr, error = %e, "Failed to send response");
-                    break;
-                }
-
-                // Record metrics
+                let response_bytes = match send_tcp_response(&mut framed, &frame, response_pdu).await {
+                    Ok(response_bytes) => response_bytes,
+                    Err(e) => {
+                        warn!(peer = %peer_addr, error = %e, "Failed to send response");
+                        break;
+                    }
+                };
                 let latency = timer.elapsed_us();
-                if is_exception {
-                    metrics.record_exception_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                } else {
-                    metrics.record_success_with_options(
-                        latency,
-                        request_bytes,
-                        response_bytes,
-                        record_latency,
-                    );
-                }
-
-                connections.record_request_with_options(
+                record_tcp_outcome(
+                    metrics.as_ref(),
+                    connections.as_ref(),
                     connection_id,
                     unit_id,
                     function_code,
-                    !is_exception,
                     latency,
                     request_bytes,
-                    response_bytes,
+                    TcpRecordedOutcome::new(execution_summary.is_exception, response_bytes),
+                    record_latency,
                     connection_record_options,
                 );
             }
@@ -972,6 +956,105 @@ async fn handle_connection(
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TcpRecordedOutcome {
+    is_exception: bool,
+    response_bytes: u64,
+}
+
+impl TcpRecordedOutcome {
+    fn new(is_exception: bool, response_bytes: u64) -> Self {
+        Self {
+            is_exception,
+            response_bytes,
+        }
+    }
+
+    fn success(response_bytes: u64) -> Self {
+        Self::new(false, response_bytes)
+    }
+
+    fn from_pdu(response_pdu: &[u8], response_bytes: u64) -> Self {
+        Self::new(
+            response_pdu
+                .first()
+                .map(|function_code| function_code & 0x80 != 0)
+                .unwrap_or(false),
+            response_bytes,
+        )
+    }
+
+    fn with_response_bytes(self, response_bytes: u64) -> Self {
+        Self {
+            response_bytes,
+            ..self
+        }
+    }
+}
+
+fn record_tcp_outcome(
+    metrics: &ServerMetrics,
+    connections: &ConnectionPool,
+    connection_id: u64,
+    unit_id: u8,
+    function_code: u8,
+    latency_us: u64,
+    request_bytes: u64,
+    outcome: TcpRecordedOutcome,
+    record_latency: bool,
+    connection_record_options: RequestRecordOptions,
+) {
+    if outcome.is_exception {
+        metrics.record_exception_with_options(
+            latency_us,
+            request_bytes,
+            outcome.response_bytes,
+            record_latency,
+        );
+    } else {
+        metrics.record_success_with_options(
+            latency_us,
+            request_bytes,
+            outcome.response_bytes,
+            record_latency,
+        );
+    }
+
+    connections.record_request_with_options(
+        connection_id,
+        unit_id,
+        function_code,
+        !outcome.is_exception,
+        latency_us,
+        request_bytes,
+        outcome.response_bytes,
+        connection_record_options,
+    );
+}
+
+async fn send_tcp_response(
+    framed: &mut Framed<TcpStream, MbapCodec>,
+    request_frame: &MbapFrame,
+    response_pdu: Vec<u8>,
+) -> ModbusResult<u64> {
+    let response = MbapFrame::response(request_frame, response_pdu);
+    let response_bytes = response.frame_size() as u64;
+    framed.send(response).await?;
+    Ok(response_bytes)
+}
+
+async fn write_tcp_raw_bytes(
+    framed: &mut Framed<TcpStream, MbapCodec>,
+    raw_bytes: &[u8],
+) -> std::io::Result<u64> {
+    use tokio::io::AsyncWriteExt;
+
+    let inner = framed.get_mut();
+    inner.write_all(raw_bytes).await?;
+    inner.flush().await?;
+    Ok(raw_bytes.len() as u64)
 }
 
 #[cfg(test)]

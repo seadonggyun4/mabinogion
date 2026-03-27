@@ -3,6 +3,7 @@
 mod support;
 
 use std::future::Future;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use mabi_modbus::rtu::PerformancePreset as RtuPerformancePreset;
@@ -20,6 +21,7 @@ const RUNS: usize = 3;
 const TCP_REQUEST_NOISE_TOLERANCE_US: u64 = 25;
 const TCP_CHURN_NOISE_TOLERANCE_US: u64 = 25;
 const MEASUREMENT_TIMEOUT: Duration = Duration::from_secs(15);
+static TRANSPORT_PERF_GUARD: Mutex<()> = Mutex::new(());
 
 fn median(mut values: Vec<u64>) -> u64 {
     values.sort_unstable();
@@ -148,6 +150,7 @@ async fn rtu_bridge_summary(preset: RtuPerformancePreset, unit_ids: &[u8]) -> La
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
 async fn high_throughput_is_not_slower_than_default_on_warm_transport_paths() {
+    let _guard = TRANSPORT_PERF_GUARD.lock().unwrap();
     let unit_ids = vec![1, 2, 3, 4];
 
     let mut tcp_default = Vec::with_capacity(RUNS);
