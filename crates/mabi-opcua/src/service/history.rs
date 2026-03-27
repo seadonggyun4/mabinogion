@@ -18,7 +18,7 @@ use crate::codec::data_value::ExtensionObject;
 use crate::codec::decoder::BinaryDecodable;
 use crate::codec::encoder::BinaryEncodable;
 use crate::error::OpcUaResult;
-use crate::services::history::{
+use crate::sdk::history::{
     AggregateConfig, AggregateType, ReadProcessedDetails, ReadRawModifiedDetails,
 };
 use crate::types::{NodeId, StatusCode};
@@ -227,7 +227,7 @@ fn aggregate_type_from_node_id(node_id: &NodeId) -> AggregateType {
 }
 
 /// Encode a HistoryReadResult into the output buffer.
-fn encode_history_result(out: &mut BytesMut, result: &crate::services::history::HistoryReadResult) {
+fn encode_history_result(out: &mut BytesMut, result: &crate::sdk::history::HistoryReadResult) {
     result.status.encode(out).ok();
 
     // ContinuationPoint (ByteString)

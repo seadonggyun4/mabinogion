@@ -29,6 +29,9 @@ use uuid::Uuid;
 
 use crate::nodes::reference::ReferenceTypeId;
 use crate::nodes::{AddressSpace, BrowseDirection, QualifiedName};
+use crate::sdk::address_space::{BrowsePort, TypeHierarchyPort};
+use crate::sdk::subscription::EventSubscriptionPort;
+use crate::sdk::subscription::SubscriptionManager;
 use crate::types::{AttributeId, NodeId, Variant};
 
 // =========================================================================
@@ -335,20 +338,23 @@ pub const BASE_EVENT_TYPE_ID: u32 = 2041;
 /// 5. Pushes the EventNotification into the subscription's pending queue
 pub struct EventManager {
     /// Reference to the subscription manager for distributing events.
-    subscription_manager: Arc<super::subscription::SubscriptionManager>,
-    /// Reference to the address space for type hierarchy checks.
-    address_space: Arc<AddressSpace>,
+    subscription_port: Arc<dyn EventSubscriptionPort>,
+    /// Browse/query port for address-space traversal.
+    browse_port: Arc<dyn BrowsePort>,
+    /// Type hierarchy seam for event subtype checks.
+    type_hierarchy_port: Arc<dyn TypeHierarchyPort>,
 }
 
 impl EventManager {
     /// Create a new EventManager.
     pub fn new(
-        subscription_manager: Arc<super::subscription::SubscriptionManager>,
+        subscription_manager: Arc<SubscriptionManager>,
         address_space: Arc<AddressSpace>,
     ) -> Self {
         Self {
-            subscription_manager,
-            address_space,
+            subscription_port: subscription_manager,
+            browse_port: address_space.clone(),
+            type_hierarchy_port: address_space,
         }
     }
 
@@ -389,7 +395,7 @@ impl EventManager {
             "Firing event"
         );
 
-        let sub_ids = self.subscription_manager.subscription_ids();
+        let sub_ids = self.subscription_port.subscription_ids();
 
         for sub_id in &sub_ids {
             self.distribute_to_subscription(*sub_id, event_data);
@@ -400,7 +406,7 @@ impl EventManager {
     fn distribute_to_subscription(&self, subscription_id: u32, event_data: &EventData) {
         // Get event-monitoring items and their filters for this subscription
         let event_items = self
-            .subscription_manager
+            .subscription_port
             .get_event_monitored_items(subscription_id);
 
         for (client_handle, filter) in &event_items {
@@ -427,7 +433,7 @@ impl EventManager {
             };
 
             // Push to subscription's event notification queue
-            self.subscription_manager
+            self.subscription_port
                 .push_event_notification(subscription_id, field_list);
         }
     }
@@ -583,42 +589,20 @@ impl EventManager {
 
     /// Check if `event_type` is the same as or a subtype of `target_type`.
     fn is_subtype_of(&self, event_type: &NodeId, target_type: &NodeId) -> bool {
-        if event_type == target_type {
+        if self
+            .type_hierarchy_port
+            .is_node_subtype_of(event_type, target_type)
+        {
             return true;
         }
 
-        // Walk the HasSubtype hierarchy in the address space (inverse direction = parent type)
-        let mut current = event_type.clone();
-        let mut depth = 0;
-        const MAX_DEPTH: usize = 50;
-
-        while depth < MAX_DEPTH {
-            // Find the parent type (inverse HasSubtype reference)
-            let refs = self
-                .address_space
-                .get_references(&current, BrowseDirection::Inverse);
-            let parent = refs.iter().find_map(|r| {
-                if r.reference_type_id == ReferenceTypeId::HasSubtype {
-                    // Inverse HasSubtype: target_node_id is the parent type
-                    Some(r.target_node_id.clone())
-                } else {
-                    None
-                }
-            });
-
-            match parent {
-                Some(parent_id) => {
-                    if parent_id == *target_type {
-                        return true;
-                    }
-                    current = parent_id;
-                    depth += 1;
-                }
-                None => break,
-            }
-        }
-
-        false
+        self.browse_port
+            .get_references(event_type, BrowseDirection::Inverse)
+            .iter()
+            .any(|reference| {
+                reference.reference_type_id == ReferenceTypeId::HasSubtype
+                    && reference.target_node_id == *target_type
+            })
     }
 }
 

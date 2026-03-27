@@ -15,10 +15,10 @@ use crate::codec::decoder::BinaryDecodable;
 use crate::codec::encoder::BinaryEncodable;
 use crate::error::OpcUaResult;
 use crate::nodes::QualifiedName;
-use crate::services::event::{
+use crate::sdk::event::{
     ContentFilterElement, EventFilter, FilterOperand, FilterOperator, SimpleAttributeOperand,
 };
-use crate::services::{MonitoredItemConfig, MonitoredItemKind};
+use crate::sdk::subscription::{MonitoredItemConfig, MonitoredItemKind};
 use crate::types::{AttributeId, NodeId, StatusCode};
 
 const CREATE_MONITORED_ITEMS_REQUEST_ID: u32 = 751;

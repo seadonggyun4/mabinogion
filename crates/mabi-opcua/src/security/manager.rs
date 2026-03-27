@@ -12,7 +12,12 @@ use super::certificate::{
     Certificate, CertificateManager, CertificateManagerConfig, ValidationResult,
 };
 use super::crypto::{CryptoProvider, CryptoProviderConfig, KeyMaterial};
-use super::policy::{SecurityPolicyConfig, SecurityPolicyProvider};
+use super::policy::SecurityPolicyConfig;
+use super::providers::{
+    CertificateTrustProvider, ChannelSecurityRuntime, IdentityProvider as _,
+    IdentityRuntimeProvider, NoopSecurityAuditSink, PolicyRuntimeProvider, RoleMapper,
+    SecurityAuditSink, SecurityPolicyPort as _, StaticRoleMapper, TrustStorePort as _,
+};
 use super::user_auth::{
     AuthenticationResult, UserAccount, UserAuthConfig, UserAuthenticator, UserCredentials,
     UserTokenPolicy,
@@ -161,38 +166,51 @@ impl SecurityContext {
 /// - Secure channel management
 pub struct SecurityManager {
     config: SecurityManagerConfig,
-    certificate_manager: Arc<CertificateManager>,
-    policy_provider: SecurityPolicyProvider,
-    authenticator: UserAuthenticator,
-    secure_channels: dashmap::DashMap<u32, SecurityContext>,
-    next_channel_id: std::sync::atomic::AtomicU32,
-    next_token_id: std::sync::atomic::AtomicU32,
+    trust_provider: CertificateTrustProvider,
+    policy_provider: PolicyRuntimeProvider,
+    identity_provider: IdentityRuntimeProvider,
+    channel_runtime: ChannelSecurityRuntime,
+    role_mapper: Arc<dyn RoleMapper>,
+    audit_sink: Arc<dyn SecurityAuditSink>,
 }
 
 impl SecurityManager {
     /// Create a new security manager.
     pub fn new(config: SecurityManagerConfig) -> Self {
-        let certificate_manager =
-            Arc::new(CertificateManager::new(config.certificate_config.clone()));
+        let trust_provider = CertificateTrustProvider::new(&config);
+        let policy_provider = PolicyRuntimeProvider::new(&config);
+        let identity_provider =
+            IdentityRuntimeProvider::new(&config, trust_provider.certificate_manager().clone());
+        let channel_runtime = ChannelSecurityRuntime::new(&config);
 
-        let mut policy_provider = SecurityPolicyProvider::new();
-        for policy in &config.enabled_policies {
-            policy_provider.enable_policy(*policy);
-        }
+        Self::with_components(
+            config,
+            policy_provider,
+            trust_provider,
+            identity_provider,
+            channel_runtime,
+            Arc::new(StaticRoleMapper),
+            Arc::new(NoopSecurityAuditSink),
+        )
+    }
 
-        let authenticator = UserAuthenticator::with_certificate_manager(
-            config.user_auth_config.clone(),
-            certificate_manager.clone(),
-        );
-
+    pub(crate) fn with_components(
+        config: SecurityManagerConfig,
+        policy_provider: PolicyRuntimeProvider,
+        trust_provider: CertificateTrustProvider,
+        identity_provider: IdentityRuntimeProvider,
+        channel_runtime: ChannelSecurityRuntime,
+        role_mapper: Arc<dyn RoleMapper>,
+        audit_sink: Arc<dyn SecurityAuditSink>,
+    ) -> Self {
         Self {
             config,
-            certificate_manager,
+            trust_provider,
             policy_provider,
-            authenticator,
-            secure_channels: dashmap::DashMap::new(),
-            next_channel_id: std::sync::atomic::AtomicU32::new(1),
-            next_token_id: std::sync::atomic::AtomicU32::new(1),
+            identity_provider,
+            channel_runtime,
+            role_mapper,
+            audit_sink,
         }
     }
 
@@ -200,18 +218,20 @@ impl SecurityManager {
     pub fn initialize(&self) -> SecurityResult<()> {
         info!("Initializing security manager");
 
-        // Initialize certificate manager
-        self.certificate_manager.initialize()?;
+        self.trust_provider.initialize()?;
 
         // Add default admin user if no users configured
         if self.config.user_auth_config.allow_user_password {
-            self.authenticator
+            self.identity_provider
                 .add_user(UserAccount::admin("admin", "admin"));
             debug!("Added default admin user");
         }
 
+        self.audit_sink
+            .on_initialized(self.policy_provider.enabled_policies());
+
         info!(
-            policies = ?self.config.enabled_policies,
+            policies = ?self.policy_provider.enabled_policies(),
             "Security manager initialized"
         );
 
@@ -243,30 +263,7 @@ impl SecurityManager {
         policy: SecurityPolicy,
         mode: MessageSecurityMode,
     ) -> SecurityResult<()> {
-        if !self.is_policy_enabled(policy) {
-            return Err(SecurityError::PolicyNotSupported(policy));
-        }
-
-        if !self.policy_provider.validate_mode_for_policy(policy, mode) {
-            return Err(SecurityError::Configuration(format!(
-                "Security mode {:?} not valid for policy {:?}",
-                mode, policy
-            )));
-        }
-
-        // Check deprecated policy rejection
-        if self.config.reject_deprecated_policies {
-            if let Some(config) = self.get_policy_config(policy) {
-                if config.is_deprecated() {
-                    return Err(SecurityError::Configuration(format!(
-                        "Policy {:?} is deprecated and rejected",
-                        policy
-                    )));
-                }
-            }
-        }
-
-        Ok(())
+        self.policy_provider.validate_security_mode(policy, mode)
     }
 
     // =========================================================================
@@ -275,23 +272,25 @@ impl SecurityManager {
 
     /// Get the certificate manager.
     pub fn certificate_manager(&self) -> &Arc<CertificateManager> {
-        &self.certificate_manager
+        self.trust_provider.certificate_manager()
     }
 
     /// Get the server's own certificate.
     pub fn server_certificate(&self) -> Option<Certificate> {
-        self.certificate_manager.own_certificate()
+        self.trust_provider.server_certificate()
     }
 
     /// Validate a client certificate.
     pub fn validate_client_certificate(&self, certificate: &Certificate) -> ValidationResult {
-        self.certificate_manager.validate_certificate(certificate)
+        let validation = self.trust_provider.validate_client_certificate(certificate);
+        self.audit_sink
+            .on_certificate_validated(Some(&certificate.thumbprint), validation.is_valid);
+        validation
     }
 
     /// Trust a client certificate.
     pub fn trust_certificate(&self, certificate: Certificate) -> SecurityResult<()> {
-        self.certificate_manager.trust_certificate(certificate)?;
-        Ok(())
+        self.trust_provider.trust_certificate(certificate)
     }
 
     // =========================================================================
@@ -300,22 +299,30 @@ impl SecurityManager {
 
     /// Get the user authenticator.
     pub fn authenticator(&self) -> &UserAuthenticator {
-        &self.authenticator
+        self.identity_provider.authenticator()
     }
 
     /// Authenticate user credentials.
     pub fn authenticate(&self, credentials: &UserCredentials) -> AuthenticationResult {
-        self.authenticator.authenticate(credentials)
+        let mut result = self.identity_provider.authenticate(credentials);
+        if result.success {
+            result.roles = self
+                .role_mapper
+                .map_roles(std::mem::take(&mut result.roles));
+        }
+        self.audit_sink
+            .on_authentication(credentials.token_type_name(), result.success);
+        result
     }
 
     /// Add a user account.
     pub fn add_user(&self, account: UserAccount) {
-        self.authenticator.add_user(account);
+        self.identity_provider.add_user(account);
     }
 
     /// Get available user token policies.
     pub fn user_token_policies(&self) -> Vec<UserTokenPolicy> {
-        self.authenticator.token_policies()
+        self.identity_provider.token_policies()
     }
 
     // =========================================================================
@@ -330,172 +337,43 @@ impl SecurityManager {
         client_certificate: Option<Certificate>,
         client_nonce: &[u8],
     ) -> SecurityResult<SecurityContext> {
-        // Validate policy and mode
-        self.validate_security_mode(policy, mode)?;
-
-        // Check channel limit
-        if self.secure_channels.len() >= self.config.max_secure_channels {
-            return Err(SecurityError::SecureChannel(
-                "Maximum secure channels reached".to_string(),
-            ));
-        }
-
-        // Get policy configuration
-        let policy_config = self
-            .get_policy_config(policy)
-            .ok_or_else(|| SecurityError::PolicyNotSupported(policy))?
-            .clone();
-
-        // Validate client certificate if required
-        if mode != MessageSecurityMode::None {
-            if let Some(ref cert) = client_certificate {
-                let validation = self.validate_client_certificate(cert);
-                if !validation.is_valid {
-                    return Err(SecurityError::Certificate(
-                        super::certificate::CertificateError::Invalid(format!(
-                            "Client certificate validation failed: {:?}",
-                            validation.status
-                        )),
-                    ));
-                }
-            }
-        }
-
-        // Generate IDs
-        let channel_id = self
-            .next_channel_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let token_id = self
-            .next_token_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        // Derive key material if needed
-        let key_material = if mode != MessageSecurityMode::None {
-            let crypto = CryptoProvider::with_config(policy, self.config.crypto_config.clone());
-            let server_nonce = crypto.generate_nonce();
-
-            // Derive keys
-            let seed: Vec<u8> = [client_nonce, &server_nonce].concat();
-            Some(crypto.derive_keys(
-                &seed,
-                &seed,
-                policy_config.derived_signature_key_length as usize,
-                policy_config.symmetric_key_length as usize,
-                policy_config.symmetric_block_size as usize,
-            )?)
-        } else {
-            None
-        };
-
-        // Create context
-        let now = chrono::Utc::now();
-        let lifetime =
-            chrono::Duration::milliseconds(self.config.secure_channel_lifetime_ms as i64);
-
-        let context = SecurityContext {
+        self.channel_runtime.create_secure_channel(
             policy,
-            policy_config,
-            security_mode: mode,
+            mode,
             client_certificate,
-            server_certificate: self.server_certificate(),
-            key_material,
-            secure_channel_id: channel_id,
-            token_id,
-            created_at: now,
-            expires_at: now + lifetime,
-        };
-
-        // Store channel
-        self.secure_channels.insert(channel_id, context.clone());
-
-        info!(
-            channel_id,
-            policy = ?policy,
-            mode = ?mode,
-            "Secure channel created"
-        );
-
-        Ok(context)
+            client_nonce,
+            &self.policy_provider,
+            &self.trust_provider,
+            self.audit_sink.as_ref(),
+        )
     }
 
     /// Get a secure channel by ID.
     pub fn get_secure_channel(&self, channel_id: u32) -> Option<SecurityContext> {
-        self.secure_channels.get(&channel_id).map(|c| c.clone())
+        self.channel_runtime.get_secure_channel(channel_id)
     }
 
     /// Renew a secure channel (create new token).
     pub fn renew_secure_channel(&self, channel_id: u32) -> SecurityResult<SecurityContext> {
-        let mut context = self.secure_channels.get_mut(&channel_id).ok_or_else(|| {
-            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
-        })?;
-
-        // Generate new token
-        let new_token_id = self
-            .next_token_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        // Update expiration
-        let now = chrono::Utc::now();
-        let lifetime =
-            chrono::Duration::milliseconds(self.config.secure_channel_lifetime_ms as i64);
-
-        context.token_id = new_token_id;
-        context.expires_at = now + lifetime;
-
-        // Re-derive keys if security is enabled
-        if context.requires_signing() || context.requires_encryption() {
-            let crypto =
-                CryptoProvider::with_config(context.policy, self.config.crypto_config.clone());
-            let nonce = crypto.generate_nonce();
-
-            context.key_material = Some(crypto.derive_keys(
-                &nonce,
-                &nonce,
-                context.policy_config.derived_signature_key_length as usize,
-                context.policy_config.symmetric_key_length as usize,
-                context.policy_config.symmetric_block_size as usize,
-            )?);
-        }
-
-        info!(channel_id, new_token_id, "Secure channel renewed");
-
-        Ok(context.clone())
+        self.channel_runtime
+            .renew_secure_channel(channel_id, self.audit_sink.as_ref())
     }
 
     /// Close a secure channel.
     pub fn close_secure_channel(&self, channel_id: u32) -> bool {
-        if self.secure_channels.remove(&channel_id).is_some() {
-            info!(channel_id, "Secure channel closed");
-            true
-        } else {
-            false
-        }
+        self.channel_runtime
+            .close_secure_channel(channel_id, self.audit_sink.as_ref())
     }
 
     /// Cleanup expired secure channels.
     pub fn cleanup_expired_channels(&self) -> usize {
-        let expired: Vec<u32> = self
-            .secure_channels
-            .iter()
-            .filter(|e| e.value().is_expired())
-            .map(|e| *e.key())
-            .collect();
-
-        let count = expired.len();
-        for channel_id in expired {
-            self.secure_channels.remove(&channel_id);
-        }
-
-        if count > 0 {
-            debug!(count, "Cleaned up expired secure channels");
-        }
-
-        count
+        self.channel_runtime
+            .cleanup_expired_channels(self.audit_sink.as_ref())
     }
 
     /// Get secure channel count.
     pub fn secure_channel_count(&self) -> usize {
-        self.secure_channels.len()
+        self.channel_runtime.secure_channel_count()
     }
 
     // =========================================================================
@@ -504,28 +382,12 @@ impl SecurityManager {
 
     /// Create a crypto provider for a security policy.
     pub fn crypto_provider(&self, policy: SecurityPolicy) -> CryptoProvider {
-        CryptoProvider::with_config(policy, self.config.crypto_config.clone())
+        self.channel_runtime.crypto_provider(policy)
     }
 
     /// Sign a message using the secure channel's key material.
     pub fn sign_message(&self, channel_id: u32, message: &[u8]) -> SecurityResult<Vec<u8>> {
-        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
-            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
-        })?;
-
-        if !context.requires_signing() {
-            return Ok(Vec::new());
-        }
-
-        let key_material = context
-            .key_material
-            .as_ref()
-            .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
-
-        let crypto = self.crypto_provider(context.policy);
-        let result = crypto.hmac_sign(message, &key_material.signing_key)?;
-
-        Ok(result.signature)
+        self.channel_runtime.sign_message(channel_id, message)
     }
 
     /// Verify a message signature.
@@ -535,67 +397,18 @@ impl SecurityManager {
         message: &[u8],
         signature: &[u8],
     ) -> SecurityResult<bool> {
-        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
-            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
-        })?;
-
-        if !context.requires_signing() {
-            return Ok(true);
-        }
-
-        let key_material = context
-            .key_material
-            .as_ref()
-            .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
-
-        let crypto = self.crypto_provider(context.policy);
-        let valid = crypto.hmac_verify(message, &key_material.signing_key, signature)?;
-
-        Ok(valid)
+        self.channel_runtime
+            .verify_signature(channel_id, message, signature)
     }
 
     /// Encrypt a message.
     pub fn encrypt_message(&self, channel_id: u32, plaintext: &[u8]) -> SecurityResult<Vec<u8>> {
-        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
-            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
-        })?;
-
-        if !context.requires_encryption() {
-            return Ok(plaintext.to_vec());
-        }
-
-        let key_material = context
-            .key_material
-            .as_ref()
-            .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
-
-        let crypto = self.crypto_provider(context.policy);
-        let result =
-            crypto.symmetric_encrypt(plaintext, &key_material.encrypting_key, &key_material.iv)?;
-
-        Ok(result.ciphertext)
+        self.channel_runtime.encrypt_message(channel_id, plaintext)
     }
 
     /// Decrypt a message.
     pub fn decrypt_message(&self, channel_id: u32, ciphertext: &[u8]) -> SecurityResult<Vec<u8>> {
-        let context = self.get_secure_channel(channel_id).ok_or_else(|| {
-            SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
-        })?;
-
-        if !context.requires_encryption() {
-            return Ok(ciphertext.to_vec());
-        }
-
-        let key_material = context
-            .key_material
-            .as_ref()
-            .ok_or_else(|| SecurityError::SecureChannel("No key material".to_string()))?;
-
-        let crypto = self.crypto_provider(context.policy);
-        let result =
-            crypto.symmetric_decrypt(ciphertext, &key_material.encrypting_key, &key_material.iv)?;
-
-        Ok(result.plaintext)
+        self.channel_runtime.decrypt_message(channel_id, ciphertext)
     }
 }
 

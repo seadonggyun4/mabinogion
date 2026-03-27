@@ -6,6 +6,22 @@ OPC UA server simulator for the Mabinogion industrial protocol simulation framew
 
 The `mabi-opcua` crate provides an OPC UA (Open Platform Communications Unified Architecture) server simulation environment. The implementation supports core OPC UA services including address space management, subscription-based data change notifications, and historical data access with aggregate computation.
 
+## Canonical Runtime Path
+
+The preferred surface is now session-centric and file-backed:
+
+- `OpcUaSimulatorConfig`
+- `compile_session(...)`
+- `mabi serve opcua --config <file> --session <name>`
+- `mabi control opcua --config <file> --session <name> ...`
+
+Current documentation split:
+
+- `simulator-config-spec.md`
+- `simulator-control-plane-spec.md`
+
+Hand-built node builders and numeric `serve opcua` arguments still exist, but they are compatibility veneer. Internally they compile into the same canonical session path.
+
 ## Architecture
 
 ### Server Components

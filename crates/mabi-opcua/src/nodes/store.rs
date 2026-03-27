@@ -2,23 +2,17 @@
 //!
 //! The address space is the primary container for all nodes and references.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-
-use chrono::{DateTime, Utc};
-use dashmap::DashMap;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{debug, info, instrument, warn};
 
-use super::base::{shared_node, LocalizedText, Node, NodeClass, QualifiedName, SharedNode};
+use super::base::{LocalizedText, Node, QualifiedName, SharedNode};
 use super::classes::{DataTypeNode, ObjectNode, ObjectTypeNode, VariableNode};
-use super::reference::{
-    BrowseDirection, BrowseResult, Reference, ReferenceDescription, ReferenceDirection,
-    ReferenceTypeId,
-};
+use super::reference::{BrowseDirection, BrowseResult, Reference, ReferenceTypeId};
 use crate::error::{OpcUaError, OpcUaResult};
+use crate::sdk::address_space::{
+    AddressSpaceRuntime, AttributeAccessPort, BrowsePathPort, BrowsePort, TypeHierarchyPort,
+};
 use crate::types::{AttributeId, DataValue, NodeId, StatusCode, Variant};
 
 /// Address space configuration.
@@ -92,15 +86,6 @@ pub struct NodeStoreStats {
 ///     &NodeId::objects_folder(),
 /// );
 /// ```
-/// A stored browse continuation for BrowseNext pagination.
-pub struct BrowseContinuation {
-    /// Unique identifier.
-    pub id: u64,
-    /// Remaining references not yet returned.
-    pub remaining_references: Vec<ReferenceDescription>,
-    /// Creation time for expiry check.
-    pub created_at: DateTime<Utc>,
-}
 
 /// Result of a browse path resolution.
 pub struct BrowsePathResult {
@@ -133,47 +118,26 @@ pub struct RelativePathElement {
 pub struct AddressSpace {
     /// Configuration.
     config: AddressSpaceConfig,
-    /// Node store (NodeId -> Node).
-    nodes: DashMap<NodeId, SharedNode>,
-    /// Forward references (source NodeId -> References).
-    forward_references: DashMap<NodeId, Vec<Reference>>,
-    /// Inverse references (target NodeId -> References).
-    inverse_references: DashMap<NodeId, Vec<Reference>>,
-    /// Namespace array (index -> URI).
-    namespaces: RwLock<Vec<String>>,
-    #[allow(dead_code)]
-    /// Statistics.
-    stats: NodeStoreStats,
+    /// Internal canonical runtime components.
+    runtime: AddressSpaceRuntime,
     /// Atomic counters for stats.
     read_counter: AtomicU64,
     write_counter: AtomicU64,
     browse_counter: AtomicU64,
-    /// Browse continuation points for BrowseNext pagination.
-    browse_continuations: RwLock<HashMap<u64, BrowseContinuation>>,
-    /// Next continuation point ID.
-    next_browse_continuation_id: AtomicU64,
 }
 
 impl AddressSpace {
     /// Create a new address space.
     pub fn new(config: AddressSpaceConfig) -> Self {
-        let namespaces = vec![
-            "http://opcfoundation.org/UA/".to_string(), // Namespace 0 (standard)
-            config.default_namespace_uri.clone(),       // Namespace 1 (server)
-        ];
-
         let address_space = Self {
+            runtime: AddressSpaceRuntime::new(
+                config.default_namespace_uri.clone(),
+                config.max_nodes,
+            ),
             config,
-            nodes: DashMap::new(),
-            forward_references: DashMap::new(),
-            inverse_references: DashMap::new(),
-            namespaces: RwLock::new(namespaces),
-            stats: NodeStoreStats::default(),
             read_counter: AtomicU64::new(0),
             write_counter: AtomicU64::new(0),
             browse_counter: AtomicU64::new(0),
-            browse_continuations: RwLock::new(HashMap::new()),
-            next_browse_continuation_id: AtomicU64::new(1),
         };
 
         // Initialize standard nodes if enabled
@@ -462,34 +426,22 @@ impl AddressSpace {
 
     /// Register a new namespace.
     pub fn register_namespace(&self, uri: &str) -> u16 {
-        let mut namespaces = self.namespaces.write();
-
-        // Check if already exists
-        if let Some(index) = namespaces.iter().position(|u| u == uri) {
-            return index as u16;
-        }
-
-        // Add new namespace
-        let index = namespaces.len() as u16;
-        namespaces.push(uri.to_string());
-        index
+        self.runtime.register_namespace(uri)
     }
 
     /// Get namespace URI by index.
     pub fn get_namespace_uri(&self, index: u16) -> Option<String> {
-        let namespaces = self.namespaces.read();
-        namespaces.get(index as usize).cloned()
+        self.runtime.get_namespace_uri(index)
     }
 
     /// Get namespace index by URI.
     pub fn get_namespace_index(&self, uri: &str) -> Option<u16> {
-        let namespaces = self.namespaces.read();
-        namespaces.iter().position(|u| u == uri).map(|i| i as u16)
+        self.runtime.get_namespace_index(uri)
     }
 
     /// Get all namespace URIs.
     pub fn namespaces(&self) -> Vec<String> {
-        self.namespaces.read().clone()
+        self.runtime.namespaces()
     }
 
     // =========================================================================
@@ -498,66 +450,41 @@ impl AddressSpace {
 
     /// Insert a node into the address space.
     pub fn insert_node<N: Node + 'static>(&self, node: N) -> bool {
-        if self.nodes.len() >= self.config.max_nodes {
-            warn!("Address space is full, cannot add more nodes");
-            return false;
+        let inserted = self.runtime.insert_node(node);
+        if !inserted {
+            warn!("Address space is full or node already exists, cannot insert node");
         }
-
-        let node_id = node.node_id().clone();
-        if self.nodes.contains_key(&node_id) {
-            return false;
-        }
-
-        self.nodes.insert(node_id, shared_node(node));
-        true
+        inserted
     }
 
     /// Insert a boxed node.
     pub fn insert_boxed_node(&self, node: Box<dyn Node>) -> bool {
-        if self.nodes.len() >= self.config.max_nodes {
-            return false;
-        }
-
-        let node_id = node.node_id().clone();
-        if self.nodes.contains_key(&node_id) {
-            return false;
-        }
-
-        self.nodes
-            .insert(node_id, Arc::new(parking_lot::RwLock::new(node)));
-        true
+        self.runtime.insert_boxed_node(node)
     }
 
     /// Get a node by ID.
     pub fn get_node(&self, node_id: &NodeId) -> Option<SharedNode> {
-        self.nodes.get(node_id).map(|n| n.clone())
+        self.runtime.get_node(node_id)
     }
 
     /// Check if a node exists.
     pub fn contains_node(&self, node_id: &NodeId) -> bool {
-        self.nodes.contains_key(node_id)
+        self.runtime.contains_node(node_id)
     }
 
     /// Remove a node.
     pub fn remove_node(&self, node_id: &NodeId) -> bool {
-        if let Some(_) = self.nodes.remove(node_id) {
-            // Remove all references involving this node
-            self.forward_references.remove(node_id);
-            self.inverse_references.remove(node_id);
-            true
-        } else {
-            false
-        }
+        self.runtime.remove_node(node_id)
     }
 
     /// Get the number of nodes.
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.runtime.node_count()
     }
 
     /// Get all node IDs.
     pub fn node_ids(&self) -> Vec<NodeId> {
-        self.nodes.iter().map(|e| e.key().clone()).collect()
+        self.runtime.node_ids()
     }
 
     // =========================================================================
@@ -670,18 +597,7 @@ impl AddressSpace {
 
     /// Add a reference.
     pub fn add_reference(&self, reference: Reference) {
-        // Add forward reference
-        self.forward_references
-            .entry(reference.source_node_id.clone())
-            .or_insert_with(Vec::new)
-            .push(reference.clone());
-
-        // Add inverse reference
-        let inverse = reference.inverse_ref();
-        self.inverse_references
-            .entry(inverse.source_node_id.clone())
-            .or_insert_with(Vec::new)
-            .push(inverse);
+        self.runtime.add_reference(reference);
     }
 
     /// Remove a reference.
@@ -691,46 +607,13 @@ impl AddressSpace {
         reference_type: ReferenceTypeId,
         target: &NodeId,
     ) -> bool {
-        let mut removed = false;
-
-        // Remove forward reference
-        if let Some(mut refs) = self.forward_references.get_mut(source) {
-            refs.retain(|r| {
-                let matches = r.reference_type_id == reference_type && &r.target_node_id == target;
-                if matches {
-                    removed = true;
-                }
-                !matches
-            });
-        }
-
-        // Remove inverse reference
-        if let Some(mut refs) = self.inverse_references.get_mut(target) {
-            refs.retain(|r| {
-                !(r.reference_type_id == reference_type && &r.target_node_id == source)
-            });
-        }
-
-        removed
+        self.runtime
+            .remove_reference(source, reference_type, target)
     }
 
     /// Get references from a node.
     pub fn get_references(&self, node_id: &NodeId, direction: BrowseDirection) -> Vec<Reference> {
-        let mut refs = Vec::new();
-
-        if matches!(direction, BrowseDirection::Forward | BrowseDirection::Both) {
-            if let Some(forward) = self.forward_references.get(node_id) {
-                refs.extend(forward.iter().cloned());
-            }
-        }
-
-        if matches!(direction, BrowseDirection::Inverse | BrowseDirection::Both) {
-            if let Some(inverse) = self.inverse_references.get(node_id) {
-                refs.extend(inverse.iter().cloned());
-            }
-        }
-
-        refs
+        self.runtime.get_references(node_id, direction)
     }
 
     /// Browse node references with continuation point support.
@@ -745,77 +628,14 @@ impl AddressSpace {
         max_results: usize,
     ) -> BrowseResult {
         self.browse_counter.fetch_add(1, Ordering::Relaxed);
-
-        if !self.contains_node(node_id) {
-            return BrowseResult::default();
-        }
-
-        let refs = self.get_references(node_id, direction);
-        let mut all_descriptions = Vec::new();
-
-        for reference in refs {
-            // Filter by reference type
-            if let Some(ref filter) = reference_type_filter {
-                if reference.reference_type_id != *filter {
-                    if !include_subtypes {
-                        continue;
-                    }
-                    // Check if reference type is a subtype of the filter.
-                    // For HierarchicalReferences (i=33), accept all hierarchical types.
-                    if !self.is_reference_subtype(&reference.reference_type_id, filter) {
-                        continue;
-                    }
-                }
-            }
-
-            // Get target node
-            if let Some(target_node) = self.get_node(&reference.target_node_id) {
-                let target = target_node.read();
-
-                // Filter by node class
-                if let Some(mask) = node_class_mask {
-                    if mask != 0 && (target.node_class() as u32 & mask) == 0 {
-                        continue;
-                    }
-                }
-
-                let desc = ReferenceDescription::new(
-                    reference.reference_type_id,
-                    matches!(reference.direction, ReferenceDirection::Forward),
-                    reference.target_node_id.clone(),
-                    target.browse_name().clone(),
-                    target.display_name().clone(),
-                    target.node_class(),
-                );
-
-                all_descriptions.push(desc);
-            }
-        }
-
-        // If we have more references than max_results, create a continuation point
-        if all_descriptions.len() > max_results {
-            let returned: Vec<_> = all_descriptions.drain(..max_results).collect();
-            let remaining = all_descriptions; // remaining after drain
-
-            let cp_id = self
-                .next_browse_continuation_id
-                .fetch_add(1, Ordering::Relaxed);
-            let continuation = BrowseContinuation {
-                id: cp_id,
-                remaining_references: remaining,
-                created_at: Utc::now(),
-            };
-
-            self.browse_continuations
-                .write()
-                .insert(cp_id, continuation);
-
-            // Encode continuation point ID as 8-byte LE ByteString
-            let cp_bytes = cp_id.to_le_bytes().to_vec();
-            BrowseResult::with_continuation(returned, cp_bytes)
-        } else {
-            BrowseResult::new(all_descriptions)
-        }
+        self.runtime.browse(
+            node_id,
+            direction,
+            reference_type_filter,
+            include_subtypes,
+            node_class_mask,
+            max_results,
+        )
     }
 
     /// Continue a previous browse operation using a continuation point.
@@ -828,116 +648,13 @@ impl AddressSpace {
         release: bool,
         max_results: usize,
     ) -> BrowseResult {
-        // Decode continuation point ID from 8-byte LE
-        if continuation_point.len() != 8 {
-            return BrowseResult::default();
-        }
-        let cp_id = u64::from_le_bytes([
-            continuation_point[0],
-            continuation_point[1],
-            continuation_point[2],
-            continuation_point[3],
-            continuation_point[4],
-            continuation_point[5],
-            continuation_point[6],
-            continuation_point[7],
-        ]);
-
-        // If releasing, just remove and return empty
-        if release {
-            self.browse_continuations.write().remove(&cp_id);
-            return BrowseResult::new(Vec::new());
-        }
-
-        // Remove the old continuation point
-        let continuation = self.browse_continuations.write().remove(&cp_id);
-        let Some(mut continuation) = continuation else {
-            return BrowseResult::default();
-        };
-
-        // Check expiry (5 minutes)
-        if Utc::now()
-            .signed_duration_since(continuation.created_at)
-            .num_seconds()
-            > 300
-        {
-            return BrowseResult::default();
-        }
-
-        let max = if max_results == 0 { 1000 } else { max_results };
-
-        if continuation.remaining_references.len() > max {
-            let returned: Vec<_> = continuation.remaining_references.drain(..max).collect();
-            let remaining = continuation.remaining_references;
-
-            let new_cp_id = self
-                .next_browse_continuation_id
-                .fetch_add(1, Ordering::Relaxed);
-            let new_continuation = BrowseContinuation {
-                id: new_cp_id,
-                remaining_references: remaining,
-                created_at: Utc::now(),
-            };
-            self.browse_continuations
-                .write()
-                .insert(new_cp_id, new_continuation);
-            let cp_bytes = new_cp_id.to_le_bytes().to_vec();
-            BrowseResult::with_continuation(returned, cp_bytes)
-        } else {
-            BrowseResult::new(continuation.remaining_references)
-        }
+        self.runtime
+            .browse_next(continuation_point, release, max_results)
     }
 
     /// Release a browse continuation point without returning results.
     pub fn release_continuation_point(&self, continuation_point: &[u8]) {
-        if continuation_point.len() == 8 {
-            let cp_id = u64::from_le_bytes([
-                continuation_point[0],
-                continuation_point[1],
-                continuation_point[2],
-                continuation_point[3],
-                continuation_point[4],
-                continuation_point[5],
-                continuation_point[6],
-                continuation_point[7],
-            ]);
-            self.browse_continuations.write().remove(&cp_id);
-        }
-    }
-
-    /// Check if a reference type is a subtype of another.
-    ///
-    /// Handles the common hierarchical reference type hierarchy:
-    /// HierarchicalReferences(33) → HasChild(34) → HasSubtype(45), HasComponent(47), HasProperty(46), Organizes(35)
-    fn is_reference_subtype(&self, candidate: &ReferenceTypeId, parent: &ReferenceTypeId) -> bool {
-        // All hierarchical types are subtypes of HierarchicalReferences
-        if *parent == ReferenceTypeId::HierarchicalReferences {
-            return candidate.is_hierarchical();
-        }
-        // HasChild subtypes
-        if *parent == ReferenceTypeId::HasChild {
-            return matches!(
-                candidate,
-                ReferenceTypeId::HasComponent
-                    | ReferenceTypeId::HasProperty
-                    | ReferenceTypeId::HasSubtype
-                    | ReferenceTypeId::HasOrderedComponent
-                    | ReferenceTypeId::Aggregates
-            );
-        }
-        // NonHierarchicalReferences subtypes
-        if *parent == ReferenceTypeId::NonHierarchicalReferences {
-            return matches!(
-                candidate,
-                ReferenceTypeId::HasTypeDefinition
-                    | ReferenceTypeId::HasEncoding
-                    | ReferenceTypeId::HasDescription
-                    | ReferenceTypeId::HasModellingRule
-                    | ReferenceTypeId::GeneratesEvent
-                    | ReferenceTypeId::AlwaysGeneratesEvent
-            );
-        }
-        false
+        self.runtime.release_continuation_point(continuation_point);
     }
 
     /// Resolve a browse path starting from a node, following relative path elements.
@@ -949,95 +666,7 @@ impl AddressSpace {
         starting_node: &NodeId,
         elements: &[RelativePathElement],
     ) -> BrowsePathResult {
-        if !self.contains_node(starting_node) {
-            return BrowsePathResult {
-                status: StatusCode::BAD_NODE_ID_UNKNOWN,
-                targets: Vec::new(),
-            };
-        }
-
-        if elements.is_empty() {
-            return BrowsePathResult {
-                status: StatusCode::GOOD,
-                targets: vec![BrowsePathTarget {
-                    target_id: starting_node.clone(),
-                    remaining_path_index: 0,
-                }],
-            };
-        }
-
-        let mut current_nodes = vec![starting_node.clone()];
-
-        for (_idx, element) in elements.iter().enumerate() {
-            let mut next_nodes = Vec::new();
-
-            for current_node in &current_nodes {
-                let direction = if element.is_inverse {
-                    BrowseDirection::Inverse
-                } else {
-                    BrowseDirection::Forward
-                };
-
-                let refs = self.get_references(current_node, direction);
-
-                for reference in &refs {
-                    // Filter by reference type (if specified, i.e., not null node i=0)
-                    if reference.reference_type_id.node_id() != NodeId::numeric(0, 0) {
-                        let ref_type_filter =
-                            ReferenceTypeId::from_node_id(&element.reference_type_id);
-                        if let Some(filter) = ref_type_filter {
-                            if reference.reference_type_id != filter {
-                                if element.include_subtypes {
-                                    if !self
-                                        .is_reference_subtype(&reference.reference_type_id, &filter)
-                                    {
-                                        continue;
-                                    }
-                                } else {
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-
-                    // Match browse name
-                    if let Some(target_node) = self.get_node(&reference.target_node_id) {
-                        let target = target_node.read();
-                        let browse_name = target.browse_name();
-
-                        // Match by name (and namespace if specified)
-                        if browse_name.name == element.target_name.name {
-                            let ns_match = element.target_name.namespace_index == 0
-                                || element.target_name.namespace_index
-                                    == browse_name.namespace_index;
-                            if ns_match {
-                                next_nodes.push(reference.target_node_id.clone());
-                            }
-                        }
-                    }
-                }
-            }
-
-            if next_nodes.is_empty() {
-                return BrowsePathResult {
-                    status: StatusCode::BAD_NO_MATCH,
-                    targets: Vec::new(),
-                };
-            }
-
-            current_nodes = next_nodes;
-        }
-
-        BrowsePathResult {
-            status: StatusCode::GOOD,
-            targets: current_nodes
-                .into_iter()
-                .map(|id| BrowsePathTarget {
-                    target_id: id,
-                    remaining_path_index: 0,
-                })
-                .collect(),
-        }
+        self.runtime.resolve_browse_path(starting_node, elements)
     }
 
     // =========================================================================
@@ -1047,14 +676,7 @@ impl AddressSpace {
     /// Read an attribute from a node.
     pub fn read(&self, node_id: &NodeId, attribute_id: AttributeId) -> DataValue {
         self.read_counter.fetch_add(1, Ordering::Relaxed);
-
-        match self.get_node(node_id) {
-            Some(node) => {
-                let node = node.read();
-                node.read_attribute(attribute_id)
-            }
-            None => DataValue::bad(StatusCode::BAD_NODE_ID_UNKNOWN),
-        }
+        self.runtime.read(node_id, attribute_id)
     }
 
     /// Read the value attribute from a variable node.
@@ -1070,14 +692,7 @@ impl AddressSpace {
         value: DataValue,
     ) -> StatusCode {
         self.write_counter.fetch_add(1, Ordering::Relaxed);
-
-        match self.get_node(node_id) {
-            Some(node) => {
-                let mut node = node.write();
-                node.write_attribute(attribute_id, value)
-            }
-            None => StatusCode::BAD_NODE_ID_UNKNOWN,
-        }
+        self.runtime.write(node_id, attribute_id, value)
     }
 
     /// Write the value attribute to a variable node.
@@ -1109,29 +724,92 @@ impl AddressSpace {
     /// Get statistics.
     pub fn stats(&self) -> NodeStoreStats {
         let mut stats = NodeStoreStats::default();
-        stats.total_nodes = self.nodes.len() as u64;
-
-        // Count references
-        for refs in self.forward_references.iter() {
-            stats.total_references += refs.len() as u64;
-        }
-
-        // Count by node class
-        for entry in self.nodes.iter() {
-            let node = entry.value().read();
-            match node.node_class() {
-                NodeClass::Variable => stats.variable_nodes += 1,
-                NodeClass::Object => stats.object_nodes += 1,
-                NodeClass::Method => stats.method_nodes += 1,
-                _ => {}
-            }
-        }
+        stats.total_nodes = self.runtime.node_count() as u64;
+        stats.total_references = self.runtime.total_references();
+        let (variable_nodes, object_nodes, method_nodes) = self.runtime.node_class_counts();
+        stats.variable_nodes = variable_nodes;
+        stats.object_nodes = object_nodes;
+        stats.method_nodes = method_nodes;
 
         stats.reads = self.read_counter.load(Ordering::Relaxed);
         stats.writes = self.write_counter.load(Ordering::Relaxed);
         stats.browses = self.browse_counter.load(Ordering::Relaxed);
 
         stats
+    }
+}
+
+impl AttributeAccessPort for AddressSpace {
+    fn read_attribute(&self, node_id: &NodeId, attribute_id: AttributeId) -> DataValue {
+        AddressSpace::read(self, node_id, attribute_id)
+    }
+
+    fn write_attribute(
+        &self,
+        node_id: &NodeId,
+        attribute_id: AttributeId,
+        value: DataValue,
+    ) -> StatusCode {
+        AddressSpace::write(self, node_id, attribute_id, value)
+    }
+}
+
+impl BrowsePort for AddressSpace {
+    fn get_references(&self, node_id: &NodeId, direction: BrowseDirection) -> Vec<Reference> {
+        AddressSpace::get_references(self, node_id, direction)
+    }
+
+    fn browse(
+        &self,
+        node_id: &NodeId,
+        direction: BrowseDirection,
+        reference_type_filter: Option<ReferenceTypeId>,
+        include_subtypes: bool,
+        node_class_mask: Option<u32>,
+        max_results: usize,
+    ) -> BrowseResult {
+        AddressSpace::browse(
+            self,
+            node_id,
+            direction,
+            reference_type_filter,
+            include_subtypes,
+            node_class_mask,
+            max_results,
+        )
+    }
+
+    fn browse_next(
+        &self,
+        continuation_point: &[u8],
+        release: bool,
+        max_results: usize,
+    ) -> BrowseResult {
+        AddressSpace::browse_next(self, continuation_point, release, max_results)
+    }
+
+    fn release_continuation_point(&self, continuation_point: &[u8]) {
+        AddressSpace::release_continuation_point(self, continuation_point)
+    }
+}
+
+impl BrowsePathPort for AddressSpace {
+    fn resolve_browse_path(
+        &self,
+        starting_node: &NodeId,
+        elements: &[RelativePathElement],
+    ) -> BrowsePathResult {
+        AddressSpace::resolve_browse_path(self, starting_node, elements)
+    }
+}
+
+impl TypeHierarchyPort for AddressSpace {
+    fn is_reference_subtype(&self, candidate: &ReferenceTypeId, parent: &ReferenceTypeId) -> bool {
+        self.runtime.is_reference_subtype(candidate, parent)
+    }
+
+    fn is_node_subtype_of(&self, candidate: &NodeId, parent: &NodeId) -> bool {
+        self.runtime.is_node_subtype_of(candidate, parent)
     }
 }
 

@@ -7,11 +7,9 @@ use mabi_opcua::{
     nodes::base::{LocalizedText, NodeClass, QualifiedName},
     nodes::cache::CachedNode,
     nodes::{AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig},
-    services::{
-        HistoryStore, HistoryStoreConfig, SubscriptionConfig, SubscriptionManager,
-        SubscriptionManagerConfig,
-    },
     types::{variant::DataTypeId, DataValue, NodeId, Variant},
+    HistoryStore, HistoryStoreConfig, SubscriptionConfig, SubscriptionManager,
+    SubscriptionManagerConfig,
 };
 
 fn bench_address_space_add_nodes(c: &mut Criterion) {

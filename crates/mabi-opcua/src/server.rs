@@ -1,11 +1,7 @@
 //! OPC UA server implementation.
 //!
-//! This module provides a high-level OPC UA server abstraction that integrates:
-//! - Session management
-//! - Subscription management
-//! - Address space with node operations
-//! - Historical data access
-//! - Node caching and prefetching
+//! This module provides a high-level OPC UA server abstraction that acts as an
+//! orchestration facade over the crate-private runtime builder.
 //!
 //! ## Architecture
 //!
@@ -13,40 +9,28 @@
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │                    OpcUaServer                               │
 //! ├─────────────────────────────────────────────────────────────┤
-//! │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐       │
-//! │  │   Session   │  │ Subscription │  │    History    │       │
-//! │  │   Manager   │  │   Manager    │  │    Store      │       │
-//! │  └─────────────┘  └──────────────┘  └───────────────┘       │
-//! ├─────────────────────────────────────────────────────────────┤
-//! │  ┌─────────────────────────────────────────────────────────┐│
-//! │  │              Address Space (Nodes + Cache)               ││
-//! │  └─────────────────────────────────────────────────────────┘│
+//! │           Lifecycle + Metrics + Public Convenience API       │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
-use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
-use tokio::task::JoinHandle;
-use tracing::{debug, info, instrument, warn};
+use tracing::{info, instrument};
 
 use crate::config::OpcUaServerConfig;
 use crate::error::{OpcUaError, OpcUaResult};
-use crate::nodes::{
-    AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig, NodePrefetcher, PrefetchConfig,
+use crate::modeling::GeneratedNodeCatalog;
+use crate::nodes::{AddressSpace, NodeCache};
+use crate::sdk::history::HistoryStore;
+use crate::sdk::session::SessionManager;
+use crate::sdk::subscription::SubscriptionManager;
+use crate::server_runtime::{
+    ServerBuildSpec, ServerRuntimeBuilder, ServerRuntimeHandle, ServerStatsInputs,
 };
-use crate::security::{SecurityManager, SecurityManagerConfig};
-use crate::service::registry::ServiceRegistry;
-use crate::services::{
-    HistoryStore, HistoryStoreConfig, SessionManager, SessionManagerConfig, SubscriptionManager,
-    SubscriptionManagerConfig,
-};
-use crate::transport::connection::ServiceContextTemplate;
-use crate::transport::tcp_listener::{OpcUaTcpListener, TcpTransportConfig};
 use crate::types::{DataValue, NodeId, Variant};
 
 /// Server state enumeration.
@@ -142,24 +126,8 @@ pub struct OpcUaServer {
     config: OpcUaServerConfig,
     /// Current server state.
     state: RwLock<ServerState>,
-    /// Session manager.
-    session_manager: Arc<SessionManager>,
-    /// Subscription manager.
-    subscription_manager: Arc<SubscriptionManager>,
-    /// Address space.
-    address_space: Arc<AddressSpace>,
-    /// History store.
-    history_store: Arc<HistoryStore>,
-    /// Node cache.
-    node_cache: Arc<NodeCache>,
-    /// Node prefetcher.
-    node_prefetcher: Arc<NodePrefetcher>,
-    /// Security manager.
-    security_manager: Arc<SecurityManager>,
-    /// TCP listener instance tracked for graceful shutdown.
-    tcp_listener: RwLock<Option<Arc<OpcUaTcpListener>>>,
-    /// TCP listener task.
-    tcp_listener_task: RwLock<Option<JoinHandle<()>>>,
+    /// Runtime handle that owns the assembled server subsystems.
+    runtime: ServerRuntimeHandle,
     /// Server event broadcaster.
     event_tx: broadcast::Sender<ServerEvent>,
     /// Shutdown signal.
@@ -175,74 +143,15 @@ pub struct OpcUaServer {
 }
 
 impl OpcUaServer {
-    /// Create a new OPC UA server.
-    pub fn new(config: OpcUaServerConfig) -> OpcUaResult<Self> {
-        // Create session manager
-        let session_config = SessionManagerConfig {
-            max_sessions: 1000,
-            session_timeout_ms: 60_000,
-            max_subscriptions_per_session: config.max_subscriptions,
-        };
-        let session_manager = Arc::new(SessionManager::with_config(session_config));
-
-        // Create subscription manager
-        let subscription_config = SubscriptionManagerConfig {
-            max_subscriptions: config.max_subscriptions,
-            max_monitored_items_per_subscription: config.max_monitored_items,
-            notification_buffer_size: 10_000,
-            event_buffer_size: 1000,
-        };
-        let subscription_manager = Arc::new(SubscriptionManager::with_config(subscription_config));
-
-        // Create address space
-        let address_space_config = AddressSpaceConfig {
-            max_nodes: 1_000_000,
-            max_references_per_node: 10_000,
-            ..Default::default()
-        };
-        let address_space = Arc::new(AddressSpace::new(address_space_config));
-
-        // Create history store
-        let history_config = HistoryStoreConfig::default();
-        let history_store = Arc::new(HistoryStore::new(history_config));
-
-        // Create node cache
-        let cache_config = NodeCacheConfig {
-            max_size: 100_000,
-            prefetch_enabled: true,
-            prefetch_depth: 2,
-            cache_values: true,
-            value_cache_ttl_ms: 1000,
-        };
-        let node_cache = Arc::new(NodeCache::new(cache_config));
-
-        // Create prefetcher
-        let prefetch_config = PrefetchConfig::default();
-        let node_prefetcher = Arc::new(NodePrefetcher::new(
-            prefetch_config,
-            node_cache.clone(),
-            address_space.clone(),
-        ));
-
-        // Create security manager
-        let security_config = SecurityManagerConfig::default();
-        let security_manager = Arc::new(SecurityManager::new(security_config));
-
-        // Create event channel
+    pub(crate) fn from_build_spec(spec: ServerBuildSpec) -> OpcUaResult<Self> {
+        let config = spec.server_config.clone();
+        let runtime = ServerRuntimeBuilder::new().build(spec)?.into_handle();
         let (event_tx, _) = broadcast::channel(1000);
 
         Ok(Self {
             config,
             state: RwLock::new(ServerState::Uninitialized),
-            session_manager,
-            subscription_manager,
-            address_space,
-            history_store,
-            node_cache,
-            node_prefetcher,
-            security_manager,
-            tcp_listener: RwLock::new(None),
-            tcp_listener_task: RwLock::new(None),
+            runtime,
             event_tx,
             shutdown: Arc::new(AtomicBool::new(false)),
             start_time: RwLock::new(None),
@@ -250,6 +159,21 @@ impl OpcUaServer {
             success_counter: AtomicU64::new(0),
             failure_counter: AtomicU64::new(0),
         })
+    }
+
+    /// Create a new OPC UA server.
+    pub fn new(config: OpcUaServerConfig) -> OpcUaResult<Self> {
+        Self::from_build_spec(ServerBuildSpec::from_server_config(config))
+    }
+
+    /// Creates a server and materializes a compiled generated-node catalog into it.
+    pub fn from_generated_catalog(
+        config: OpcUaServerConfig,
+        catalog: &GeneratedNodeCatalog,
+    ) -> OpcUaResult<Self> {
+        Self::from_build_spec(
+            ServerBuildSpec::from_server_config(config).with_generated_catalog(catalog.clone()),
+        )
     }
 
     /// Create a server with a builder pattern.
@@ -269,27 +193,32 @@ impl OpcUaServer {
 
     /// Get the address space.
     pub fn address_space(&self) -> &Arc<AddressSpace> {
-        &self.address_space
+        self.runtime.address_space()
+    }
+
+    /// Materializes a compiled catalog into the server address space.
+    pub fn apply_generated_catalog(&self, catalog: &GeneratedNodeCatalog) -> OpcUaResult<()> {
+        self.runtime.apply_generated_catalog(catalog)
     }
 
     /// Get the session manager.
     pub fn session_manager(&self) -> &Arc<SessionManager> {
-        &self.session_manager
+        self.runtime.session_manager()
     }
 
     /// Get the subscription manager.
     pub fn subscription_manager(&self) -> &Arc<SubscriptionManager> {
-        &self.subscription_manager
+        self.runtime.subscription_manager()
     }
 
     /// Get the history store.
     pub fn history_store(&self) -> &Arc<HistoryStore> {
-        &self.history_store
+        self.runtime.history_store()
     }
 
     /// Get the node cache.
     pub fn node_cache(&self) -> &Arc<NodeCache> {
-        &self.node_cache
+        self.runtime.node_cache()
     }
 
     /// Subscribe to server events.
@@ -321,7 +250,7 @@ impl OpcUaServer {
         // Get data type from variant - use Double (11) as default
         let data_type = NodeId::numeric(0, 11);
 
-        self.address_space.add_variable(
+        self.runtime.address_space().add_variable(
             node_id.clone(),
             &name,
             &name,
@@ -355,7 +284,7 @@ impl OpcUaServer {
 
         let data_type = NodeId::numeric(0, 11);
 
-        self.address_space.add_writable_variable(
+        self.runtime.address_space().add_writable_variable(
             node_id.clone(),
             &name,
             &name,
@@ -385,7 +314,8 @@ impl OpcUaServer {
         let default_parent = NodeId::objects_folder();
         let parent = parent_id.unwrap_or(&default_parent);
 
-        self.address_space
+        self.runtime
+            .address_space()
             .add_folder(node_id.clone(), &name, &name, parent)?;
 
         Ok(node_id)
@@ -394,7 +324,7 @@ impl OpcUaServer {
     /// Read a value from a node.
     pub fn read_value(&self, node_id: &NodeId) -> DataValue {
         self.request_counter.fetch_add(1, Ordering::Relaxed);
-        let value = self.address_space.read_value(node_id);
+        let value = self.runtime.address_space().read_value(node_id);
 
         if value.is_good() {
             self.success_counter.fetch_add(1, Ordering::Relaxed);
@@ -411,16 +341,21 @@ impl OpcUaServer {
         let variant = value.into();
         let data_value = DataValue::new(variant.clone());
 
-        let status = self.address_space.write_value(node_id, variant.clone());
+        let status = self
+            .runtime
+            .address_space()
+            .write_value(node_id, variant.clone());
 
         if status.is_good() {
             self.success_counter.fetch_add(1, Ordering::Relaxed);
 
             // Record in history
-            self.history_store.record_value(node_id, data_value.clone());
+            self.runtime
+                .history_store()
+                .record_value(node_id, data_value.clone());
 
             // Notify subscriptions
-            let subscription_manager = self.subscription_manager.clone();
+            let subscription_manager = self.runtime.subscription_manager().clone();
             let node_id_clone = node_id.clone();
             tokio::spawn(async move {
                 subscription_manager
@@ -469,21 +404,8 @@ impl OpcUaServer {
         // Record start time
         *self.start_time.write() = Some(std::time::Instant::now());
 
-        // Start background tasks
-        self.start_background_tasks().await;
-
-        // Start TCP listener in a background task
-        let tcp_listener = Arc::new(self.create_tcp_listener()?);
-        let listener_task = {
-            let tcp_listener = tcp_listener.clone();
-            tokio::spawn(async move {
-                if let Err(e) = tcp_listener.run().await {
-                    warn!(error = %e, "TCP listener error");
-                }
-            })
-        };
-        *self.tcp_listener.write() = Some(tcp_listener);
-        *self.tcp_listener_task.write() = Some(listener_task);
+        self.runtime.start_transport(self.shutdown.clone()).await?;
+        self.runtime.spawn_background_tasks(self.shutdown.clone());
 
         // Update state
         *self.state.write() = ServerState::Running;
@@ -511,129 +433,6 @@ impl OpcUaServer {
         self.stop().await
     }
 
-    /// Create the TCP listener with service registry and context.
-    fn create_tcp_listener(&self) -> OpcUaResult<OpcUaTcpListener> {
-        // Parse bind address from endpoint URL
-        let bind_address = parse_endpoint_url(&self.config.endpoint_url)?;
-
-        // Build service registry with all handlers
-        let mut registry = ServiceRegistry::new();
-        crate::service::discovery::register_handlers(&mut registry);
-        crate::service::session::register_handlers(&mut registry);
-        crate::service::attribute::register_handlers(&mut registry);
-        crate::service::browse::register_handlers(&mut registry);
-        crate::service::subscription::register_handlers(&mut registry);
-        crate::service::monitored_item::register_handlers(&mut registry);
-        crate::service::register_nodes::register_handlers(&mut registry);
-        crate::service::translate_browse_paths::register_handlers(&mut registry);
-        crate::service::transfer_subscription::register_handlers(&mut registry);
-        crate::service::history::register_handlers(&mut registry);
-        crate::service::method_call::register_handlers(&mut registry);
-
-        info!(
-            handlers = registry.handler_count(),
-            "Registered service handlers"
-        );
-
-        // Create method registry with sample methods
-        let method_registry = Arc::new(crate::service::method_call::MethodRegistry::new());
-        self.register_default_methods(&method_registry);
-
-        // Build shared context template
-        let context = Arc::new(ServiceContextTemplate {
-            session_manager: self.session_manager.clone(),
-            address_space: self.address_space.clone(),
-            subscription_manager: self.subscription_manager.clone(),
-            history_store: self.history_store.clone(),
-            security_manager: self.security_manager.clone(),
-            server_config: Arc::new(self.config.clone()),
-            method_registry,
-        });
-
-        let tcp_config = TcpTransportConfig {
-            bind_address,
-            max_connections: 1000,
-            connection_timeout: Duration::from_secs(60),
-            server_buffer_size: 65535,
-        };
-
-        Ok(OpcUaTcpListener::new(
-            tcp_config,
-            Arc::new(registry),
-            context,
-        ))
-    }
-
-    /// Register default server methods (sample callable methods for testing).
-    ///
-    /// Creates a Multiply method node with InputArguments/OutputArguments
-    /// property nodes so TRAP's MethodCallManager can discover and call it.
-    fn register_default_methods(
-        &self,
-        method_registry: &Arc<crate::service::method_call::MethodRegistry>,
-    ) {
-        use crate::nodes::classes::MethodNode;
-        use crate::nodes::reference::Reference;
-
-        // Multiply method (ns=0; i=62541) — sample method for testing
-        let method_node_id = NodeId::numeric(0, 62541);
-
-        // Create method node in address space
-        let method_node = MethodNode::new(method_node_id.clone(), "Multiply", "Multiply");
-        self.address_space.insert_node(method_node);
-        self.address_space.add_reference(Reference::has_component(
-            NodeId::server(), // Parent: Server object
-            method_node_id.clone(),
-        ));
-
-        // InputArguments property (ns=0; i=62542)
-        let input_args_id = NodeId::numeric(0, 62542);
-        let input_args_var = crate::nodes::classes::VariableNode::new(
-            input_args_id.clone(),
-            "InputArguments",
-            "InputArguments",
-            NodeId::numeric(0, 296), // Argument DataType
-            Variant::Null,           // Placeholder — TRAP reads the structure via attribute
-        );
-        self.address_space.insert_node(input_args_var);
-        self.address_space.add_reference(Reference::has_property(
-            method_node_id.clone(),
-            input_args_id,
-        ));
-
-        // OutputArguments property (ns=0; i=62543)
-        let output_args_id = NodeId::numeric(0, 62543);
-        let output_args_var = crate::nodes::classes::VariableNode::new(
-            output_args_id.clone(),
-            "OutputArguments",
-            "OutputArguments",
-            NodeId::numeric(0, 296), // Argument DataType
-            Variant::Null,
-        );
-        self.address_space.insert_node(output_args_var);
-        self.address_space.add_reference(Reference::has_property(
-            method_node_id.clone(),
-            output_args_id,
-        ));
-
-        // Register the actual callback
-        method_registry.register(
-            method_node_id,
-            Arc::new(|args: &[Variant]| {
-                if args.len() < 2 {
-                    return Err(crate::types::StatusCode::BAD_INVALID_ARGUMENT);
-                }
-                let a = args[0]
-                    .as_f64()
-                    .ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
-                let b = args[1]
-                    .as_f64()
-                    .ok_or(crate::types::StatusCode::BAD_INVALID_ARGUMENT)?;
-                Ok(vec![Variant::Double(a * b)])
-            }),
-        );
-    }
-
     /// Stop the server.
     #[instrument(skip(self))]
     pub async fn stop(&self) -> OpcUaResult<()> {
@@ -649,23 +448,9 @@ impl OpcUaServer {
 
         // Signal shutdown
         self.shutdown.store(true, Ordering::Relaxed);
-        if let Some(listener) = self.tcp_listener.read().as_ref() {
-            listener.shutdown();
-        }
-
-        // Close all sessions
-        for session_id in self.session_manager.session_ids() {
-            let _ = self.session_manager.close_session(&session_id);
-        }
-
-        let listener_task = self.tcp_listener_task.write().take();
-        if let Some(listener_task) = listener_task {
-            let _ = tokio::time::timeout(Duration::from_secs(5), listener_task).await;
-        }
-        self.tcp_listener.write().take();
-
-        // Wait for background tasks to observe cancellation
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        self.runtime.close_active_sessions();
+        self.runtime.stop_transport().await;
+        self.runtime.shutdown_background_tasks().await;
 
         // Update state
         *self.state.write() = ServerState::Stopped;
@@ -700,86 +485,24 @@ impl OpcUaServer {
             .map(|t| t.elapsed().as_secs())
             .unwrap_or(0);
 
-        let cache_stats = self.node_cache.stats();
+        let ServerStatsInputs {
+            active_sessions,
+            active_subscriptions,
+            total_nodes,
+            cache_hit_rate,
+        } = self.runtime.stats_snapshot_inputs();
 
         ServerStats {
             total_requests: self.request_counter.load(Ordering::Relaxed),
             successful_requests: self.success_counter.load(Ordering::Relaxed),
             failed_requests: self.failure_counter.load(Ordering::Relaxed),
-            active_sessions: self.session_manager.session_count(),
-            active_subscriptions: self.subscription_manager.subscription_count(),
-            total_nodes: self.address_space.node_count(),
-            cache_hit_rate: cache_stats.hit_rate(),
+            active_sessions,
+            active_subscriptions,
+            total_nodes,
+            cache_hit_rate,
             uptime_seconds: uptime,
         }
     }
-
-    // =========================================================================
-    // Private Methods
-    // =========================================================================
-
-    async fn start_background_tasks(&self) {
-        // Subscription processing task
-        let subscription_manager = self.subscription_manager.clone();
-        let shutdown = self.shutdown.clone();
-        tokio::spawn(async move {
-            let interval = Duration::from_millis(100);
-            while !shutdown.load(Ordering::Relaxed) {
-                subscription_manager.process_all().await;
-                tokio::time::sleep(interval).await;
-            }
-        });
-
-        // Session cleanup task
-        let session_manager = self.session_manager.clone();
-        let shutdown = self.shutdown.clone();
-        tokio::spawn(async move {
-            let interval = Duration::from_secs(10);
-            while !shutdown.load(Ordering::Relaxed) {
-                session_manager.cleanup_expired();
-                tokio::time::sleep(interval).await;
-            }
-        });
-
-        // History cleanup task
-        let history_store = self.history_store.clone();
-        let shutdown = self.shutdown.clone();
-        tokio::spawn(async move {
-            let interval = Duration::from_secs(3600); // 1 hour
-            while !shutdown.load(Ordering::Relaxed) {
-                history_store.cleanup();
-                tokio::time::sleep(interval).await;
-            }
-        });
-
-        // Prefetch processing task
-        let prefetcher = self.node_prefetcher.clone();
-        let shutdown = self.shutdown.clone();
-        tokio::spawn(async move {
-            let interval = Duration::from_millis(10);
-            while !shutdown.load(Ordering::Relaxed) {
-                prefetcher.process_pending();
-                tokio::time::sleep(interval).await;
-            }
-        });
-
-        debug!("Background tasks started");
-    }
-}
-
-/// Parse an OPC UA endpoint URL (e.g., "opc.tcp://0.0.0.0:4840/") into a SocketAddr.
-fn parse_endpoint_url(url: &str) -> OpcUaResult<SocketAddr> {
-    // Strip protocol prefix
-    let addr_part = url.strip_prefix("opc.tcp://").unwrap_or(url);
-    // Strip trailing path
-    let addr_part = addr_part.split('/').next().unwrap_or(addr_part);
-
-    addr_part.parse::<SocketAddr>().map_err(|e| {
-        OpcUaError::Server(format!(
-            "Failed to parse endpoint URL '{}' as socket address: {}",
-            url, e
-        ))
-    })
 }
 
 /// Builder for OPC UA server.
@@ -840,6 +563,9 @@ impl Default for OpcUaServerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modeling::{CompiledNodeReference, GeneratedNodeCatalog, GeneratedNodeDefinition};
+    use crate::nodes::reference::ReferenceDirection;
+    use crate::nodes::{LocalizedText, QualifiedName, ReferenceTypeId};
 
     #[test]
     fn test_server_creation() {
@@ -887,6 +613,37 @@ mod tests {
         assert!(server.address_space().contains_node(&folder_id));
     }
 
+    #[test]
+    fn test_from_generated_catalog_materializes_during_build() {
+        let generated_folder = NodeId::numeric(1, 9001);
+        let mut catalog = GeneratedNodeCatalog {
+            namespace_table: vec![
+                "http://opcfoundation.org/UA/".to_string(),
+                "urn:mabinogion:test".to_string(),
+            ],
+            ..Default::default()
+        };
+        catalog.nodes.push(GeneratedNodeDefinition::Object {
+            node_id: generated_folder.clone(),
+            browse_name: QualifiedName::new(1, "GeneratedFolder"),
+            display_name: LocalizedText::invariant("GeneratedFolder"),
+            description: None,
+            event_notifier: 0,
+            folder_like: true,
+        });
+        catalog.references.push(CompiledNodeReference {
+            source_node_id: NodeId::objects_folder(),
+            reference_type: ReferenceTypeId::Organizes,
+            target_node_id: generated_folder.clone(),
+            direction: ReferenceDirection::Forward,
+        });
+
+        let server =
+            OpcUaServer::from_generated_catalog(OpcUaServerConfig::default(), &catalog).unwrap();
+
+        assert!(server.address_space().contains_node(&generated_folder));
+    }
+
     #[tokio::test]
     async fn test_write_value() {
         let server = OpcUaServer::new(OpcUaServerConfig::default()).unwrap();
@@ -930,7 +687,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_start_stop() {
-        let server = OpcUaServer::new(OpcUaServerConfig::default()).unwrap();
+        let config = OpcUaServerConfig {
+            endpoint_url: "opc.tcp://127.0.0.1:0".to_string(),
+            ..Default::default()
+        };
+        let server = OpcUaServer::new(config).unwrap();
 
         server.start().await.unwrap();
         assert_eq!(server.state(), ServerState::Running);
@@ -939,5 +700,10 @@ mod tests {
         server.stop().await.unwrap();
         assert_eq!(server.state(), ServerState::Stopped);
         assert!(!server.is_running());
+
+        server.start().await.unwrap();
+        assert_eq!(server.state(), ServerState::Running);
+        server.stop().await.unwrap();
+        assert_eq!(server.state(), ServerState::Stopped);
     }
 }

@@ -13,7 +13,7 @@ use crate::codec::data_value::ExtensionObject;
 use crate::codec::decoder::BinaryDecodable;
 use crate::codec::encoder::BinaryEncodable;
 use crate::error::OpcUaResult;
-use crate::services::SubscriptionConfig;
+use crate::sdk::subscription::SubscriptionConfig;
 use crate::types::{NodeId, StatusCode};
 
 const CREATE_SUBSCRIPTION_REQUEST_ID: u32 = 787;

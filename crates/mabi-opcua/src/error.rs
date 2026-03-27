@@ -9,6 +9,10 @@ pub type OpcUaResult<T> = Result<T, OpcUaError>;
 /// OPC UA error types.
 #[derive(Debug, Error)]
 pub enum OpcUaError {
+    /// Invalid canonical simulator config.
+    #[error("Configuration error: {0}")]
+    Config(String),
+
     /// Node not found.
     #[error("Node not found: {node_id}")]
     NodeNotFound { node_id: String },

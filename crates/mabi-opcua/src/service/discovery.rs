@@ -81,6 +81,82 @@ impl ResponseHeader {
 /// GetEndpoints service handler.
 pub struct GetEndpointsHandler;
 
+#[derive(Debug, Clone)]
+pub(crate) struct GetEndpointsRequest {
+    pub request_handle: u32,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GetEndpointsResponse {
+    pub request_handle: u32,
+}
+
+pub(crate) fn decode_get_endpoints_request(
+    request_body: &[u8],
+) -> OpcUaResult<GetEndpointsRequest> {
+    let mut buf = Bytes::copy_from_slice(request_body);
+
+    let header = RequestHeader::decode(&mut buf)?;
+    let _additional_header = ExtensionObject::decode(&mut buf)?;
+
+    let _endpoint_url = String::decode(&mut buf)?;
+    let locale_ids_len = i32::decode(&mut buf)?;
+    if locale_ids_len > 0 {
+        for _ in 0..locale_ids_len {
+            let _ = String::decode(&mut buf)?;
+        }
+    }
+    let profile_uris_len = i32::decode(&mut buf)?;
+    if profile_uris_len > 0 {
+        for _ in 0..profile_uris_len {
+            let _ = String::decode(&mut buf)?;
+        }
+    }
+
+    Ok(GetEndpointsRequest {
+        request_handle: header.request_handle,
+    })
+}
+
+pub(crate) async fn handle_get_endpoints(
+    request: GetEndpointsRequest,
+    _context: &ServiceContext,
+) -> OpcUaResult<GetEndpointsResponse> {
+    Ok(GetEndpointsResponse {
+        request_handle: request.request_handle,
+    })
+}
+
+pub(crate) fn encode_get_endpoints_response(
+    response: &GetEndpointsResponse,
+    context: &ServiceContext,
+) -> OpcUaResult<Vec<u8>> {
+    let mut out = BytesMut::new();
+    ResponseHeader::good(response.request_handle).encode(&mut out)?;
+
+    out.put_i32_le(1);
+
+    context.server_config.endpoint_url.encode(&mut out)?;
+    encode_application_description(
+        &context.server_config.endpoint_url,
+        &context.server_config.server_name,
+        &mut out,
+    )?;
+    out.put_i32_le(-1);
+    out.put_u32_le(1);
+    "http://opcfoundation.org/UA/SecurityPolicy#None".encode(&mut out)?;
+    out.put_i32_le(1);
+    "anonymous".to_string().encode(&mut out)?;
+    out.put_u32_le(0);
+    out.put_i32_le(-1);
+    out.put_i32_le(-1);
+    out.put_i32_le(-1);
+    "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary".encode(&mut out)?;
+    out.put_u8(0);
+
+    Ok(out.to_vec())
+}
+
 #[async_trait]
 impl ServiceHandler for GetEndpointsHandler {
     fn request_type_id(&self) -> NodeId {
@@ -92,67 +168,13 @@ impl ServiceHandler for GetEndpointsHandler {
         request_body: &[u8],
         context: &ServiceContext,
     ) -> OpcUaResult<ServiceResponse> {
-        let mut buf = Bytes::copy_from_slice(request_body);
-
-        // Skip AdditionalHeader ExtensionObject in request header
-        let _header = RequestHeader::decode(&mut buf)?;
-        let _additional_header = ExtensionObject::decode(&mut buf)?;
-
-        // GetEndpointsRequest fields
-        let _endpoint_url = String::decode(&mut buf)?;
-        // LocaleIds array
-        let _locale_ids_len = i32::decode(&mut buf)?;
-        if _locale_ids_len > 0 {
-            for _ in 0.._locale_ids_len {
-                let _ = String::decode(&mut buf)?;
-            }
-        }
-        // ProfileUris array
-        let _profile_uris_len = i32::decode(&mut buf)?;
-        if _profile_uris_len > 0 {
-            for _ in 0.._profile_uris_len {
-                let _ = String::decode(&mut buf)?;
-            }
-        }
-
-        // Build response
-        let mut out = BytesMut::new();
-        ResponseHeader::good(_header.request_handle).encode(&mut out)?;
-
-        // Endpoints array — return one endpoint with SecurityPolicy::None
-        out.put_i32_le(1); // array length = 1
-
-        // EndpointDescription
-        // EndpointUrl
-        context.server_config.endpoint_url.encode(&mut out)?;
-        // Server (ApplicationDescription)
-        encode_application_description(
-            &context.server_config.endpoint_url,
-            &context.server_config.server_name,
-            &mut out,
-        )?;
-        // ServerCertificate (empty)
-        out.put_i32_le(-1);
-        // SecurityMode: None = 1
-        out.put_u32_le(1);
-        // SecurityPolicyUri
-        "http://opcfoundation.org/UA/SecurityPolicy#None".encode(&mut out)?;
-        // UserIdentityTokens array — 1 anonymous policy
-        out.put_i32_le(1);
-        // UserTokenPolicy
-        "anonymous".to_string().encode(&mut out)?; // PolicyId
-        out.put_u32_le(0); // TokenType: Anonymous = 0
-        out.put_i32_le(-1); // IssuedTokenType (null)
-        out.put_i32_le(-1); // IssuerEndpointUrl (null)
-        out.put_i32_le(-1); // SecurityPolicyUri (null)
-                            // TransportProfileUri
-        "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary".encode(&mut out)?;
-        // SecurityLevel
-        out.put_u8(0);
+        let request = decode_get_endpoints_request(request_body)?;
+        let response = handle_get_endpoints(request, context).await?;
+        let body = encode_get_endpoints_response(&response, context)?;
 
         Ok(ServiceResponse {
             type_id: NodeId::numeric(0, GET_ENDPOINTS_RESPONSE_ID),
-            body: out.to_vec(),
+            body,
         })
     }
 }

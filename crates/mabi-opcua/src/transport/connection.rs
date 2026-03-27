@@ -24,8 +24,13 @@ use crate::channel::secure_channel::SecureChannel;
 use crate::codec::data_value::ExtensionObject;
 use crate::codec::decoder::BinaryDecodable;
 use crate::codec::encoder::BinaryEncodable;
+use crate::core::headers::ResponseHeader;
+use crate::core::registry::{ServiceContext, ServiceRegistry};
 use crate::error::{OpcUaError, OpcUaResult};
-use crate::service::registry::{ServiceContext, ServiceRegistry};
+use crate::sdk::history::HistoryStore;
+use crate::sdk::methods::MethodRegistry;
+use crate::sdk::session::SessionManager;
+use crate::sdk::subscription::SubscriptionManager;
 use crate::transport::codec::{build_response, OpcUaTransportCodec};
 use crate::transport::messages::*;
 use crate::transport::metrics::TransportMetrics;
@@ -359,13 +364,13 @@ pub async fn handle_connection(
 /// Template for creating per-connection ServiceContext instances.
 /// Holds shared references to all server components.
 pub struct ServiceContextTemplate {
-    pub session_manager: Arc<crate::services::SessionManager>,
+    pub session_manager: Arc<SessionManager>,
     pub address_space: Arc<crate::nodes::AddressSpace>,
-    pub subscription_manager: Arc<crate::services::SubscriptionManager>,
-    pub history_store: Arc<crate::services::HistoryStore>,
+    pub subscription_manager: Arc<SubscriptionManager>,
+    pub history_store: Arc<HistoryStore>,
     pub security_manager: Arc<crate::security::SecurityManager>,
     pub server_config: Arc<crate::config::OpcUaServerConfig>,
-    pub method_registry: Arc<crate::service::method_call::MethodRegistry>,
+    pub method_registry: Arc<MethodRegistry>,
 }
 
 // =============================================================================
@@ -414,7 +419,7 @@ fn build_opn_response(
     type_id.encode(&mut buf)?;
 
     // ResponseHeader
-    crate::service::discovery::ResponseHeader::good(request_handle).encode(&mut buf)?;
+    ResponseHeader::good(request_handle).encode(&mut buf)?;
 
     // ServerProtocolVersion
     buf.extend_from_slice(&0u32.to_le_bytes());
@@ -442,7 +447,7 @@ fn build_service_fault(request_id: u32, status: StatusCode) -> OpcUaResult<Vec<u
 
     // ServiceFault type id = 397 — encode as raw NodeId + body (no ExtensionObject wrapper)
     NodeId::numeric(0, 397).encode(&mut buf)?;
-    crate::service::discovery::ResponseHeader {
+    ResponseHeader {
         timestamp: chrono::Utc::now(),
         request_handle: request_id,
         service_result: status,

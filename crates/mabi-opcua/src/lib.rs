@@ -4,12 +4,27 @@
 //!
 //! This crate provides a comprehensive OPC UA server simulation capability with:
 //!
+//! - **Canonical Modeling Surface**: `OpcUaSimulatorConfig` and named session compilation
 //! - **Server Configuration**: Flexible server setup with security policies and endpoints
 //! - **Address Space Management**: Hierarchical node organization with 100,000+ node support
 //! - **Node Types**: Full support for Objects, Variables, Methods, and Type nodes
 //! - **Subscriptions**: Data change monitoring with 10,000+ concurrent subscription support
 //! - **Historical Access**: Raw and aggregated historical data with configurable retention
 //! - **High Performance**: LRU caching, concurrent access, and efficient memory management
+//!
+//! ## Canonical Surface
+//!
+//! The preferred architecture-facing surface is:
+//!
+//! - [`OpcUaSimulatorConfig`]
+//! - [`compile_session`]
+//! - [`GeneratedNodeCatalog`]
+//! - [`CompiledOpcUaSession`]
+//! - [`OpcUaControlSession`]
+//!
+//! Builder-oriented node creation and legacy numeric serve flows are still supported,
+//! but they are compatibility veneer. Internally, runtime entry always converges on a
+//! compiled named session.
 //!
 //! ## Architecture
 //!
@@ -41,9 +56,9 @@
 //! ```rust,no_run
 //! use mabi_opcua::{
 //!     OpcUaServerConfig, OpcUaDevice,
-//!     types::{NodeId, Variant, DataValue},
+//!     HistoryStore, HistoryStoreConfig, SubscriptionManager, SubscriptionManagerConfig,
 //!     nodes::{AddressSpace, AddressSpaceConfig, VariableBuilder, NodeBuilder},
-//!     services::{SubscriptionManager, SubscriptionManagerConfig, HistoryStore, HistoryStoreConfig},
+//!     types::{NodeId, Variant, DataValue},
 //! };
 //!
 //! // Create an OPC UA device
@@ -73,7 +88,7 @@
 //!
 //! - [`types`]: Core OPC UA types (NodeId, Variant, DataValue, etc.)
 //! - [`nodes`]: Node classes and address space management
-//! - [`services`]: Session, subscription, and history services
+//! - Root re-exports: Session, subscription, history, and event runtime types
 //! - [`security`]: Security policies, certificates, encryption, and authentication
 //! - [`config`]: Server configuration
 //! - [`device`]: Device trait implementation
@@ -82,15 +97,18 @@
 pub mod channel;
 pub mod codec;
 pub mod config;
+pub mod control;
+mod core;
 pub mod device;
 pub mod error;
 pub mod factory;
+pub mod modeling;
 pub mod nodes;
 pub mod runtime;
+mod sdk;
 pub mod security;
 pub mod server;
-pub mod service;
-pub mod services;
+mod server_runtime;
 pub mod transport;
 pub mod types;
 
@@ -98,9 +116,20 @@ pub mod types;
 pub use config::{
     EndpointConfig, MessageSecurityMode, OpcUaServerConfig, SecurityPolicy, UserTokenConfig,
 };
+pub use control::{
+    NodeCatalogPort, NodeDescriptor, NodeTarget, NodeValueControlPort, OpcUaControlSession,
+    SessionControlPort, SessionSnapshot, SessionStatus,
+};
 pub use device::OpcUaDevice;
 pub use error::{OpcUaError, OpcUaResult};
 pub use factory::{OpcUaDeviceBuilder, OpcUaDeviceFactory};
+pub use modeling::{
+    compile_session, inspect_summary, load_simulator_config, schema_summary, CompanionModelRef,
+    CompiledDeviceDefinition, CompiledOpcUaSession, CompiledPointBinding, DeviceDefinition,
+    GeneratedNodeCatalog, ModelDefinition, NamespaceCompilationPlan, NodeSetSource,
+    OpcUaConfigSummary, OpcUaSchemaSummary, OpcUaSessionSummary, OpcUaSimulatorConfig,
+    PresetDefinition, SessionControlConfig, SessionDefinition,
+};
 pub use server::{OpcUaServer, OpcUaServerBuilder, ServerEvent, ServerState, ServerStats};
 
 // Type re-exports
@@ -150,13 +179,17 @@ pub use nodes::{
     VariableTemplate,
 };
 
-// Service re-exports
-pub use services::{
-    AggregateType, DataChangeFilter, DataChangeTrigger, DeadbandType, HistoricalDataPoint,
-    HistoryStore, HistoryStoreConfig, MonitoredItem, MonitoredItemConfig,
-    MonitoredItemNotification, MonitoringMode, Session, SessionInfo, SessionManager,
-    SessionManagerConfig, Subscription, SubscriptionConfig, SubscriptionManager,
-    SubscriptionManagerConfig,
+// Service/runtime re-exports
+pub use sdk::event::{
+    ContentFilterElement, EventData, EventFieldList, EventFilter, EventManager, EventNotification,
+    FilterOperand, FilterOperator, SimpleAttributeOperand,
+};
+pub use sdk::history::{AggregateType, HistoricalDataPoint, HistoryStore, HistoryStoreConfig};
+pub use sdk::session::{Session, SessionInfo, SessionManager, SessionManagerConfig, UserIdentity};
+pub use sdk::subscription::{
+    DataChangeFilter, DataChangeTrigger, DeadbandType, MonitoredItem, MonitoredItemConfig,
+    MonitoredItemNotification, MonitoringMode, Subscription, SubscriptionConfig,
+    SubscriptionManager, SubscriptionManagerConfig,
 };
 
 // Security re-exports

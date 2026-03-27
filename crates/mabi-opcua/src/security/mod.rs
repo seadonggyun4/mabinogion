@@ -41,6 +41,7 @@ pub mod certificate;
 pub mod crypto;
 pub mod manager;
 pub mod policy;
+pub(crate) mod providers;
 pub mod user_auth;
 
 pub use certificate::{

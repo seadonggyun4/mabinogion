@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use parking_lot::RwLock;
 
 use crate::config::{MessageSecurityMode, SecurityPolicy};
+use crate::types::NodeId;
 
 /// Secure channel state for a single client connection.
 ///
@@ -39,6 +40,10 @@ pub struct SecureChannel {
     token_lifetime_ms: AtomicU32,
     /// Creation time of the current token (interior mutable for renewal).
     token_created_at: RwLock<std::time::Instant>,
+    /// Attached session ID for this channel, if any.
+    attached_session_id: RwLock<Option<NodeId>>,
+    /// Attached authentication token for this channel, if any.
+    attached_auth_token: RwLock<Option<NodeId>>,
 }
 
 /// Counter for generating unique channel IDs.
@@ -79,6 +84,8 @@ impl SecureChannel {
             server_sequence_number: AtomicU32::new(1),
             token_lifetime_ms: AtomicU32::new(3_600_000), // 1 hour default
             token_created_at: RwLock::new(std::time::Instant::now()),
+            attached_session_id: RwLock::new(None),
+            attached_auth_token: RwLock::new(None),
         }
     }
 
@@ -97,6 +104,8 @@ impl SecureChannel {
             server_sequence_number: AtomicU32::new(1),
             token_lifetime_ms: AtomicU32::new(token_lifetime_ms),
             token_created_at: RwLock::new(std::time::Instant::now()),
+            attached_session_id: RwLock::new(None),
+            attached_auth_token: RwLock::new(None),
         }
     }
 
@@ -123,11 +132,21 @@ impl SecureChannel {
 
     /// Validate and update the client sequence number.
     pub fn validate_sequence_number(&self, received: u32) -> bool {
-        // OPC UA spec: sequence numbers should be monotonically increasing
-        // For simplicity, just track the latest
+        let previous = self.client_sequence_number.load(Ordering::SeqCst);
+        if previous != 0 && received <= previous {
+            return false;
+        }
         self.client_sequence_number
             .store(received, Ordering::SeqCst);
         true
+    }
+
+    /// Get the next expected client sequence number.
+    pub fn expected_client_sequence_number(&self) -> u32 {
+        match self.client_sequence_number.load(Ordering::SeqCst) {
+            0 => 1,
+            previous => previous.saturating_add(1),
+        }
     }
 
     /// Renew the security token (callable through `&self` / `Arc`).
@@ -145,5 +164,32 @@ impl SecureChannel {
     pub fn is_token_expired(&self) -> bool {
         let created = *self.token_created_at.read();
         created.elapsed().as_millis() > self.token_lifetime_ms.load(Ordering::Relaxed) as u128
+    }
+
+    /// Check whether the supplied token matches the current token.
+    pub fn matches_token(&self, token_id: u32) -> bool {
+        self.token_id() == token_id
+    }
+
+    /// Attach a session to this channel.
+    pub fn attach_session(&self, session_id: NodeId, auth_token: NodeId) {
+        *self.attached_session_id.write() = Some(session_id);
+        *self.attached_auth_token.write() = Some(auth_token);
+    }
+
+    /// Clear any attached session metadata.
+    pub fn clear_session(&self) {
+        *self.attached_session_id.write() = None;
+        *self.attached_auth_token.write() = None;
+    }
+
+    /// Get the attached session ID, if any.
+    pub fn session_id(&self) -> Option<NodeId> {
+        self.attached_session_id.read().clone()
+    }
+
+    /// Get the attached auth token, if any.
+    pub fn auth_token(&self) -> Option<NodeId> {
+        self.attached_auth_token.read().clone()
     }
 }

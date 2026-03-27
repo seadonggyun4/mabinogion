@@ -21,7 +21,7 @@ use mabi_core::{
 use crate::config::OpcUaServerConfig;
 use crate::device::OpcUaDevice;
 use crate::nodes::{AddressSpaceConfig, NodeCacheConfig};
-use crate::services::HistoryStoreConfig;
+use crate::sdk::history::HistoryStoreConfig;
 use crate::types::{NodeId, Variant};
 
 /// OPC UA specific configuration in device metadata.

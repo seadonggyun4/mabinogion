@@ -13,8 +13,12 @@ use mabi_cli::runtime_registry::{protocol_catalog, workspace_protocol_registry};
 use mabi_cli::validation::{parse_nonzero_count, parse_port};
 use mabi_modbus::{
     BehaviorSetPort, CompiledModbusSession, FaultPresetPort, ModbusConfigSummary,
-    ModbusControlSession, ModbusSimulatorConfig, PointCatalogPort, PointCatalogQuery,
-    PointTarget, RegisterControlPort, SessionControlPort, TracePort,
+    ModbusControlSession, ModbusSimulatorConfig, PointCatalogPort, PointCatalogQuery, PointTarget,
+    RegisterControlPort, SessionControlPort as ModbusSessionControlPort, TracePort,
+};
+use mabi_opcua::{
+    CompiledOpcUaSession, NodeCatalogPort, NodeTarget, NodeValueControlPort, OpcUaConfigSummary,
+    OpcUaControlSession, OpcUaSimulatorConfig, SessionControlPort as OpcuaSessionControlPort,
 };
 use mabi_runtime::{ProtocolLaunchSpec, RuntimeSession};
 use mabi_scenario::prelude::ScenarioValidator;
@@ -222,6 +226,10 @@ struct OpcuaServeArgs {
     #[command(flatten)]
     serve: ServeArgs,
 
+    /// Named session from an OPC UA simulator config file
+    #[arg(long)]
+    session: Option<String>,
+
     /// Port to bind to
     #[arg(short, long, default_value = "4840", value_parser = parse_port)]
     port: u16,
@@ -371,6 +379,14 @@ enum InspectSubcommand {
     #[command(name = "modbus-config")]
     ModbusConfig(InspectModbusConfigArgs),
 
+    /// Show the typed OPC UA simulator schema
+    #[command(name = "opcua-schema")]
+    OpcuaSchema,
+
+    /// Inspect an OPC UA simulator config file
+    #[command(name = "opcua-config")]
+    OpcuaConfig(InspectOpcuaConfigArgs),
+
     /// Show current process runtime status
     Status,
 }
@@ -407,6 +423,10 @@ enum ValidateSubcommand {
     /// Validate a typed Modbus simulator config file
     #[command(name = "modbus-config")]
     ModbusConfig(ValidateModbusConfigArgs),
+
+    /// Validate a typed OPC UA simulator config file
+    #[command(name = "opcua-config")]
+    OpcuaConfig(ValidateOpcuaConfigArgs),
 }
 
 #[derive(Args)]
@@ -454,6 +474,20 @@ struct InspectModbusConfigArgs {
 }
 
 #[derive(Args)]
+struct InspectOpcuaConfigArgs {
+    /// OPC UA config file to inspect
+    #[arg(required = true)]
+    file: PathBuf,
+}
+
+#[derive(Args)]
+struct ValidateOpcuaConfigArgs {
+    /// OPC UA config file to validate
+    #[arg(required = true)]
+    file: PathBuf,
+}
+
+#[derive(Args)]
 struct ControlCommandArgs {
     #[command(subcommand)]
     protocol: ControlProtocolCommand,
@@ -462,6 +496,7 @@ struct ControlCommandArgs {
 #[derive(Subcommand)]
 enum ControlProtocolCommand {
     Modbus(ModbusControlArgs),
+    Opcua(OpcuaControlArgs),
 }
 
 #[derive(Args)]
@@ -617,6 +652,85 @@ struct ModbusBehaviorApplyArgs {
     behavior_set: String,
 }
 
+#[derive(Args)]
+struct OpcuaControlArgs {
+    /// Named session from the shared OPC UA simulator config file
+    #[arg(long)]
+    session: String,
+
+    #[command(subcommand)]
+    command: OpcuaControlSubcommand,
+}
+
+#[derive(Subcommand)]
+enum OpcuaControlSubcommand {
+    Session(OpcuaSessionCommandArgs),
+    Node(OpcuaNodeCommandArgs),
+}
+
+#[derive(Args)]
+struct OpcuaSessionCommandArgs {
+    #[command(subcommand)]
+    command: OpcuaSessionSubcommand,
+}
+
+#[derive(Subcommand)]
+enum OpcuaSessionSubcommand {
+    Status,
+    Reset,
+    Snapshot,
+}
+
+#[derive(Args)]
+struct OpcuaNodeCommandArgs {
+    #[command(subcommand)]
+    command: OpcuaNodeSubcommand,
+}
+
+#[derive(Subcommand)]
+enum OpcuaNodeSubcommand {
+    List(OpcuaNodeListArgs),
+    Read(OpcuaNodeReadArgs),
+    Write(OpcuaNodeWriteArgs),
+}
+
+#[derive(Args, Default)]
+struct OpcuaNodeSelectorArgs {
+    /// Explicit device id
+    #[arg(long)]
+    device: Option<String>,
+
+    /// Stable point id from the compiled session
+    #[arg(long)]
+    point: Option<String>,
+
+    /// Raw OPC UA node id (for example ns=2;s=Temperature)
+    #[arg(long = "node-id")]
+    node_id: Option<String>,
+}
+
+#[derive(Args)]
+struct OpcuaNodeListArgs {
+    /// Restrict output to a single device id
+    #[arg(long)]
+    device: Option<String>,
+}
+
+#[derive(Args)]
+struct OpcuaNodeReadArgs {
+    #[command(flatten)]
+    selector: OpcuaNodeSelectorArgs,
+}
+
+#[derive(Args)]
+struct OpcuaNodeWriteArgs {
+    #[command(flatten)]
+    selector: OpcuaNodeSelectorArgs,
+
+    /// JSON literal or raw string value to write
+    value: String,
+}
+
 #[derive(ValueEnum, Clone, Copy, Debug)]
 enum ModbusRegisterTypeArg {
     Coil,
@@ -745,6 +859,10 @@ async fn main() -> ExitCode {
                 InspectSubcommand::ModbusConfig(args) => {
                     inspect_modbus_config(&mut ctx, args.file).await
                 }
+                InspectSubcommand::OpcuaSchema => inspect_opcua_schema(&mut ctx).await,
+                InspectSubcommand::OpcuaConfig(args) => {
+                    inspect_opcua_config(&mut ctx, args.file).await
+                }
                 InspectSubcommand::Status => inspect_status(&mut ctx).await,
             }
         }
@@ -765,6 +883,11 @@ async fn main() -> ExitCode {
                 let mut ctx = ctx_handle.write().await;
                 validate_modbus_config(&mut ctx, args.file).await
             }
+            ValidateSubcommand::OpcuaConfig(args) => {
+                let ctx_handle = runner.context();
+                let mut ctx = ctx_handle.write().await;
+                validate_opcua_config(&mut ctx, args.file).await
+            }
         },
         Commands::Control(args) => {
             let ctx_handle = runner.context();
@@ -773,6 +896,9 @@ async fn main() -> ExitCode {
                 ControlProtocolCommand::Modbus(args) => {
                     control_modbus(&mut ctx, global_config.as_deref(), args, readiness_timeout)
                         .await
+                }
+                ControlProtocolCommand::Opcua(args) => {
+                    control_opcua(&mut ctx, global_config.as_deref(), args, readiness_timeout).await
                 }
             }
         }
@@ -852,19 +978,26 @@ async fn into_launch_spec(
                 ))
             }
         }
-        ServeProtocolCommand::Opcua(args) => Ok((
-            ProtocolLaunchSpec {
-                protocol: "opcua".into(),
-                name: args.serve.name,
-                config: json!({
-                    "bind_addr": parse_bind_addr(&args.bind, args.port)?,
-                    "endpoint_path": args.endpoint,
-                    "nodes": args.nodes,
-                    "security_mode": args.security.to_string(),
-                }),
-            },
-            mabi_runtime::RuntimeExtensions::default(),
-        )),
+        ServeProtocolCommand::Opcua(args) => {
+            if let Some(path) = global_config {
+                let session_name =
+                    args.session
+                        .as_deref()
+                        .ok_or_else(|| CliError::InvalidConfig {
+                            message: "mabi serve opcua --config <file> requires --session <name>"
+                                .into(),
+                        })?;
+                let (_, compiled) = load_compiled_opcua_session(ctx, path, session_name)?;
+                let mut launch = compiled.launch.clone();
+                if args.serve.name.is_some() {
+                    launch.name = args.serve.name;
+                }
+                Ok((launch, compiled.runtime_extensions()))
+            } else {
+                let compiled = compile_legacy_opcua_session(&args, args.serve.name.clone())?;
+                Ok((compiled.launch.clone(), compiled.runtime_extensions()))
+            }
+        }
         ServeProtocolCommand::Bacnet(args) => Ok((
             ProtocolLaunchSpec {
                 protocol: "bacnet".into(),
@@ -932,6 +1065,79 @@ fn load_compiled_modbus_session(
     Ok((resolved, compiled))
 }
 
+fn load_opcua_config(ctx: &CliContext, path: &Path) -> CliResult<(PathBuf, OpcUaSimulatorConfig)> {
+    let resolved = ctx.resolve_path(path);
+    if !resolved.exists() {
+        return Err(CliError::ConfigNotFound { path: resolved });
+    }
+
+    let config =
+        OpcUaSimulatorConfig::from_path(&resolved).map_err(|error| CliError::InvalidConfig {
+            message: error.to_string(),
+        })?;
+    Ok((resolved, config))
+}
+
+fn load_compiled_opcua_session(
+    ctx: &CliContext,
+    path: &Path,
+    session_name: &str,
+) -> CliResult<(PathBuf, CompiledOpcUaSession)> {
+    let (resolved, config) = load_opcua_config(ctx, path)?;
+    let compiled = config
+        .compile_session(session_name, Some(&resolved))
+        .map_err(|error| CliError::InvalidConfig {
+            message: error.to_string(),
+        })?;
+    Ok((resolved, compiled))
+}
+
+fn compile_legacy_opcua_session(
+    args: &OpcuaServeArgs,
+    service_name: Option<String>,
+) -> CliResult<CompiledOpcUaSession> {
+    let config = OpcUaSimulatorConfig {
+        transports: std::collections::BTreeMap::from([(
+            "legacy".into(),
+            mabi_opcua::modeling::TransportDefinition {
+                bind: args.bind.clone(),
+                port: args.port,
+                endpoint_path: args.endpoint.clone(),
+                security_profile: Some(args.security.to_string()),
+                server_name: service_name.clone(),
+            },
+        )]),
+        sessions: std::collections::BTreeMap::from([(
+            "legacy".into(),
+            mabi_opcua::SessionDefinition {
+                transport: "legacy".into(),
+                models: Vec::new(),
+                devices: Vec::new(),
+                preset: Some("legacy".into()),
+                service_name,
+                readiness_timeout_ms: Some(5_000),
+                control: mabi_opcua::SessionControlConfig::default(),
+            },
+        )]),
+        presets: std::collections::BTreeMap::from([(
+            "legacy".into(),
+            mabi_opcua::PresetDefinition {
+                nodes: args.nodes,
+                writable: true,
+                historizing: false,
+                ..Default::default()
+            },
+        )]),
+        ..Default::default()
+    };
+
+    config
+        .compile_session("legacy", None)
+        .map_err(|error| CliError::InvalidConfig {
+            message: error.to_string(),
+        })
+}
+
 fn parse_tag_filters(values: &[String]) -> CliResult<Vec<(String, String)>> {
     values
         .iter()
@@ -980,6 +1186,24 @@ fn parse_modbus_value(raw: &str) -> CliResult<mabi_core::Value> {
     }
 
     Ok(mabi_core::Value::String(raw.to_string()))
+}
+
+fn node_target_from_selector(selector: &OpcuaNodeSelectorArgs) -> CliResult<NodeTarget> {
+    if selector.point.is_none() && selector.node_id.is_none() {
+        return Err(CliError::InvalidConfig {
+            message: "node selection requires either --point or --node-id".into(),
+        });
+    }
+
+    Ok(NodeTarget {
+        device_id: selector.device.clone(),
+        point_id: selector.point.clone(),
+        node_id: selector.node_id.clone(),
+    })
+}
+
+fn parse_opcua_value(raw: &str) -> CliResult<mabi_core::Value> {
+    parse_modbus_value(raw)
 }
 
 async fn inspect_modbus_schema(ctx: &mut CliContext) -> CliResult<CommandOutput> {
@@ -1141,6 +1365,170 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
 
     if !ctx.is_quiet() {
         ctx.output().success("Modbus config validation passed");
+    }
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn inspect_opcua_schema(ctx: &mut CliContext) -> CliResult<CommandOutput> {
+    let schema = mabi_opcua::schema_summary();
+
+    if matches!(
+        ctx.output().format(),
+        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+    ) {
+        ctx.output().write(&schema)?;
+        return Ok(CommandOutput::quiet_success());
+    }
+
+    ctx.output().header("OPC UA Schema");
+    ctx.output().kv("Kind", schema.kind);
+    ctx.output().kv("Formats", schema.formats.join(", "));
+    for section in &schema.top_level_sections {
+        ctx.output().kv(
+            format!("Section {}", section.name),
+            format!(
+                "{} [{}]",
+                section.purpose,
+                if section.required {
+                    "required"
+                } else {
+                    "optional"
+                }
+            ),
+        );
+    }
+    ctx.output().kv("Commands", schema.commands.join(" | "));
+    ctx.output().kv("Notes", schema.notes.join("; "));
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<CommandOutput> {
+    #[derive(Serialize)]
+    struct CompiledSessionView {
+        name: String,
+        service_name: Option<String>,
+        endpoint: String,
+        nodes: usize,
+        devices: usize,
+        namespaces: usize,
+        points: usize,
+    }
+
+    #[derive(Serialize)]
+    struct OpcuaConfigInspectView {
+        path: String,
+        summary: OpcUaConfigSummary,
+        sessions: Vec<CompiledSessionView>,
+    }
+
+    let (resolved, config) = load_opcua_config(ctx, &file)?;
+    let mut sessions = Vec::new();
+    for name in config.sessions.keys() {
+        let compiled = config
+            .compile_session(name, Some(&resolved))
+            .map_err(|error| CliError::InvalidConfig {
+                message: error.to_string(),
+            })?;
+        let endpoint = compiled.launch.config["server_config"]["endpoint_url"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+        sessions.push(CompiledSessionView {
+            name: name.clone(),
+            service_name: compiled.launch.name.clone(),
+            endpoint,
+            nodes: compiled.catalog.nodes.len(),
+            devices: compiled.devices.len(),
+            namespaces: compiled.catalog.namespace_table.len(),
+            points: compiled
+                .devices
+                .iter()
+                .map(|device| device.points.len())
+                .sum(),
+        });
+    }
+
+    let view = OpcuaConfigInspectView {
+        path: resolved.display().to_string(),
+        summary: config.inspect_summary(),
+        sessions,
+    };
+
+    if matches!(
+        ctx.output().format(),
+        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+    ) {
+        ctx.output().write(&view)?;
+        return Ok(CommandOutput::quiet_success());
+    }
+
+    ctx.output().header("OPC UA Config");
+    ctx.output().kv("Path", &view.path);
+    ctx.output()
+        .kv("Transports", view.summary.transports.join(", "));
+    ctx.output()
+        .kv("NodeSets", view.summary.nodesets.join(", "));
+    ctx.output().kv("Models", view.summary.models.join(", "));
+    ctx.output().kv("Devices", view.summary.devices.join(", "));
+    ctx.output().kv("Presets", view.summary.presets.join(", "));
+    for session in &view.sessions {
+        ctx.output().kv(
+            format!("Session {}", session.name),
+            format!(
+                "service={}, endpoint={}, nodes={}, devices={}, points={}, namespaces={}",
+                session.service_name.as_deref().unwrap_or(&session.name),
+                session.endpoint,
+                session.nodes,
+                session.devices,
+                session.points,
+                session.namespaces
+            ),
+        );
+    }
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<CommandOutput> {
+    #[derive(Serialize)]
+    struct OpcuaValidationView {
+        path: String,
+        transports: usize,
+        nodesets: usize,
+        models: usize,
+        devices: usize,
+        sessions: usize,
+        presets: usize,
+    }
+
+    let (resolved, config) = load_opcua_config(ctx, &file)?;
+    let view = OpcuaValidationView {
+        path: resolved.display().to_string(),
+        transports: config.transports.len(),
+        nodesets: config.nodesets.len(),
+        models: config.models.len(),
+        devices: config.devices.len(),
+        sessions: config.sessions.len(),
+        presets: config.presets.len(),
+    };
+
+    if matches!(
+        ctx.output().format(),
+        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+    ) {
+        ctx.output().write(&view)?;
+    } else {
+        ctx.output().header("OPC UA Config Validation");
+        ctx.output().kv("Path", &view.path);
+        ctx.output().kv("Transports", view.transports);
+        ctx.output().kv("NodeSets", view.nodesets);
+        ctx.output().kv("Models", view.models);
+        ctx.output().kv("Devices", view.devices);
+        ctx.output().kv("Sessions", view.sessions);
+        ctx.output().kv("Presets", view.presets);
+    }
+
+    if !ctx.is_quiet() {
+        ctx.output().success("OPC UA config validation passed");
     }
     Ok(CommandOutput::quiet_success())
 }
@@ -1408,6 +1796,132 @@ async fn control_modbus(
                     }
                 })?;
                 ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+    };
+
+    let stop_result = session
+        .stop()
+        .await
+        .map_err(|error| CliError::ExecutionFailed {
+            message: error.to_string(),
+        });
+    result?;
+    stop_result?;
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn control_opcua(
+    ctx: &mut CliContext,
+    global_config: Option<&Path>,
+    args: OpcuaControlArgs,
+    readiness_timeout: Duration,
+) -> CliResult<CommandOutput> {
+    let config_path = global_config.ok_or_else(|| CliError::InvalidConfig {
+        message: "mabi control opcua requires --config <file>".into(),
+    })?;
+    let (_, compiled) = load_compiled_opcua_session(ctx, config_path, &args.session)?;
+    let registry = workspace_protocol_registry();
+    let mut session = OpcUaControlSession::new(registry, compiled, readiness_timeout)
+        .await
+        .map_err(|error| CliError::ExecutionFailed {
+            message: error.to_string(),
+        })?;
+
+    let result: CliResult<CommandOutput> = match args.command {
+        OpcuaControlSubcommand::Session(args) => match args.command {
+            OpcuaSessionSubcommand::Status => {
+                let status = session
+                    .status()
+                    .await
+                    .map_err(|error| CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    })?;
+                ctx.output().write(&status)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            OpcuaSessionSubcommand::Reset => {
+                let snapshot =
+                    session
+                        .reset()
+                        .await
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+                ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            OpcuaSessionSubcommand::Snapshot => {
+                let snapshot =
+                    session
+                        .snapshot()
+                        .await
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+                ctx.output().write(&snapshot)?;
+                Ok(CommandOutput::quiet_success())
+            }
+        },
+        OpcuaControlSubcommand::Node(args) => match args.command {
+            OpcuaNodeSubcommand::List(args) => {
+                let mut nodes =
+                    session
+                        .list_nodes()
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+                if let Some(device) = args.device {
+                    nodes.retain(|node| node.device_id == device);
+                }
+
+                if matches!(
+                    ctx.output().format(),
+                    OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+                ) {
+                    ctx.output().write(&nodes)?;
+                } else {
+                    ctx.output().header("OPC UA Nodes");
+                    let mut table = TableBuilder::new(ctx.colors_enabled())
+                        .header(["Device", "Point", "NodeId", "Class", "Writable"]);
+                    for node in &nodes {
+                        table = table.row([
+                            node.device_id.as_str(),
+                            node.point_id.as_str(),
+                            node.node_id.as_str(),
+                            node.node_class.as_str(),
+                            if node.writable { "yes" } else { "no" },
+                        ]);
+                    }
+                    table.print();
+                }
+                Ok(CommandOutput::quiet_success())
+            }
+            OpcuaNodeSubcommand::Read(args) => {
+                let target = node_target_from_selector(&args.selector)?;
+                let point =
+                    session
+                        .read(&target)
+                        .await
+                        .map_err(|error| CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        })?;
+                ctx.output().write(&point)?;
+                Ok(CommandOutput::quiet_success())
+            }
+            OpcuaNodeSubcommand::Write(args) => {
+                let target = node_target_from_selector(&args.selector)?;
+                let value = parse_opcua_value(&args.value)?;
+                session
+                    .write(&target, value)
+                    .await
+                    .map_err(|error| CliError::ExecutionFailed {
+                        message: error.to_string(),
+                    })?;
+                if !ctx.is_quiet() {
+                    ctx.output().success("OPC UA node write completed");
+                }
                 Ok(CommandOutput::quiet_success())
             }
         },
@@ -1845,7 +2359,8 @@ fn rustc_version() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        into_launch_spec, ModbusServeArgs, SecurityModeArg, ServeArgs, ServeProtocolCommand,
+        into_launch_spec, ModbusServeArgs, OpcuaServeArgs, SecurityModeArg, ServeArgs,
+        ServeProtocolCommand,
     };
     use crate::CliContext;
 
@@ -1872,6 +2387,38 @@ mod tests {
         assert_eq!(request.config["transport"]["bind_addr"], "127.0.0.1:1502");
         assert_eq!(request.config["devices"], 2);
         assert_eq!(request.config["points_per_device"], 32);
+    }
+
+    #[tokio::test]
+    async fn opcua_legacy_serve_request_compiles_to_canonical_launch() {
+        let ctx = CliContext::builder().build().unwrap();
+        let (request, _) = into_launch_spec(
+            &ctx,
+            None,
+            ServeProtocolCommand::Opcua(OpcuaServeArgs {
+                serve: ServeArgs {
+                    name: Some("opcua-demo".into()),
+                },
+                session: None,
+                port: 14840,
+                bind: "127.0.0.1".into(),
+                endpoint: "/sim".into(),
+                nodes: 24,
+                security: SecurityModeArg::None,
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(request.protocol, "opcua");
+        assert_eq!(
+            request.config["server_config"]["endpoint_url"],
+            "opc.tcp://127.0.0.1:14840/sim"
+        );
+        assert!(request.config["catalog"]["nodes"]
+            .as_array()
+            .map(|nodes| !nodes.is_empty())
+            .unwrap_or(false));
     }
 
     #[test]
