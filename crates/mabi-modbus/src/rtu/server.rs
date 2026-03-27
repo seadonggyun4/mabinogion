@@ -766,8 +766,7 @@ impl ModbusRtuServer {
         }
 
         if hooks.simulate_response_delay {
-            let delay =
-                transport.transmission_delay(bytes.len()) + hooks.additional_response_delay;
+            let delay = transport.transmission_delay(bytes.len()) + hooks.additional_response_delay;
             tokio::time::sleep(delay).await;
         }
 

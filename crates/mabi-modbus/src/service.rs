@@ -4,12 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::context::{RequestTarget, SharedAddressSpace};
-use crate::core::{
-    parse_semantic_request, ExceptionCode, FunctionCode, RequestPdu, ResponsePdu,
-};
+use crate::core::{parse_semantic_request, ExceptionCode, FunctionCode, RequestPdu, ResponsePdu};
 use crate::error::ModbusError;
-use crate::handler::{HandlerContext, HandlerRegistry};
 use crate::handler::FunctionHandler;
+use crate::handler::{HandlerContext, HandlerRegistry};
 use crate::semantic::{SemanticCore, SemanticFailure};
 pub use crate::transport_runtime::{
     execute_transport_request, ExecutedTransportRequest, TransportDisposition,
@@ -358,7 +356,10 @@ impl ExtensionRegistry {
     }
 
     pub fn metadata(&self) -> Vec<ExtensionMetadata> {
-        self.handlers.values().map(|handler| handler.metadata()).collect()
+        self.handlers
+            .values()
+            .map(|handler| handler.metadata())
+            .collect()
     }
 
     fn dispatch(

@@ -866,7 +866,10 @@ mod tests {
         let points = session.list_points(&Default::default()).unwrap();
         assert_eq!(points.len(), 1);
         assert_eq!(points[0].action_bindings, vec!["clamp_temp@on_write"]);
-        assert_eq!(points[0].behavior_bindings, vec!["temperature_guard@maintenance"]);
+        assert_eq!(
+            points[0].behavior_bindings,
+            vec!["temperature_guard@maintenance"]
+        );
         assert_eq!(points[0].source_datastore.as_deref(), Some("inline"));
 
         session

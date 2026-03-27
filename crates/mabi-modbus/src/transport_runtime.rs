@@ -167,7 +167,10 @@ pub async fn execute_transport_request(
     let (outcome, timed_out) = if let Some(timeout) = policy.request_timeout {
         match tokio::time::timeout(timeout, async { service.call_view(service_request) }).await {
             Ok(outcome) => (outcome, false),
-            Err(_) => (ServiceOutcome::Exception(ExceptionCode::SlaveDeviceBusy), true),
+            Err(_) => (
+                ServiceOutcome::Exception(ExceptionCode::SlaveDeviceBusy),
+                true,
+            ),
         }
     } else {
         (service.call_view(service_request), false)

@@ -161,9 +161,8 @@ struct TcpRequestHooks {
 impl TcpRequestHooks {
     fn new(policy: TcpRuntimePolicy, request_timeout: Duration) -> Self {
         Self {
-            transport: TransportHookBundle::new().with_request_timeout(
-                policy.request_timeout(request_timeout),
-            ),
+            transport: TransportHookBundle::new()
+                .with_request_timeout(policy.request_timeout(request_timeout)),
             detailed_metrics: policy.detailed_metrics(),
             latency_sample_mask: policy.latency_sample_mask,
             connection_metadata_sample_mask: policy.connection_metadata_sample_mask,
@@ -876,13 +875,14 @@ async fn handle_connection(
                 );
             }
             None => {
-                let response_bytes = match send_tcp_response(&mut framed, &frame, response_pdu).await {
-                    Ok(response_bytes) => response_bytes,
-                    Err(e) => {
-                        warn!(peer = %peer_addr, error = %e, "Failed to send response");
-                        break;
-                    }
-                };
+                let response_bytes =
+                    match send_tcp_response(&mut framed, &frame, response_pdu).await {
+                        Ok(response_bytes) => response_bytes,
+                        Err(e) => {
+                            warn!(peer = %peer_addr, error = %e, "Failed to send response");
+                            break;
+                        }
+                    };
                 let latency = timer.elapsed_us();
                 record_tcp_outcome(
                     metrics.as_ref(),

@@ -99,8 +99,8 @@
 //! }
 //! ```
 
-pub mod config;
 mod behavior;
+pub mod config;
 mod connection_core;
 pub mod context;
 pub mod control;
@@ -114,9 +114,9 @@ pub mod register;
 pub mod registers;
 pub mod rtu;
 pub mod runtime;
-mod semantic;
 #[cfg(feature = "experimental-scaling")]
 pub mod scalability;
+mod semantic;
 pub mod server;
 pub mod service;
 pub mod simulator;
@@ -146,6 +146,10 @@ pub use profile::{
 };
 pub use register::{RegisterStore, RegisterType};
 pub use server::ModbusTcpServer;
+pub use service::{
+    ExtensionContext, ExtensionHandler, ExtensionMetadata, ExtensionRegistry, ExtensionRequest,
+    ServiceOutcome,
+};
 pub use simulator::{
     schema_summary, ActionBindingDefinition, ActionBindingSummary, ActionDefinition, ActionTrigger,
     BehaviorBindingSummary, BehaviorCondition, BehaviorConditionOperator, BehaviorDefinition,
@@ -161,7 +165,6 @@ pub use simulator::{
     UnitDefinition,
 };
 pub use tcp::ModbusTcpServerV2;
-pub use service::{ExtensionContext, ExtensionHandler, ExtensionMetadata, ExtensionRegistry, ExtensionRequest, ServiceOutcome};
 
 // Re-exports for new sparse register store (Task 2.3)
 pub use registers::{

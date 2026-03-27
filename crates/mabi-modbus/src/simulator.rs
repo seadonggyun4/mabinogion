@@ -365,7 +365,9 @@ impl ModbusSimulatorConfig {
                 let datastore_name = datastore.reference_name();
                 let resolved = datastore.resolve(&self.datastores)?;
                 datastore_policies.insert(
-                    datastore_name.clone().unwrap_or_else(|| format!("preset:{}", preset_name)),
+                    datastore_name
+                        .clone()
+                        .unwrap_or_else(|| format!("preset:{}", preset_name)),
                     resolved.policy_summary(datastore_name.as_deref()),
                 );
 
@@ -375,8 +377,8 @@ impl ModbusSimulatorConfig {
                         let key = point_catalog_key(&device_id, &point.id);
                         if let Some(entry) = point_catalog.get_mut(&key) {
                             entry.source_datastore = datastore_name.clone();
-                            entry.read_only =
-                                entry.read_only || resolved.is_read_only(point.register_type, point.address);
+                            entry.read_only = entry.read_only
+                                || resolved.is_read_only(point.register_type, point.address);
                             entry.invalid = resolved.is_invalid(point.register_type, point.address);
                         }
                     }
@@ -401,7 +403,10 @@ impl ModbusSimulatorConfig {
                 let summary_name = datastore_name
                     .clone()
                     .unwrap_or_else(|| format!("{}/unit-{}", device_name, unit.unit_id));
-                datastore_policies.insert(summary_name, datastore.policy_summary(datastore_name.as_deref()));
+                datastore_policies.insert(
+                    summary_name,
+                    datastore.policy_summary(datastore_name.as_deref()),
+                );
 
                 let binding_map = unit.binding_summary_map();
                 let binding_defs = unit.binding_definition_map();
@@ -410,8 +415,8 @@ impl ModbusSimulatorConfig {
                     let actions = binding_map.get(&point.id).cloned().unwrap_or_default();
                     if let Some(entry) = point_catalog.get_mut(&key) {
                         entry.source_datastore = datastore_name.clone();
-                        entry.read_only =
-                            entry.read_only || datastore.is_read_only(point.register_type, point.address);
+                        entry.read_only = entry.read_only
+                            || datastore.is_read_only(point.register_type, point.address);
                         entry.invalid = datastore.is_invalid(point.register_type, point.address);
                         entry.action_bindings = actions.clone();
                         entry.behavior_bindings = actions.clone();
@@ -449,7 +454,9 @@ impl ModbusSimulatorConfig {
                 for target in matching_behavior_targets(behavior, profile) {
                     let key = point_catalog_key(&target.device_id, &target.point_id);
                     if let Some(entry) = point_catalog.get_mut(&key) {
-                        entry.behavior_bindings.push(format!("{}@{}", behavior_name, set_name));
+                        entry
+                            .behavior_bindings
+                            .push(format!("{}@{}", behavior_name, set_name));
                     }
                     behavior_bindings.push(BehaviorBindingSummary {
                         device_id: target.device_id.clone(),
@@ -759,16 +766,27 @@ pub type ActionTrigger = BehaviorTrigger;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ActionDefinition {
-    SetValue { value: JsonValue },
-    CopyToPoint { target_point_id: String },
-    Clamp { min: f64, max: f64 },
-    Mirror { target_point_id: String },
+    SetValue {
+        value: JsonValue,
+    },
+    CopyToPoint {
+        target_point_id: String,
+    },
+    Clamp {
+        min: f64,
+        max: f64,
+    },
+    Mirror {
+        target_point_id: String,
+    },
     Scale {
         factor: f64,
         #[serde(default)]
         offset: f64,
     },
-    Offset { value: f64 },
+    Offset {
+        value: f64,
+    },
     Map {
         mapping: BTreeMap<String, JsonValue>,
         #[serde(default)]
@@ -783,8 +801,12 @@ pub enum ActionDefinition {
     MarkInvalid,
     ClearInvalid,
     Latch,
-    Pulse { duration_ms: u64 },
-    Rotate { values: Vec<JsonValue> },
+    Pulse {
+        duration_ms: u64,
+    },
+    Rotate {
+        values: Vec<JsonValue>,
+    },
 }
 
 /// Deterministic behavior definition referencing a catalog of actions.
@@ -1016,8 +1038,11 @@ impl MalformedResponseDefinition {
         }
 
         if let Some(count) = self.append_random_count {
-            config.faults
-                .push(FaultConfig::extra_data(ExtraDataMode::AppendRandom, count, FaultTarget::new()));
+            config.faults.push(FaultConfig::extra_data(
+                ExtraDataMode::AppendRandom,
+                count,
+                FaultTarget::new(),
+            ));
         }
     }
 }
@@ -1094,7 +1119,11 @@ impl UnitDefinition {
             .map(|binding| {
                 (
                     binding.point_id.clone(),
-                    binding.bindings.iter().map(ActionBindingDefinition::summary).collect(),
+                    binding
+                        .bindings
+                        .iter()
+                        .map(ActionBindingDefinition::summary)
+                        .collect(),
                 )
             })
             .collect()
@@ -1448,7 +1477,11 @@ impl CompiledModbusSession {
         }
     }
 
-    pub fn point_metadata(&self, device_id: &str, point_id: &str) -> Option<&CompiledPointMetadata> {
+    pub fn point_metadata(
+        &self,
+        device_id: &str,
+        point_id: &str,
+    ) -> Option<&CompiledPointMetadata> {
         self.point_catalog
             .get(&point_catalog_key(device_id, point_id))
     }
@@ -1681,8 +1714,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        default_trace_capacity, CompiledModbusSession, CompiledTransportKind,
-        DatastoreDefinition, DatastoreSelector, GeneratedPresetDefinition, ModbusSimulatorConfig,
+        default_trace_capacity, CompiledModbusSession, CompiledTransportKind, DatastoreDefinition,
+        DatastoreSelector, GeneratedPresetDefinition, ModbusSimulatorConfig,
         ResponseProfileDefinition, SessionControlConfig, SessionDefinition, SessionTraceConfig,
         SimulatorDefaults, TransportDefinition,
     };
@@ -1850,7 +1883,10 @@ sessions:
 
         let extensions = compiled.runtime_extensions();
         let config = extensions.protocol_config("modbus").unwrap();
-        assert_eq!(config["fault_injection"]["faults"][0]["type"], "delayed_response");
+        assert_eq!(
+            config["fault_injection"]["faults"][0]["type"],
+            "delayed_response"
+        );
     }
 
     #[test]

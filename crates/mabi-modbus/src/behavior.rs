@@ -126,13 +126,17 @@ impl DevicePort for BehaviorDevicePort {
         self.apply_startup_and_interval_behaviors().await?;
 
         let mut point = self.inner.read(point_id).await?;
-        let should_apply = self
-            .bindings
-            .iter()
-            .any(|binding| binding.point_id == point_id && binding.trigger == BehaviorTrigger::OnRead);
+        let should_apply = self.bindings.iter().any(|binding| {
+            binding.point_id == point_id && binding.trigger == BehaviorTrigger::OnRead
+        });
         if should_apply {
             let final_value = self
-                .execute_point_behaviors(point_id, BehaviorTrigger::OnRead, point.value.clone(), false)
+                .execute_point_behaviors(
+                    point_id,
+                    BehaviorTrigger::OnRead,
+                    point.value.clone(),
+                    false,
+                )
                 .await?;
             point.value = final_value;
         }
@@ -172,17 +176,26 @@ impl BehaviorDevicePort {
             let mut state = self.state.lock();
             let mut due = Vec::new();
             if !state.startup_applied {
-                due.extend(self.bindings.iter().filter(|binding| {
-                    matches!(
-                        binding.trigger,
-                        BehaviorTrigger::OnStartup | BehaviorTrigger::OnReset
-                    )
-                }).cloned());
+                due.extend(
+                    self.bindings
+                        .iter()
+                        .filter(|binding| {
+                            matches!(
+                                binding.trigger,
+                                BehaviorTrigger::OnStartup | BehaviorTrigger::OnReset
+                            )
+                        })
+                        .cloned(),
+                );
                 state.startup_applied = true;
             }
 
             let now = Instant::now();
-            for binding in self.bindings.iter().filter(|binding| binding.trigger == BehaviorTrigger::OnInterval) {
+            for binding in self
+                .bindings
+                .iter()
+                .filter(|binding| binding.trigger == BehaviorTrigger::OnInterval)
+            {
                 let interval_ms = binding.interval_ms.unwrap_or(1_000);
                 let key = format!("{}:{}", binding.name, binding.point_id);
                 let due_now = state
@@ -210,7 +223,9 @@ impl BehaviorDevicePort {
             let final_value = self
                 .execute_resolved_behavior(&binding, current, true)
                 .await?;
-            self.inner.write(&binding.point_id, final_value.clone()).await?;
+            self.inner
+                .write(&binding.point_id, final_value.clone())
+                .await?;
             self.state
                 .lock()
                 .last_values
@@ -256,8 +271,11 @@ impl BehaviorDevicePort {
             return Ok(current);
         }
 
-        let (next_value, invalid_delta, side_effects, rotate_updates) =
-            plan_actions(binding, current.clone(), &self.state.lock().rotate_positions);
+        let (next_value, invalid_delta, side_effects, rotate_updates) = plan_actions(
+            binding,
+            current.clone(),
+            &self.state.lock().rotate_positions,
+        );
 
         {
             let mut state = self.state.lock();
@@ -356,7 +374,8 @@ fn plan_actions(
             ActionDefinition::Rotate { values } => {
                 if !values.is_empty() {
                     let key = format!("{}:{}", binding.name, binding.point_id);
-                    let next_index = rotate_positions.get(&key).copied().unwrap_or(0) % values.len();
+                    let next_index =
+                        rotate_positions.get(&key).copied().unwrap_or(0) % values.len();
                     current = json_to_value(values[next_index].clone());
                     rotate_updates.insert(key, (next_index + 1) % values.len());
                 }
@@ -368,23 +387,47 @@ fn plan_actions(
     (current, invalid_delta, side_effects, rotate_updates)
 }
 
-fn condition_matches(condition: Option<&BehaviorCondition>, current: &Value, last: Option<&Value>) -> bool {
+fn condition_matches(
+    condition: Option<&BehaviorCondition>,
+    current: &Value,
+    last: Option<&Value>,
+) -> bool {
     let Some(condition) = condition else {
         return true;
     };
 
     match condition.operator {
         BehaviorConditionOperator::Changed => last.map(|value| value != current).unwrap_or(true),
-        BehaviorConditionOperator::Eq => {
-            condition.value.as_ref().map(|value| current == &json_to_value(value.clone())).unwrap_or(false)
+        BehaviorConditionOperator::Eq => condition
+            .value
+            .as_ref()
+            .map(|value| current == &json_to_value(value.clone()))
+            .unwrap_or(false),
+        BehaviorConditionOperator::Ne => condition
+            .value
+            .as_ref()
+            .map(|value| current != &json_to_value(value.clone()))
+            .unwrap_or(false),
+        BehaviorConditionOperator::Gt => {
+            compare_numeric(current, condition.value.as_ref(), |left, right| {
+                left > right
+            })
         }
-        BehaviorConditionOperator::Ne => {
-            condition.value.as_ref().map(|value| current != &json_to_value(value.clone())).unwrap_or(false)
+        BehaviorConditionOperator::Gte => {
+            compare_numeric(current, condition.value.as_ref(), |left, right| {
+                left >= right
+            })
         }
-        BehaviorConditionOperator::Gt => compare_numeric(current, condition.value.as_ref(), |left, right| left > right),
-        BehaviorConditionOperator::Gte => compare_numeric(current, condition.value.as_ref(), |left, right| left >= right),
-        BehaviorConditionOperator::Lt => compare_numeric(current, condition.value.as_ref(), |left, right| left < right),
-        BehaviorConditionOperator::Lte => compare_numeric(current, condition.value.as_ref(), |left, right| left <= right),
+        BehaviorConditionOperator::Lt => {
+            compare_numeric(current, condition.value.as_ref(), |left, right| {
+                left < right
+            })
+        }
+        BehaviorConditionOperator::Lte => {
+            compare_numeric(current, condition.value.as_ref(), |left, right| {
+                left <= right
+            })
+        }
     }
 }
 
