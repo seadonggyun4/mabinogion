@@ -1,0 +1,27 @@
+defaults:
+  server_name: HTTPS Fixture Server
+
+security_profiles:
+  none:
+    policy: None
+
+transports:
+  https_main:
+    protocol: https
+    bind: 127.0.0.1
+    port: 4843
+    endpoint_path: /ua
+    security_profile: none
+    certificate_path: server-cert.pem
+    private_key_path: server-key.pem
+
+presets:
+  generated:
+    nodes: 4
+    writable: true
+
+sessions:
+  https_demo:
+    transport: https_main
+    preset: generated
+    service_name: opcua-https-demo

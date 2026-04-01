@@ -1,0 +1,28 @@
+defaults:
+  server_name: Reverse Connect Fixture Server
+
+security_profiles:
+  none:
+    policy: None
+
+transports:
+  reverse_main:
+    protocol: opc_tcp
+    connection_mode: reverse_connect
+    bind: 127.0.0.1
+    port: 4840
+    endpoint_path: /ua
+    reverse_connect_target: opc.tcp://127.0.0.1:4940
+    retry_interval_ms: 250
+    security_profile: none
+
+presets:
+  generated:
+    nodes: 4
+    writable: true
+
+sessions:
+  reverse_demo:
+    transport: reverse_main
+    preset: generated
+    service_name: opcua-reverse-demo

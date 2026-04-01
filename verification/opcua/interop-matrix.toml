@@ -1,0 +1,19 @@
+version = 1
+
+[[targets]]
+name = "open62541"
+compose_service = "open62541"
+timeout_seconds = 300
+tier = "nightly"
+
+[[targets]]
+name = "milo"
+compose_service = "milo"
+timeout_seconds = 300
+tier = "nightly"
+
+[[targets]]
+name = "async-opcua"
+compose_service = "async-opcua"
+timeout_seconds = 300
+tier = "nightly"

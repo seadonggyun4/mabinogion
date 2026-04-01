@@ -15,12 +15,30 @@ The preferred surface is now session-centric and file-backed:
 - `mabi serve opcua --config <file> --session <name>`
 - `mabi control opcua --config <file> --session <name> ...`
 
+Canonical transports now support:
+
+- `opc.tcp://...` as the default runtime path
+- `https://...` as a protocol-aware canonical transport option
+- `opc.tcp` Reverse Connect through named transport `connection_mode: reverse_connect`
+- HTTPS Reverse Connect remains deferred to a later transport phase
+
 Current documentation split:
 
 - `simulator-config-spec.md`
 - `simulator-control-plane-spec.md`
+- `compat-migration.md`
 
-Hand-built node builders and numeric `serve opcua` arguments still exist, but they are compatibility veneer. Internally they compile into the same canonical session path.
+Hand-built node builders and numeric `serve opcua` arguments have been removed from the
+public compatibility surface. Use the canonical config/session path and the migration table
+in `compat-migration.md` when moving older code forward. The migration guide remains in the
+current release line only; the remaining legacy breadcrumbs are slated for removal in the
+next major release.
+
+Default validation is deterministic:
+
+- `cargo test --workspace` is the canonical green path
+- external interop is optional and runs through the repo-local container matrix
+- perf threshold checks remain release-only ignored tests
 
 ## Architecture
 
@@ -249,37 +267,14 @@ server.add_folder(node_id, name, parent_id)?;
 
 #### Builder Pattern
 
-```rust
-use mabi_opcua::VariableBuilder;
-
-let variable = VariableBuilder::new(node_id)
-    .browse_name(namespace_index, name)
-    .display_name(name)
-    .description(description)
-    .data_type(DataTypeId::Double)
-    .value(initial_value)
-    .writable()
-    .historizing()
-    .sampling_interval(1000)
-    .build()?;
-```
+The builder-oriented compatibility surface has been removed. Model the same node shape via
+`OpcUaSimulatorConfig.models` overlays or `PresetDefinition`, then compile with
+`compile_session(...)`.
 
 #### Variable Factory
 
-Convenience methods for common data types:
-
-```rust
-use mabi_opcua::VariableFactory;
-
-VariableFactory::boolean(node_id, name, value);
-VariableFactory::boolean_writable(node_id, name, value);
-VariableFactory::int32(node_id, name, value);
-VariableFactory::float(node_id, name, value);
-VariableFactory::double(node_id, name, value);
-VariableFactory::double_writable(node_id, name, value);
-VariableFactory::string(node_id, name, value);
-VariableFactory::datetime(node_id, name, value);
-```
+Factory helpers have been removed from the public surface. Prefer typed `DeviceDefinition`
+bindings and generated catalog materialization.
 
 #### Batch Creation
 
@@ -738,13 +733,8 @@ pub struct OpcUaDevice {
 
 ### Device Factory
 
-```rust
-use mabi_opcua::OpcUaDeviceFactory;
-use mabi_core::factory::DeviceFactory;
-
-let factory = OpcUaDeviceFactory;
-let device = factory.create(device_config)?;
-```
+Legacy device factory builders have been removed from the public surface. Use file-backed
+`DeviceDefinition` entries and compile them into a session catalog instead.
 
 ### Device Metadata
 
@@ -797,8 +787,6 @@ pub use mabi_opcua::{
     ObjectNode,
     VariableNode,
     MethodNode,
-    VariableBuilder,
-    VariableFactory,
     BatchNodeCreator,
 
     // Types
@@ -844,7 +832,6 @@ pub use mabi_opcua::{
 
     // Device Integration
     OpcUaDevice,
-    OpcUaDeviceFactory,
     OpcUaDeviceMetadata,
 
     // Error Handling

@@ -1,0 +1,32 @@
+name: OPC UA Regression
+
+on:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/mabi-opcua/**"
+      - "crates/mabi-cli/**"
+      - "verification/opcua/**"
+      - ".github/workflows/opcua-regression.yml"
+      - ".github/workflows/opcua-interop-nightly.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/mabi-opcua/**"
+      - "crates/mabi-cli/**"
+      - "verification/opcua/**"
+      - ".github/workflows/opcua-regression.yml"
+      - ".github/workflows/opcua-interop-nightly.yml"
+  workflow_dispatch:
+
+jobs:
+  workspace-green:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Workspace regression
+        run: cargo test --workspace

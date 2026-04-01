@@ -1,0 +1,33 @@
+services:
+  open62541:
+    image: rust:1.87-bookworm
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-opcua-interop/open62541
+    entrypoint:
+      - bash
+      - /workspace/verification/opcua/harness/open62541/run.sh
+
+  milo:
+    image: rust:1.87-bookworm
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-opcua-interop/milo
+    entrypoint:
+      - bash
+      - /workspace/verification/opcua/harness/milo/run.sh
+
+  async-opcua:
+    image: rust:1.87-bookworm
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-opcua-interop/async-opcua
+    entrypoint:
+      - bash
+      - /workspace/verification/opcua/harness/async-opcua/run.sh

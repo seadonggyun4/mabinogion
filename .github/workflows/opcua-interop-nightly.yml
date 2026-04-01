@@ -1,0 +1,20 @@
+name: OPC UA Interop Nightly
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  opcua-extended-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Deterministic workspace regression
+        run: cargo test --workspace
+      - name: Self-contained interop matrix
+        run: cargo test -p mabi-opcua --test interop_matrix -- --ignored
+      - name: Release-only transport perf contract
+        run: cargo test -p mabi-opcua --release --test transport_perf_contract -- --ignored
