@@ -51,31 +51,49 @@ impl ServiceHandler for TransferSubscriptionsHandler {
         let mut out = BytesMut::new();
         ResponseHeader::good(header.request_handle).encode(&mut out)?;
 
+        let target_session_id = context.current_session_id();
+
         // Results array
         out.put_i32_le(subscription_ids.len() as i32);
         for sub_id in &subscription_ids {
-            // Check if the subscription exists
-            match context.subscription_manager.get(*sub_id) {
-                Some(_config) => {
-                    // Subscription exists — transfer succeeds
-                    StatusCode::GOOD_SUBSCRIPTION_TRANSFERRED.encode(&mut out)?;
+            match (
+                &target_session_id,
+                context.subscription_manager.get(*sub_id),
+            ) {
+                (None, _) => {
+                    StatusCode::BAD_SESSION_ID_INVALID.encode(&mut out)?;
+                    out.put_i32_le(0);
+                }
+                (Some(session_id), Some(_config)) => {
+                    let transfer = context
+                        .subscription_manager
+                        .transfer_subscription(*sub_id, session_id.clone());
+                    match transfer {
+                        Ok(outcome) => {
+                            if let Some(previous_owner) = outcome.previous_owner_session_id {
+                                context
+                                    .session_manager
+                                    .remove_subscription(&previous_owner, *sub_id);
+                            }
+                            let _ = context
+                                .session_manager
+                                .add_subscription(session_id, *sub_id);
 
-                    // AvailableSequenceNumbers — return current sequence number
-                    // The subscription manager tracks sequence numbers internally
-                    if let Some(pr) = context.subscription_manager.process_publish(*sub_id) {
-                        out.put_i32_le(pr.available_sequence_numbers.len() as i32);
-                        for sn in &pr.available_sequence_numbers {
-                            out.put_u32_le(*sn);
+                            StatusCode::GOOD_SUBSCRIPTION_TRANSFERRED.encode(&mut out)?;
+                            out.put_i32_le(outcome.available_sequence_numbers.len() as i32);
+                            for sn in &outcome.available_sequence_numbers {
+                                out.put_u32_le(*sn);
+                            }
                         }
-                    } else {
-                        out.put_i32_le(1);
-                        out.put_u32_le(1); // Default sequence number
+                        Err(_) => {
+                            StatusCode::BAD_SUBSCRIPTION_ID_INVALID.encode(&mut out)?;
+                            out.put_i32_le(0);
+                        }
                     }
                 }
-                None => {
-                    // Subscription does not exist
+                (_, None) => {
                     StatusCode::BAD_SUBSCRIPTION_ID_INVALID.encode(&mut out)?;
-                    out.put_i32_le(0); // No available sequence numbers
+                    out.put_i32_le(0);
                 }
             }
         }

@@ -61,10 +61,21 @@ impl ServiceHandler for CreateSubscriptionHandler {
             publishing_enabled: _publishing_enabled,
         };
 
-        let sub_id = context
-            .subscription_manager
-            .create_subscription(config)
-            .map_err(|e| crate::error::OpcUaError::Subscription(format!("{:?}", e)))?;
+        let sub_id = if let Some(session_id) = context.current_session_id() {
+            let sub_id = context
+                .subscription_manager
+                .create_subscription_for_owner(config, Some(session_id.clone()))
+                .map_err(|e| crate::error::OpcUaError::Subscription(format!("{:?}", e)))?;
+            let _ = context
+                .session_manager
+                .add_subscription(&session_id, sub_id);
+            sub_id
+        } else {
+            context
+                .subscription_manager
+                .create_subscription(config)
+                .map_err(|e| crate::error::OpcUaError::Subscription(format!("{:?}", e)))?
+        };
 
         let mut out = BytesMut::new();
         ResponseHeader::good(header.request_handle).encode(&mut out)?;
@@ -105,6 +116,13 @@ impl ServiceHandler for DeleteSubscriptionsHandler {
         let mut results = Vec::new();
         for _ in 0..count.max(0) {
             let sub_id = u32::decode(&mut buf)?;
+            if let Some(ownership) = context.subscription_manager.subscription_ownership(sub_id) {
+                if let Some(owner_session_id) = ownership.owner_session_id {
+                    context
+                        .session_manager
+                        .remove_subscription(&owner_session_id, sub_id);
+                }
+            }
             let ok = context.subscription_manager.delete_subscription(sub_id);
             results.push(if ok {
                 StatusCode::GOOD

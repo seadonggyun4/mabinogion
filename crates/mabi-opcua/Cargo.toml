@@ -13,10 +13,19 @@ readme = "README.md"
 keywords = ["opcua", "opc-ua", "protocol", "simulator", "industrial"]
 categories = ["simulation", "network-programming"]
 
+[package.metadata.mabi-opcua]
+public_surface = "canonical-only"
+compat_migration_docs = "current-release-line"
+compat_residual_removal_target = "next-major"
+external_interop_policy = "compose-self-contained"
+perf_contract_policy = "release-only-ignored"
+
 [features]
 default = []
 # Enable full OPC UA server implementation (requires opcua crate)
 full = []
+# Experimental in-process namespace manager plugin surface.
+experimental-namespace-api = []
 
 [dependencies]
 mabi-core = { workspace = true }
@@ -57,6 +66,9 @@ bytes = { workspace = true }
 num-traits = { workspace = true }
 num-derive = { workspace = true }
 lru = "0.12"
+rustls = "0.23"
+tokio-rustls = "0.26"
+rustls-pemfile = "2.2"
 
 # Metrics
 prometheus = { workspace = true }

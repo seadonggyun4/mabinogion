@@ -25,31 +25,25 @@
 
 pub mod base;
 pub mod batch;
-pub mod builder;
+pub(crate) mod builder;
 pub mod cache;
 pub mod classes;
-pub mod prefetch;
+pub(crate) mod prefetch;
 pub mod reference;
 pub mod store;
-pub mod variables;
+pub(crate) mod variables;
 
 pub use base::{LocalizedText, Node, NodeBase, NodeClass, QualifiedName};
 pub use batch::{
     BatchConfig, BatchNodeCreator, BatchProgress, ObjectTemplate, ProgressCallback,
     ValueGeneratorType, VariableTemplate,
 };
-pub use builder::{
-    AddToAddressSpace, BatchVariableBuilder, FolderBuilder, NodeBuilder, ObjectBuilder,
-    VariableBuilder,
-};
 pub use cache::{CacheStats, NodeCache, NodeCacheConfig};
 pub use classes::{
     DataTypeNode, MethodNode, ObjectNode, ObjectTypeNode, ReferenceTypeNode, VariableNode,
     VariableTypeNode, ViewNode,
 };
-pub use prefetch::{
-    AsyncPrefetchWorker, NodePrefetcher, PrefetchConfig, PrefetchStats, PrefetchingAddressSpace,
-};
+pub use prefetch::{AsyncPrefetchWorker, NodePrefetcher, PrefetchConfig, PrefetchStats};
 pub use reference::{
     BrowseDirection, BrowseResult, Reference, ReferenceDescription, ReferenceDirection,
     ReferenceTypeId,
@@ -58,4 +52,4 @@ pub use store::{
     AddressSpace, AddressSpaceConfig, BrowsePathResult, BrowsePathTarget, NodeStoreStats,
     RelativePathElement,
 };
-pub use variables::{AnalogVariable, DiscreteVariable, VariableFactory};
+pub use variables::{AnalogVariable, DiscreteVariable};

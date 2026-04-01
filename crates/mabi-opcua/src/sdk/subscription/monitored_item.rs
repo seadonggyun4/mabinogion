@@ -123,8 +123,7 @@ pub struct MonitoredItemConfig {
     #[serde(default)]
     pub kind: MonitoredItemKind,
     /// Event filter (only used when kind == Event).
-    /// Serialization is skipped since EventFilter doesn't derive Serialize.
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_filter: Option<super::event::EventFilter>,
 }
 
@@ -233,6 +232,17 @@ pub struct MonitoredItem {
     created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PersistedMonitoredItem {
+    pub(crate) id: u32,
+    pub(crate) config: MonitoredItemConfig,
+    pub(crate) client_handle: u32,
+    pub(crate) monitoring_mode: MonitoringMode,
+    pub(crate) last_value: Option<DataValue>,
+    pub(crate) notification_queue: Vec<MonitoredItemNotification>,
+    pub(crate) last_sample_time: DateTime<Utc>,
+}
+
 impl MonitoredItem {
     /// Create a new monitored item.
     pub fn new(id: u32, config: MonitoredItemConfig) -> Self {
@@ -244,6 +254,31 @@ impl MonitoredItem {
             last_value: None,
             notification_queue: Vec::new(),
             last_sample_time: Utc::now(),
+            created_at: Utc::now(),
+        }
+    }
+
+    pub(crate) fn snapshot(&self) -> PersistedMonitoredItem {
+        PersistedMonitoredItem {
+            id: self.id,
+            config: self.config.clone(),
+            client_handle: self.client_handle,
+            monitoring_mode: self.monitoring_mode,
+            last_value: self.last_value.clone(),
+            notification_queue: self.notification_queue.clone(),
+            last_sample_time: self.last_sample_time,
+        }
+    }
+
+    pub(crate) fn from_persisted(state: PersistedMonitoredItem) -> Self {
+        Self {
+            id: state.id,
+            config: state.config,
+            client_handle: state.client_handle,
+            monitoring_mode: state.monitoring_mode,
+            last_value: state.last_value,
+            notification_queue: state.notification_queue,
+            last_sample_time: state.last_sample_time,
             created_at: Utc::now(),
         }
     }

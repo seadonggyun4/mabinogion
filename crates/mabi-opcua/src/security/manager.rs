@@ -2,6 +2,7 @@
 //!
 //! Coordinates certificate management, cryptographic operations, and user authentication.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -14,9 +15,9 @@ use super::certificate::{
 use super::crypto::{CryptoProvider, CryptoProviderConfig, KeyMaterial};
 use super::policy::SecurityPolicyConfig;
 use super::providers::{
-    CertificateTrustProvider, ChannelSecurityRuntime, IdentityProvider as _,
-    IdentityRuntimeProvider, NoopSecurityAuditSink, PolicyRuntimeProvider, RoleMapper,
-    SecurityAuditSink, SecurityPolicyPort as _, StaticRoleMapper, TrustStorePort as _,
+    build_audit_sink, build_role_mapper, CertificateTrustProvider, ChannelSecurityRuntime,
+    IdentityProvider as _, IdentityRuntimeProvider, PolicyRuntimeProvider, RoleMapper,
+    SecurityAuditSink, SecurityPolicyPort as _, TrustStorePort as _,
 };
 use super::user_auth::{
     AuthenticationResult, UserAccount, UserAuthConfig, UserAuthenticator, UserCredentials,
@@ -52,6 +53,73 @@ pub enum SecurityError {
 /// Result type for security operations.
 pub type SecurityResult<T> = Result<T, SecurityError>;
 
+/// Policy handling mode for deprecated security policies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeprecatedPolicyHandling {
+    #[default]
+    Allow,
+    Warn,
+    Reject,
+}
+
+/// Config-driven role augmentation rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoleMappingRule {
+    pub match_role: String,
+    #[serde(default)]
+    pub add_roles: Vec<String>,
+}
+
+/// Audit sink backend kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SecurityAuditSinkKind {
+    #[default]
+    Noop,
+    Memory,
+    JsonlFile,
+}
+
+/// Audit sink configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityAuditSinkConfig {
+    #[serde(default)]
+    pub kind: SecurityAuditSinkKind,
+    #[serde(default)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SecurityAuditStatus {
+    pub sink_kind: SecurityAuditSinkKind,
+    pub event_count: usize,
+    pub last_write_status: String,
+    pub output_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SecurityStatus {
+    pub default_policy: String,
+    pub enabled_policies: Vec<String>,
+    pub secure_channel_count: usize,
+    pub trusted_certificate_count: usize,
+    pub rejected_certificate_count: usize,
+    pub deprecated_policy_handling: DeprecatedPolicyHandling,
+    pub role_rule_count: usize,
+    pub server_certificate_thumbprint: Option<String>,
+    pub audit: SecurityAuditStatus,
+}
+
+impl Default for SecurityAuditSinkConfig {
+    fn default() -> Self {
+        Self {
+            kind: SecurityAuditSinkKind::Noop,
+            path: None,
+        }
+    }
+}
+
 /// Security manager configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityManagerConfig {
@@ -67,10 +135,19 @@ pub struct SecurityManagerConfig {
     pub default_policy: SecurityPolicy,
     /// Reject connections with deprecated policies.
     pub reject_deprecated_policies: bool,
+    /// Canonical deprecated-policy handling mode.
+    #[serde(default)]
+    pub deprecated_policy_handling: DeprecatedPolicyHandling,
     /// Secure channel lifetime in milliseconds.
     pub secure_channel_lifetime_ms: u64,
     /// Maximum secure channels.
     pub max_secure_channels: usize,
+    /// Audit sink configuration.
+    #[serde(default)]
+    pub audit_sink: SecurityAuditSinkConfig,
+    /// Config-driven role augmentation rules.
+    #[serde(default)]
+    pub role_rules: Vec<RoleMappingRule>,
 }
 
 impl Default for SecurityManagerConfig {
@@ -82,8 +159,11 @@ impl Default for SecurityManagerConfig {
             enabled_policies: vec![SecurityPolicy::None, SecurityPolicy::Basic256Sha256],
             default_policy: SecurityPolicy::None,
             reject_deprecated_policies: false,
+            deprecated_policy_handling: DeprecatedPolicyHandling::Allow,
             secure_channel_lifetime_ms: 3_600_000, // 1 hour
             max_secure_channels: 1000,
+            audit_sink: SecurityAuditSinkConfig::default(),
+            role_rules: Vec::new(),
         }
     }
 }
@@ -184,13 +264,13 @@ impl SecurityManager {
         let channel_runtime = ChannelSecurityRuntime::new(&config);
 
         Self::with_components(
-            config,
+            config.clone(),
             policy_provider,
             trust_provider,
             identity_provider,
             channel_runtime,
-            Arc::new(StaticRoleMapper),
-            Arc::new(NoopSecurityAuditSink),
+            build_role_mapper(&config),
+            build_audit_sink(&config),
         )
     }
 
@@ -247,6 +327,49 @@ impl SecurityManager {
         self.policy_provider.enabled_policies()
     }
 
+    /// Get the configured default security policy.
+    pub fn default_policy(&self) -> SecurityPolicy {
+        self.config.default_policy
+    }
+
+    /// Get the configured audit sink kind.
+    pub fn audit_sink_kind(&self) -> SecurityAuditSinkKind {
+        self.config.audit_sink.kind
+    }
+
+    /// Get a compact policy/audit summary string for diagnostics surfaces.
+    pub fn diagnostics_summary(&self) -> String {
+        format!(
+            "{:?}/{:?}",
+            self.config.default_policy, self.config.audit_sink.kind
+        )
+    }
+
+    pub fn security_status(&self) -> SecurityStatus {
+        SecurityStatus {
+            default_policy: format!("{:?}", self.config.default_policy),
+            enabled_policies: self
+                .policy_provider
+                .enabled_policies()
+                .iter()
+                .map(|policy| format!("{:?}", policy))
+                .collect(),
+            secure_channel_count: self.secure_channel_count(),
+            trusted_certificate_count: self.trust_provider.trusted_certificate_count(),
+            rejected_certificate_count: self.trust_provider.rejected_certificate_count(),
+            deprecated_policy_handling: self.config.deprecated_policy_handling,
+            role_rule_count: self.config.role_rules.len(),
+            server_certificate_thumbprint: self
+                .server_certificate()
+                .map(|certificate| certificate.thumbprint),
+            audit: self.audit_status(),
+        }
+    }
+
+    pub fn audit_status(&self) -> SecurityAuditStatus {
+        self.audit_sink.status()
+    }
+
     /// Check if a policy is enabled.
     pub fn is_policy_enabled(&self, policy: SecurityPolicy) -> bool {
         self.policy_provider.is_enabled(policy)
@@ -263,7 +386,13 @@ impl SecurityManager {
         policy: SecurityPolicy,
         mode: MessageSecurityMode,
     ) -> SecurityResult<()> {
-        self.policy_provider.validate_security_mode(policy, mode)
+        self.policy_provider.validate_security_mode(policy, mode)?;
+        if self.policy_provider.is_deprecated(policy)
+            && self.policy_provider.deprecated_policy_handling() == DeprecatedPolicyHandling::Warn
+        {
+            self.audit_sink.on_deprecated_policy_warning(policy);
+        }
+        Ok(())
     }
 
     // =========================================================================
@@ -291,6 +420,28 @@ impl SecurityManager {
     /// Trust a client certificate.
     pub fn trust_certificate(&self, certificate: Certificate) -> SecurityResult<()> {
         self.trust_provider.trust_certificate(certificate)
+    }
+
+    pub fn reload_trust_store(&self) -> SecurityResult<()> {
+        self.trust_provider.reload_trust_store()?;
+        self.audit_sink.on_trust_store_reloaded(
+            self.trust_provider.trusted_certificate_count(),
+            self.trust_provider.rejected_certificate_count(),
+        );
+        Ok(())
+    }
+
+    pub fn rotate_server_certificate(
+        &self,
+        certificate_path: &Path,
+        private_key_path: &Path,
+    ) -> SecurityResult<Certificate> {
+        let certificate = self
+            .trust_provider
+            .rotate_server_certificate(certificate_path, private_key_path)?;
+        self.audit_sink
+            .on_server_certificate_rotated(Some(&certificate.thumbprint));
+        Ok(certificate)
     }
 
     // =========================================================================
@@ -355,8 +506,11 @@ impl SecurityManager {
 
     /// Renew a secure channel (create new token).
     pub fn renew_secure_channel(&self, channel_id: u32) -> SecurityResult<SecurityContext> {
-        self.channel_runtime
-            .renew_secure_channel(channel_id, self.audit_sink.as_ref())
+        self.channel_runtime.renew_secure_channel(
+            channel_id,
+            &self.trust_provider,
+            self.audit_sink.as_ref(),
+        )
     }
 
     /// Close a secure channel.

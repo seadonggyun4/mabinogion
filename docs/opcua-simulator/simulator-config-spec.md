@@ -99,9 +99,10 @@ Quickstart sugar for generated address spaces.
 
 Current role:
 
-- preserve the convenience of numeric `serve opcua --nodes ...` flows
+- provide config-native quickstart sugar for generated address spaces
 - compile into a generated model + device + named session
-- stay below the canonical session surface
+- stay below the canonical session surface and migration docs
+- not reintroduce legacy numeric `serve opcua` entrypoints
 
 ## File Formats
 
@@ -170,4 +171,6 @@ presets: {}
 
 ## Compatibility Surface
 
-Existing `nodes::*Builder`, `OpcUaDeviceBuilder`, `OpcUaDeviceFactory`, and numeric `serve opcua` flows are still supported, but they are compatibility paths. Internally they should converge toward `preset -> session` compilation instead of becoming separate first-class surfaces.
+Builder/factory-style surfaces and numeric `serve opcua` flows are no longer first-class public
+entrypoints. Migration should target canonical `preset -> session` compilation and file-backed
+config/session control flows.

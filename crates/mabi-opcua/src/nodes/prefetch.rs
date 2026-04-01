@@ -708,10 +708,9 @@ impl PrefetchingAddressSpace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nodes::builder::{NodeBuilder, ObjectBuilder, VariableBuilder};
     use crate::nodes::cache::NodeCacheConfig;
-    use crate::nodes::{
-        AddressSpaceConfig, NodeBuilder, ObjectBuilder, Reference, VariableBuilder,
-    };
+    use crate::nodes::{AddressSpaceConfig, Reference};
     use crate::types::variant::DataTypeId;
 
     fn create_test_address_space() -> Arc<AddressSpace> {

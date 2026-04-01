@@ -17,8 +17,11 @@ use mabi_modbus::{
     RegisterControlPort, SessionControlPort as ModbusSessionControlPort, TracePort,
 };
 use mabi_opcua::{
-    CompiledOpcUaSession, NodeCatalogPort, NodeTarget, NodeValueControlPort, OpcUaConfigSummary,
-    OpcUaControlSession, OpcUaSimulatorConfig, SessionControlPort as OpcuaSessionControlPort,
+    compile_session_with_report as compile_opcua_session_with_report,
+    generate_types_with_report as generate_opcua_types_with_report,
+    modeling::OpcUaCompiledLaunchConfig, CompiledOpcUaSession, NodeCatalogPort, NodeTarget,
+    NodeValueControlPort, OpcUaConfigSummary, OpcUaControlSession, OpcUaSimulatorConfig,
+    SecurityControlPort, SessionControlPort as OpcuaSessionControlPort,
 };
 use mabi_runtime::{ProtocolLaunchSpec, RuntimeSession};
 use mabi_scenario::prelude::ScenarioValidator;
@@ -28,6 +31,9 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
+
+const OPCUA_LEGACY_COMPAT_MESSAGE: &str =
+    "legacy OPC UA serve flow has been removed; use --config <file> --session <name>";
 
 /// ASCII Art Logo (Celtic knot: orange knot on dark gray background)
 const LOGO: &str = "\x1b[38;5;236m\
@@ -170,8 +176,35 @@ enum Commands {
     /// Runtime control commands for simulator sessions
     Control(ControlCommandArgs),
 
+    /// Deterministic code generation from canonical simulator configs
+    Generate(GenerateCommandArgs),
+
     /// Show version information
     Version,
+}
+
+#[derive(Args)]
+struct GenerateCommandArgs {
+    #[command(subcommand)]
+    target: GenerateTargetCommand,
+}
+
+#[derive(Subcommand)]
+enum GenerateTargetCommand {
+    #[command(name = "opcua-types")]
+    OpcuaTypes(GenerateOpcuaTypesArgs),
+}
+
+#[derive(Args, Clone)]
+struct GenerateOpcuaTypesArgs {
+    #[arg(long)]
+    config: PathBuf,
+
+    #[arg(long)]
+    session: String,
+
+    #[arg(long)]
+    out: PathBuf,
 }
 
 #[derive(Args)]
@@ -666,6 +699,7 @@ struct OpcuaControlArgs {
 enum OpcuaControlSubcommand {
     Session(OpcuaSessionCommandArgs),
     Node(OpcuaNodeCommandArgs),
+    Security(OpcuaSecurityCommandArgs),
 }
 
 #[derive(Args)]
@@ -692,6 +726,28 @@ enum OpcuaNodeSubcommand {
     List(OpcuaNodeListArgs),
     Read(OpcuaNodeReadArgs),
     Write(OpcuaNodeWriteArgs),
+}
+
+#[derive(Args)]
+struct OpcuaSecurityCommandArgs {
+    #[command(subcommand)]
+    command: OpcuaSecuritySubcommand,
+}
+
+#[derive(Subcommand)]
+enum OpcuaSecuritySubcommand {
+    Status,
+    TrustReload,
+    Rotate(OpcuaSecurityRotateArgs),
+    AuditSummary,
+}
+
+#[derive(Args)]
+struct OpcuaSecurityRotateArgs {
+    #[arg(long)]
+    certificate: PathBuf,
+    #[arg(long = "private-key")]
+    private_key: PathBuf,
 }
 
 #[derive(Args, Default)]
@@ -902,6 +958,15 @@ async fn main() -> ExitCode {
                 }
             }
         }
+        Commands::Generate(args) => {
+            let ctx_handle = runner.context();
+            let mut ctx = ctx_handle.write().await;
+            match args.target {
+                GenerateTargetCommand::OpcuaTypes(args) => {
+                    generate_opcua_types_command(&mut ctx, args).await
+                }
+            }
+        }
         Commands::Version => {
             println!("mabi {} (Mabinogion)", env!("CARGO_PKG_VERSION"));
             println!("Rust {}", rustc_version());
@@ -1093,49 +1158,12 @@ fn load_compiled_opcua_session(
 }
 
 fn compile_legacy_opcua_session(
-    args: &OpcuaServeArgs,
-    service_name: Option<String>,
+    _args: &OpcuaServeArgs,
+    _service_name: Option<String>,
 ) -> CliResult<CompiledOpcUaSession> {
-    let config = OpcUaSimulatorConfig {
-        transports: std::collections::BTreeMap::from([(
-            "legacy".into(),
-            mabi_opcua::modeling::TransportDefinition {
-                bind: args.bind.clone(),
-                port: args.port,
-                endpoint_path: args.endpoint.clone(),
-                security_profile: Some(args.security.to_string()),
-                server_name: service_name.clone(),
-            },
-        )]),
-        sessions: std::collections::BTreeMap::from([(
-            "legacy".into(),
-            mabi_opcua::SessionDefinition {
-                transport: "legacy".into(),
-                models: Vec::new(),
-                devices: Vec::new(),
-                preset: Some("legacy".into()),
-                service_name,
-                readiness_timeout_ms: Some(5_000),
-                control: mabi_opcua::SessionControlConfig::default(),
-            },
-        )]),
-        presets: std::collections::BTreeMap::from([(
-            "legacy".into(),
-            mabi_opcua::PresetDefinition {
-                nodes: args.nodes,
-                writable: true,
-                historizing: false,
-                ..Default::default()
-            },
-        )]),
-        ..Default::default()
-    };
-
-    config
-        .compile_session("legacy", None)
-        .map_err(|error| CliError::InvalidConfig {
-            message: error.to_string(),
-        })
+    Err(CliError::InvalidConfig {
+        message: OPCUA_LEGACY_COMPAT_MESSAGE.into(),
+    })
 }
 
 fn parse_tag_filters(values: &[String]) -> CliResult<Vec<(String, String)>> {
@@ -1407,11 +1435,15 @@ async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<
     struct CompiledSessionView {
         name: String,
         service_name: Option<String>,
+        protocol: String,
+        connection_mode: String,
+        reverse_connect_target: Option<String>,
         endpoint: String,
         nodes: usize,
         devices: usize,
         namespaces: usize,
         points: usize,
+        cache: String,
     }
 
     #[derive(Serialize)]
@@ -1424,18 +1456,30 @@ async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<
     let (resolved, config) = load_opcua_config(ctx, &file)?;
     let mut sessions = Vec::new();
     for name in config.sessions.keys() {
-        let compiled = config
-            .compile_session(name, Some(&resolved))
-            .map_err(|error| CliError::InvalidConfig {
-                message: error.to_string(),
+        let (compiled, cache_report) =
+            compile_opcua_session_with_report(&config, name, Some(&resolved)).map_err(|error| {
+                CliError::InvalidConfig {
+                    message: error.to_string(),
+                }
             })?;
         let endpoint = compiled.launch.config["server_config"]["endpoint_url"]
             .as_str()
             .unwrap_or("unknown")
             .to_string();
+        let launch: OpcUaCompiledLaunchConfig =
+            serde_json::from_value(compiled.launch.config.clone()).map_err(|error| {
+                CliError::ExecutionFailed {
+                    message: format!(
+                    "failed to decode compiled OPC UA launch config for inspect output: {error}"
+                    ),
+                }
+            })?;
         sessions.push(CompiledSessionView {
             name: name.clone(),
             service_name: compiled.launch.name.clone(),
+            protocol: launch.server_config.endpoint_protocol.scheme().to_string(),
+            connection_mode: launch.server_config.connection_mode.as_str().to_string(),
+            reverse_connect_target: launch.server_config.reverse_connect_target.clone(),
             endpoint,
             nodes: compiled.catalog.nodes.len(),
             devices: compiled.devices.len(),
@@ -1445,6 +1489,16 @@ async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<
                 .iter()
                 .map(|device| device.points.len())
                 .sum(),
+            cache: format!(
+                "{} (imports {}/{})",
+                if cache_report.compilation_hit {
+                    "hit"
+                } else {
+                    "miss"
+                },
+                cache_report.import_hits,
+                cache_report.import_misses
+            ),
         });
     }
 
@@ -1466,22 +1520,42 @@ async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<
     ctx.output().kv("Path", &view.path);
     ctx.output()
         .kv("Transports", view.summary.transports.join(", "));
+    ctx.output().kv(
+        "Security Profiles",
+        view.summary.security_profiles.join(", "),
+    );
     ctx.output()
         .kv("NodeSets", view.summary.nodesets.join(", "));
+    ctx.output()
+        .kv("Companion Packs", view.summary.companion_packs.join(", "));
     ctx.output().kv("Models", view.summary.models.join(", "));
     ctx.output().kv("Devices", view.summary.devices.join(", "));
     ctx.output().kv("Presets", view.summary.presets.join(", "));
+    ctx.output()
+        .kv("Generated Types", view.summary.generated_types_enabled);
     for session in &view.sessions {
+        let endpoint_summary = format!(
+            "{}{}",
+            session.endpoint,
+            session
+                .reverse_connect_target
+                .as_ref()
+                .map(|target| format!(", reverse_target={target}"))
+                .unwrap_or_default()
+        );
         ctx.output().kv(
             format!("Session {}", session.name),
             format!(
-                "service={}, endpoint={}, nodes={}, devices={}, points={}, namespaces={}",
+                "service={}, protocol={}, mode={}, endpoint={}, nodes={}, devices={}, points={}, namespaces={}, cache={}",
                 session.service_name.as_deref().unwrap_or(&session.name),
-                session.endpoint,
+                session.protocol,
+                session.connection_mode,
+                endpoint_summary,
                 session.nodes,
                 session.devices,
                 session.points,
-                session.namespaces
+                session.namespaces,
+                session.cache
             ),
         );
     }
@@ -1493,22 +1567,75 @@ async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
     struct OpcuaValidationView {
         path: String,
         transports: usize,
+        transport_protocols: Vec<String>,
+        transport_connection_modes: Vec<String>,
+        reverse_connect_transports: usize,
+        security_profiles: usize,
         nodesets: usize,
+        companion_packs: usize,
         models: usize,
         devices: usize,
         sessions: usize,
         presets: usize,
+        generated_types_enabled: bool,
+        cache_hits: usize,
+        cache_misses: usize,
     }
 
     let (resolved, config) = load_opcua_config(ctx, &file)?;
+    let mut cache_hits = 0usize;
+    let mut cache_misses = 0usize;
+    for name in config.sessions.keys() {
+        let (_, report) = compile_opcua_session_with_report(&config, name, Some(&resolved))
+            .map_err(|error| CliError::InvalidConfig {
+                message: error.to_string(),
+            })?;
+        if report.compilation_hit {
+            cache_hits += 1;
+        } else {
+            cache_misses += 1;
+        }
+    }
     let view = OpcuaValidationView {
         path: resolved.display().to_string(),
         transports: config.transports.len(),
+        transport_protocols: {
+            let mut protocols = config
+                .transports
+                .values()
+                .map(|transport| transport.protocol.scheme().to_string())
+                .collect::<Vec<_>>();
+            protocols.sort();
+            protocols.dedup();
+            protocols
+        },
+        transport_connection_modes: {
+            let mut modes = config
+                .transports
+                .values()
+                .map(|transport| transport.connection_mode.as_str().to_string())
+                .collect::<Vec<_>>();
+            modes.sort();
+            modes.dedup();
+            modes
+        },
+        reverse_connect_transports: config
+            .transports
+            .values()
+            .filter(|transport| {
+                transport.connection_mode == mabi_opcua::TransportConnectionMode::ReverseConnect
+            })
+            .count(),
+        security_profiles: config.security_profiles.len(),
         nodesets: config.nodesets.len(),
+        companion_packs: config.companion_packs.len(),
         models: config.models.len(),
         devices: config.devices.len(),
         sessions: config.sessions.len(),
         presets: config.presets.len(),
+        generated_types_enabled: config.generated_types.enabled,
+        cache_hits,
+        cache_misses,
     };
 
     if matches!(
@@ -1520,16 +1647,98 @@ async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         ctx.output().header("OPC UA Config Validation");
         ctx.output().kv("Path", &view.path);
         ctx.output().kv("Transports", view.transports);
+        ctx.output()
+            .kv("Transport Protocols", view.transport_protocols.join(", "));
+        ctx.output().kv(
+            "Transport Connection Modes",
+            view.transport_connection_modes.join(", "),
+        );
+        ctx.output().kv(
+            "Reverse Connect Transports",
+            view.reverse_connect_transports,
+        );
+        ctx.output().kv("Security Profiles", view.security_profiles);
         ctx.output().kv("NodeSets", view.nodesets);
+        ctx.output().kv("Companion Packs", view.companion_packs);
         ctx.output().kv("Models", view.models);
         ctx.output().kv("Devices", view.devices);
         ctx.output().kv("Sessions", view.sessions);
         ctx.output().kv("Presets", view.presets);
+        ctx.output()
+            .kv("Generated Types", view.generated_types_enabled);
+        ctx.output().kv("Compilation Cache Hits", view.cache_hits);
+        ctx.output()
+            .kv("Compilation Cache Misses", view.cache_misses);
     }
 
     if !ctx.is_quiet() {
         ctx.output().success("OPC UA config validation passed");
     }
+    Ok(CommandOutput::quiet_success())
+}
+
+async fn generate_opcua_types_command(
+    ctx: &mut CliContext,
+    args: GenerateOpcuaTypesArgs,
+) -> CliResult<CommandOutput> {
+    #[derive(Serialize)]
+    struct GenerateView {
+        config_path: String,
+        session: String,
+        output_dir: String,
+        module_name: String,
+        source_path: String,
+        manifest_path: String,
+        cache: String,
+    }
+
+    let (resolved, config) = load_opcua_config(ctx, &args.config)?;
+    let (generated, cache_report) =
+        generate_opcua_types_with_report(&config, &args.session, Some(&resolved)).map_err(
+            |error: mabi_opcua::OpcUaError| CliError::InvalidConfig {
+                message: error.to_string(),
+            },
+        )?;
+    let output_dir = ctx.resolve_path(&args.out);
+    std::fs::create_dir_all(&output_dir).map_err(|error| CliError::ExecutionFailed {
+        message: format!(
+            "failed to create output directory '{}': {}",
+            output_dir.display(),
+            error
+        ),
+    })?;
+
+    let source_path = output_dir.join(format!("{}.rs", generated.module_name));
+    let manifest_path = output_dir.join(format!("{}.manifest.json", generated.module_name));
+    std::fs::write(&source_path, &generated.source).map_err(|error| CliError::ExecutionFailed {
+        message: format!("failed to write '{}': {}", source_path.display(), error),
+    })?;
+    std::fs::write(&manifest_path, &generated.manifest_json).map_err(|error| {
+        CliError::ExecutionFailed {
+            message: format!("failed to write '{}': {}", manifest_path.display(), error),
+        }
+    })?;
+
+    let view = GenerateView {
+        config_path: resolved.display().to_string(),
+        session: args.session,
+        output_dir: output_dir.display().to_string(),
+        module_name: generated.module_name,
+        source_path: source_path.display().to_string(),
+        manifest_path: manifest_path.display().to_string(),
+        cache: format!(
+            "{} (imports {}/{})",
+            if cache_report.compilation_hit {
+                "hit"
+            } else {
+                "miss"
+            },
+            cache_report.import_hits,
+            cache_report.import_misses
+        ),
+    };
+
+    ctx.output().write(&view)?;
     Ok(CommandOutput::quiet_success())
 }
 
@@ -1829,103 +2038,143 @@ async fn control_opcua(
             message: error.to_string(),
         })?;
 
-    let result: CliResult<CommandOutput> = match args.command {
-        OpcuaControlSubcommand::Session(args) => match args.command {
-            OpcuaSessionSubcommand::Status => {
-                let status = session
-                    .status()
-                    .await
-                    .map_err(|error| CliError::ExecutionFailed {
-                        message: error.to_string(),
-                    })?;
-                ctx.output().write(&status)?;
-                Ok(CommandOutput::quiet_success())
-            }
-            OpcuaSessionSubcommand::Reset => {
-                let snapshot =
-                    session
-                        .reset()
-                        .await
-                        .map_err(|error| CliError::ExecutionFailed {
-                            message: error.to_string(),
-                        })?;
-                ctx.output().write(&snapshot)?;
-                Ok(CommandOutput::quiet_success())
-            }
-            OpcuaSessionSubcommand::Snapshot => {
-                let snapshot =
-                    session
-                        .snapshot()
-                        .await
-                        .map_err(|error| CliError::ExecutionFailed {
-                            message: error.to_string(),
-                        })?;
-                ctx.output().write(&snapshot)?;
-                Ok(CommandOutput::quiet_success())
-            }
-        },
-        OpcuaControlSubcommand::Node(args) => match args.command {
-            OpcuaNodeSubcommand::List(args) => {
-                let mut nodes =
-                    session
-                        .list_nodes()
-                        .map_err(|error| CliError::ExecutionFailed {
-                            message: error.to_string(),
-                        })?;
-                if let Some(device) = args.device {
-                    nodes.retain(|node| node.device_id == device);
-                }
-
-                if matches!(
-                    ctx.output().format(),
-                    OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-                ) {
-                    ctx.output().write(&nodes)?;
-                } else {
-                    ctx.output().header("OPC UA Nodes");
-                    let mut table = TableBuilder::new(ctx.colors_enabled())
-                        .header(["Device", "Point", "NodeId", "Class", "Writable"]);
-                    for node in &nodes {
-                        table = table.row([
-                            node.device_id.as_str(),
-                            node.point_id.as_str(),
-                            node.node_id.as_str(),
-                            node.node_class.as_str(),
-                            if node.writable { "yes" } else { "no" },
-                        ]);
+    let result: CliResult<CommandOutput> =
+        match args.command {
+            OpcuaControlSubcommand::Session(args) => {
+                match args.command {
+                    OpcuaSessionSubcommand::Status => {
+                        let status =
+                            session
+                                .status()
+                                .await
+                                .map_err(|error| CliError::ExecutionFailed {
+                                    message: error.to_string(),
+                                })?;
+                        ctx.output().write(&status)?;
+                        Ok(CommandOutput::quiet_success())
                     }
-                    table.print();
+                    OpcuaSessionSubcommand::Reset => {
+                        let snapshot =
+                            session
+                                .reset()
+                                .await
+                                .map_err(|error| CliError::ExecutionFailed {
+                                    message: error.to_string(),
+                                })?;
+                        ctx.output().write(&snapshot)?;
+                        Ok(CommandOutput::quiet_success())
+                    }
+                    OpcuaSessionSubcommand::Snapshot => {
+                        let snapshot = session.snapshot().await.map_err(|error| {
+                            CliError::ExecutionFailed {
+                                message: error.to_string(),
+                            }
+                        })?;
+                        ctx.output().write(&snapshot)?;
+                        Ok(CommandOutput::quiet_success())
+                    }
                 }
-                Ok(CommandOutput::quiet_success())
             }
-            OpcuaNodeSubcommand::Read(args) => {
-                let target = node_target_from_selector(&args.selector)?;
-                let point =
-                    session
-                        .read(&target)
+            OpcuaControlSubcommand::Node(args) => {
+                match args.command {
+                    OpcuaNodeSubcommand::List(args) => {
+                        let mut nodes =
+                            session
+                                .list_nodes()
+                                .map_err(|error| CliError::ExecutionFailed {
+                                    message: error.to_string(),
+                                })?;
+                        if let Some(device) = args.device {
+                            nodes.retain(|node| node.device_id == device);
+                        }
+
+                        if matches!(
+                            ctx.output().format(),
+                            OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
+                        ) {
+                            ctx.output().write(&nodes)?;
+                        } else {
+                            ctx.output().header("OPC UA Nodes");
+                            let mut table = TableBuilder::new(ctx.colors_enabled())
+                                .header(["Device", "Point", "NodeId", "Class", "Writable"]);
+                            for node in &nodes {
+                                table = table.row([
+                                    node.device_id.as_str(),
+                                    node.point_id.as_str(),
+                                    node.node_id.as_str(),
+                                    node.node_class.as_str(),
+                                    if node.writable { "yes" } else { "no" },
+                                ]);
+                            }
+                            table.print();
+                        }
+                        Ok(CommandOutput::quiet_success())
+                    }
+                    OpcuaNodeSubcommand::Read(args) => {
+                        let target = node_target_from_selector(&args.selector)?;
+                        let point = session.read(&target).await.map_err(|error| {
+                            CliError::ExecutionFailed {
+                                message: error.to_string(),
+                            }
+                        })?;
+                        ctx.output().write(&point)?;
+                        Ok(CommandOutput::quiet_success())
+                    }
+                    OpcuaNodeSubcommand::Write(args) => {
+                        let target = node_target_from_selector(&args.selector)?;
+                        let value = parse_opcua_value(&args.value)?;
+                        session.write(&target, value).await.map_err(|error| {
+                            CliError::ExecutionFailed {
+                                message: error.to_string(),
+                            }
+                        })?;
+                        if !ctx.is_quiet() {
+                            ctx.output().success("OPC UA node write completed");
+                        }
+                        Ok(CommandOutput::quiet_success())
+                    }
+                }
+            }
+            OpcuaControlSubcommand::Security(args) => match args.command {
+                OpcuaSecuritySubcommand::Status => {
+                    let status = session.security_status().await.map_err(|error| {
+                        CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        }
+                    })?;
+                    ctx.output().write(&status)?;
+                    Ok(CommandOutput::quiet_success())
+                }
+                OpcuaSecuritySubcommand::TrustReload => {
+                    let status = session.trust_reload().await.map_err(|error| {
+                        CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        }
+                    })?;
+                    ctx.output().write(&status)?;
+                    Ok(CommandOutput::quiet_success())
+                }
+                OpcuaSecuritySubcommand::Rotate(args) => {
+                    let status = session
+                        .rotate_server_certificate(args.certificate, args.private_key)
                         .await
                         .map_err(|error| CliError::ExecutionFailed {
                             message: error.to_string(),
                         })?;
-                ctx.output().write(&point)?;
-                Ok(CommandOutput::quiet_success())
-            }
-            OpcuaNodeSubcommand::Write(args) => {
-                let target = node_target_from_selector(&args.selector)?;
-                let value = parse_opcua_value(&args.value)?;
-                session
-                    .write(&target, value)
-                    .await
-                    .map_err(|error| CliError::ExecutionFailed {
-                        message: error.to_string(),
-                    })?;
-                if !ctx.is_quiet() {
-                    ctx.output().success("OPC UA node write completed");
+                    ctx.output().write(&status)?;
+                    Ok(CommandOutput::quiet_success())
                 }
-                Ok(CommandOutput::quiet_success())
-            }
-        },
-    };
+                OpcuaSecuritySubcommand::AuditSummary => {
+                    let summary = session.audit_summary().await.map_err(|error| {
+                        CliError::ExecutionFailed {
+                            message: error.to_string(),
+                        }
+                    })?;
+                    ctx.output().write(&summary)?;
+                    Ok(CommandOutput::quiet_success())
+                }
+            },
+        };
 
     let stop_result = session
         .stop()
@@ -2390,9 +2639,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn opcua_legacy_serve_request_compiles_to_canonical_launch() {
+    async fn opcua_legacy_serve_request_is_removed() {
         let ctx = CliContext::builder().build().unwrap();
-        let (request, _) = into_launch_spec(
+        let result = into_launch_spec(
             &ctx,
             None,
             ServeProtocolCommand::Opcua(OpcuaServeArgs {
@@ -2407,18 +2656,16 @@ mod tests {
                 security: SecurityModeArg::None,
             }),
         )
-        .await
-        .unwrap();
+        .await;
 
-        assert_eq!(request.protocol, "opcua");
-        assert_eq!(
-            request.config["server_config"]["endpoint_url"],
-            "opc.tcp://127.0.0.1:14840/sim"
-        );
-        assert!(request.config["catalog"]["nodes"]
-            .as_array()
-            .map(|nodes| !nodes.is_empty())
-            .unwrap_or(false));
+        let error = match result {
+            Ok(_) => panic!("expected legacy OPC UA serve flow to be removed"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains(crate::OPCUA_LEGACY_COMPAT_MESSAGE));
     }
 
     #[test]

@@ -17,10 +17,11 @@ use mabi_runtime::{
 
 use crate::modeling::{
     CompiledOpcUaSession, CompiledPointBinding, OpcUaCompiledLaunchConfig, OpcUaSimulatorConfig,
-    PresetDefinition, SessionControlConfig, SessionDefinition, SimulatorDefaults,
-    TransportDefinition,
+    PresetDefinition, SessionControlConfig, SessionDefinition, SessionRuntimeConfig,
+    SimulatorDefaults, TransportDefinition,
 };
 use crate::server_runtime::ServerBuildSpec;
+use crate::TransportProtocol;
 use crate::{NodeId, OpcUaError, OpcUaResult, OpcUaServer, Variant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,6 +272,10 @@ impl ManagedService for OpcUaManagedService {
             serde_json::to_value(&self.launch.server_config.endpoint_url)
                 .map_err(|error| runtime_error(error.to_string()))?,
         );
+        metadata.insert(
+            "transport_protocol".to_string(),
+            json!(self.launch.server_config.endpoint_protocol.scheme()),
+        );
         metadata.insert("nodes".to_string(), json!(self.launch.catalog.nodes.len()));
         metadata.insert("devices".to_string(), json!(self.launch.devices.len()));
         metadata.insert(
@@ -280,7 +285,32 @@ impl ManagedService for OpcUaManagedService {
         );
         metadata.insert(
             "security_profile".to_string(),
-            json!(self.launch.server_config.security_policy.clone()),
+            json!(self.launch.security.name.clone()),
+        );
+        metadata.insert(
+            "durability_mode".to_string(),
+            json!(format!("{:?}", self.launch.runtime.durability.mode)),
+        );
+        metadata.insert(
+            "restored_subscriptions".to_string(),
+            json!(self
+                .server
+                .subscription_manager()
+                .restored_subscription_count()),
+        );
+        metadata.insert(
+            "detached_restored_subscriptions".to_string(),
+            json!(self
+                .server
+                .subscription_manager()
+                .detached_subscription_count()),
+        );
+        metadata.insert(
+            "generated_types".to_string(),
+            json!({
+                "module": self.launch.generated_types.module_name,
+                "entries": self.launch.generated_types.entries.len(),
+            }),
         );
         metadata.insert(
             "stats".to_string(),
@@ -335,8 +365,10 @@ impl ProtocolDriver for OpcUaDriver {
     ) -> RuntimeResult<Arc<dyn ManagedService>> {
         let launch = decode_launch_config(&spec)
             .map_err(|error| runtime_error(format!("invalid opcua launch config: {}", error)))?;
-        let build_spec = ServerBuildSpec::from_server_config(launch.server_config.clone())
+        let mut build_spec = ServerBuildSpec::from_server_config(launch.server_config.clone())
             .with_generated_catalog(launch.catalog.clone());
+        build_spec.defaults.subscription.durability = launch.runtime.durability.clone();
+        build_spec.defaults.security = launch.security.manager_config.clone();
         let server = Arc::new(OpcUaServer::from_build_spec(build_spec).map_err(
             |error: OpcUaError| runtime_error(format!("failed to create opcua server: {}", error)),
         )?);
@@ -362,11 +394,17 @@ fn decode_launch_config(spec: &ProtocolLaunchSpec) -> OpcUaResult<OpcUaCompiledL
         transports: BTreeMap::from([(
             "legacy".into(),
             TransportDefinition {
+                protocol: TransportProtocol::OpcTcp,
+                connection_mode: crate::TransportConnectionMode::Listener,
                 bind: legacy.bind_addr.ip().to_string(),
                 port: legacy.bind_addr.port(),
                 endpoint_path: legacy.endpoint_path.clone(),
+                reverse_connect_target: None,
+                retry_interval_ms: 5_000,
                 security_profile: Some(legacy.security_mode.clone()),
                 server_name: Some(DEFAULT_SERVER_NAME.into()),
+                certificate_path: None,
+                private_key_path: None,
             },
         )]),
         sessions: BTreeMap::from([(
@@ -379,6 +417,7 @@ fn decode_launch_config(spec: &ProtocolLaunchSpec) -> OpcUaResult<OpcUaCompiledL
                 service_name: Some(legacy_service_name),
                 readiness_timeout_ms: Some(5_000),
                 control: SessionControlConfig::default(),
+                runtime: SessionRuntimeConfig::default(),
             },
         )]),
         presets: BTreeMap::from([(

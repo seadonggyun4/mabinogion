@@ -52,7 +52,10 @@ pub use crypto::{
     AsymmetricAlgorithm, CryptoProvider, CryptoProviderConfig, DecryptionResult, EncryptionResult,
     HashAlgorithm, SignatureResult, SymmetricAlgorithm,
 };
-pub use manager::{SecurityContext, SecurityManager, SecurityManagerConfig};
+pub use manager::{
+    DeprecatedPolicyHandling, RoleMappingRule, SecurityAuditSinkConfig, SecurityAuditSinkKind,
+    SecurityAuditStatus, SecurityContext, SecurityManager, SecurityManagerConfig, SecurityStatus,
+};
 pub use policy::{SecurityPolicyConfig, SecurityPolicyProvider};
 pub use user_auth::{
     AuthenticationResult, UserAuthConfig, UserAuthenticator, UserCredentials, UserToken,

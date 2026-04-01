@@ -3,23 +3,27 @@
 //! Subscriptions allow clients to receive notifications about data changes
 //! and events without polling.
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, info};
 
 use super::event::{EventFieldList, EventFilter};
 use super::monitored_item::{MonitoredItem, MonitoredItemConfig, MonitoredItemNotification};
 use crate::sdk::subscription::{
+    DurableSubscriptionMetadata, DurableSubscriptionStatus, DurableSubscriptionStore,
     EventSubscriptionPort, MonitoredItemCatalog, NotificationQueue, PublishEngine,
-    SubscriptionCatalog, SubscriptionRuntime, SubscriptionStateData,
+    SubscriptionCatalog, SubscriptionDurabilityConfig, SubscriptionDurabilityMode,
+    SubscriptionOwnershipState, SubscriptionRuntime, SubscriptionStateData,
 };
 use crate::types::{DataValue, NodeId};
 
 /// Subscription configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SubscriptionConfig {
     /// Subscription ID (assigned by manager).
     pub subscription_id: u32,
@@ -67,7 +71,7 @@ impl SubscriptionConfig {
 }
 
 /// Subscription state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SubscriptionState {
     /// Subscription is creating.
     Creating,
@@ -86,18 +90,29 @@ pub struct Subscription {
     pub(crate) state_data: SubscriptionStateData,
     pub(crate) monitored_items: MonitoredItemCatalog,
     pub(crate) notification_queue: NotificationQueue,
+    pub(crate) owner_session_id: Option<NodeId>,
+    pub(crate) detached_restored: bool,
     #[allow(dead_code)]
     /// Creation time.
-    created_at: DateTime<Utc>,
+    pub(crate) created_at: DateTime<Utc>,
 }
 
 impl Subscription {
     /// Create a new subscription.
     pub fn new(config: SubscriptionConfig) -> Self {
+        Self::new_with_ownership(config, SubscriptionOwnershipState::default())
+    }
+
+    pub(crate) fn new_with_ownership(
+        config: SubscriptionConfig,
+        ownership: SubscriptionOwnershipState,
+    ) -> Self {
         Self {
             state_data: SubscriptionStateData::new(config),
             monitored_items: MonitoredItemCatalog::default(),
             notification_queue: NotificationQueue::default(),
+            owner_session_id: ownership.owner_session_id,
+            detached_restored: ownership.detached_restored,
             created_at: Utc::now(),
         }
     }
@@ -204,6 +219,35 @@ impl Subscription {
     pub fn should_delete(&self) -> bool {
         self.state_data.state == SubscriptionState::Closed
     }
+
+    pub(crate) fn ownership_state(&self) -> SubscriptionOwnershipState {
+        SubscriptionOwnershipState {
+            owner_session_id: self.owner_session_id.clone(),
+            detached_restored: self.detached_restored,
+        }
+    }
+
+    pub(crate) fn attach_owner(&mut self, session_id: NodeId) {
+        self.owner_session_id = Some(session_id);
+        self.detached_restored = false;
+    }
+
+    pub(crate) fn is_publishable(&self) -> bool {
+        !self.detached_restored
+    }
+
+    pub(crate) fn sampling_bucket_ms(&self) -> u64 {
+        self.monitored_items
+            .ids()
+            .into_iter()
+            .filter_map(|item_id| {
+                self.monitored_items
+                    .get(item_id)
+                    .map(|item| item.config().sampling_interval_ms.max(1.0) as u64)
+            })
+            .min()
+            .unwrap_or_else(|| self.state_data.config.publishing_interval_ms.max(1.0) as u64)
+    }
 }
 
 /// Notification message sent to clients.
@@ -249,6 +293,12 @@ pub enum SubscriptionEvent {
     Notification(NotificationMessage),
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TransferSubscriptionOutcome {
+    pub(crate) previous_owner_session_id: Option<NodeId>,
+    pub(crate) available_sequence_numbers: Vec<u32>,
+}
+
 /// Subscription manager configuration.
 #[derive(Debug, Clone)]
 pub struct SubscriptionManagerConfig {
@@ -260,6 +310,8 @@ pub struct SubscriptionManagerConfig {
     pub notification_buffer_size: usize,
     /// Event channel buffer size.
     pub event_buffer_size: usize,
+    /// Runtime durability configuration.
+    pub durability: SubscriptionDurabilityConfig,
 }
 
 impl Default for SubscriptionManagerConfig {
@@ -269,6 +321,7 @@ impl Default for SubscriptionManagerConfig {
             max_monitored_items_per_subscription: 100_000,
             notification_buffer_size: 10_000,
             event_buffer_size: 1000,
+            durability: SubscriptionDurabilityConfig::default(),
         }
     }
 }
@@ -283,6 +336,13 @@ pub struct SubscriptionManager {
     event_tx: broadcast::Sender<SubscriptionEvent>,
     notification_tx: mpsc::Sender<NotificationMessage>,
     notification_rx: RwLock<Option<mpsc::Receiver<NotificationMessage>>>,
+    durable_store: Option<DurableSubscriptionStore>,
+    durable_dirty: AtomicBool,
+    last_durable_flush: Mutex<Instant>,
+    last_durable_flush_at: Mutex<Option<DateTime<Utc>>>,
+    last_durable_flush_result: RwLock<String>,
+    restored_subscription_count: AtomicUsize,
+    detached_subscription_count: AtomicUsize,
 }
 
 impl SubscriptionManager {
@@ -307,14 +367,121 @@ impl SubscriptionManager {
     pub fn with_config(config: SubscriptionManagerConfig) -> Self {
         let (event_tx, _) = broadcast::channel(config.event_buffer_size);
         let (notification_tx, notification_rx) = mpsc::channel(config.notification_buffer_size);
+        let durable_store = DurableSubscriptionStore::new(config.durability.clone());
 
-        Self {
+        let manager = Self {
             config,
             catalog: SubscriptionCatalog::new(),
             runtime: SubscriptionRuntime::new(),
             event_tx,
             notification_tx,
             notification_rx: RwLock::new(Some(notification_rx)),
+            durable_store,
+            durable_dirty: AtomicBool::new(false),
+            last_durable_flush: Mutex::new(Instant::now()),
+            last_durable_flush_at: Mutex::new(None),
+            last_durable_flush_result: RwLock::new("never_flushed".to_string()),
+            restored_subscription_count: AtomicUsize::new(0),
+            detached_subscription_count: AtomicUsize::new(0),
+        };
+
+        if let Some(store) = &manager.durable_store {
+            if store.config().restore_on_start {
+                if let Ok(snapshot) = store.load() {
+                    let restored = snapshot.subscriptions.len();
+                    manager.catalog.replace_from_snapshot(snapshot);
+                    manager
+                        .restored_subscription_count
+                        .store(restored, Ordering::Relaxed);
+                    manager.detached_subscription_count.store(
+                        manager.catalog.detached_subscription_count(),
+                        Ordering::Relaxed,
+                    );
+                }
+            }
+        }
+
+        manager
+    }
+
+    fn mark_durable_dirty(&self) {
+        if self.config.durability.mode == SubscriptionDurabilityMode::Persisted {
+            self.durable_dirty.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn persist_if_due(&self, force: bool) {
+        let Some(store) = &self.durable_store else {
+            return;
+        };
+        if !force && !self.durable_dirty.load(Ordering::Relaxed) {
+            return;
+        }
+
+        let elapsed = self.last_durable_flush.lock().elapsed();
+        if !force && elapsed < Duration::from_millis(self.config.durability.flush_interval_ms) {
+            return;
+        }
+
+        let metadata = DurableSubscriptionMetadata {
+            saved_at: Some(Utc::now()),
+            last_flush_result: "ok".to_string(),
+        };
+        if let Err(error) = store.save_catalog(&self.catalog, metadata) {
+            *self.last_durable_flush_result.write() = format!("error: {}", error);
+            tracing::warn!(error = %error, "failed to persist OPC UA subscription state");
+            return;
+        }
+
+        *self.last_durable_flush.lock() = Instant::now();
+        *self.last_durable_flush_at.lock() = Some(Utc::now());
+        *self.last_durable_flush_result.write() = "ok".to_string();
+        self.durable_dirty.store(false, Ordering::Relaxed);
+    }
+
+    fn refresh_detached_count(&self) {
+        self.detached_subscription_count.store(
+            self.catalog.detached_subscription_count(),
+            Ordering::Relaxed,
+        );
+    }
+
+    pub fn durability_mode(&self) -> SubscriptionDurabilityMode {
+        self.config.durability.mode
+    }
+
+    pub fn restored_subscription_count(&self) -> usize {
+        self.restored_subscription_count.load(Ordering::Relaxed)
+    }
+
+    pub fn detached_subscription_count(&self) -> usize {
+        self.detached_subscription_count.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn durability_status(&self) -> DurableSubscriptionStatus {
+        if let Some(store) = &self.durable_store {
+            if let Ok(status) = store.load_status() {
+                return status;
+            }
+        }
+        DurableSubscriptionStatus {
+            persisted_state_present: false,
+            restored_subscription_count: self.restored_subscription_count(),
+            detached_subscription_count: self.detached_subscription_count(),
+            last_flush_at: *self.last_durable_flush_at.lock(),
+            last_flush_result: self.last_durable_flush_result.read().clone(),
+        }
+    }
+
+    pub fn clear_persisted_state(&self) {
+        if let Some(store) = &self.durable_store {
+            if let Err(error) = store.clear() {
+                tracing::warn!(error = %error, "failed to clear OPC UA subscription state");
+                *self.last_durable_flush_result.write() = format!("error: {}", error);
+            } else {
+                *self.last_durable_flush_result.write() = "cleared".to_string();
+                *self.last_durable_flush_at.lock() = Some(Utc::now());
+            }
         }
     }
 
@@ -335,14 +502,27 @@ impl SubscriptionManager {
         &self,
         config: SubscriptionConfig,
     ) -> Result<u32, SubscriptionError> {
-        let id = self
-            .catalog
-            .create_subscription(self.config.max_subscriptions, config)?;
+        self.create_subscription_for_owner(config, None)
+    }
+
+    pub(crate) fn create_subscription_for_owner(
+        &self,
+        config: SubscriptionConfig,
+        owner_session_id: Option<NodeId>,
+    ) -> Result<u32, SubscriptionError> {
+        let id = self.catalog.create_subscription_for_owner(
+            self.config.max_subscriptions,
+            config,
+            owner_session_id,
+        )?;
 
         info!(subscription_id = id, "Subscription created");
         let _ = self.event_tx.send(SubscriptionEvent::Created {
             subscription_id: id,
         });
+        self.mark_durable_dirty();
+        self.persist_if_due(true);
+        self.refresh_detached_count();
 
         Ok(id)
     }
@@ -354,6 +534,9 @@ impl SubscriptionManager {
             let _ = self
                 .event_tx
                 .send(SubscriptionEvent::Deleted { subscription_id });
+            self.mark_durable_dirty();
+            self.persist_if_due(true);
+            self.refresh_detached_count();
             true
         } else {
             false
@@ -373,12 +556,16 @@ impl SubscriptionManager {
             .get(subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
-        let mut sub = subscription.write();
-        sub.modify(publishing_interval_ms, lifetime_count, max_keep_alive_count);
+        {
+            let mut sub = subscription.write();
+            sub.modify(publishing_interval_ms, lifetime_count, max_keep_alive_count);
+        }
 
         let _ = self
             .event_tx
             .send(SubscriptionEvent::Modified { subscription_id });
+        self.mark_durable_dirty();
+        self.persist_if_due(true);
         Ok(())
     }
 
@@ -393,15 +580,20 @@ impl SubscriptionManager {
             .get(subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
-        let mut sub = subscription.write();
+        let item_id = {
+            let mut sub = subscription.write();
 
-        if sub.monitored_item_count() >= self.config.max_monitored_items_per_subscription {
-            return Err(SubscriptionError::TooManyMonitoredItems);
-        }
+            if sub.monitored_item_count() >= self.config.max_monitored_items_per_subscription {
+                return Err(SubscriptionError::TooManyMonitoredItems);
+            }
 
-        let item_id = sub.create_monitored_item(config);
+            sub.create_monitored_item(config)
+        };
 
         debug!(subscription_id, item_id, "Monitored item created");
+        self.mark_durable_dirty();
+        self.persist_if_due(true);
+        self.refresh_detached_count();
         Ok(item_id)
     }
 
@@ -419,13 +611,17 @@ impl SubscriptionManager {
             .get(subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
-        let mut sub = subscription.write();
-        let item = sub
-            .get_monitored_item_mut(item_id)
-            .ok_or(SubscriptionError::MonitoredItemNotFound)?;
+        {
+            let mut sub = subscription.write();
+            let item = sub
+                .get_monitored_item_mut(item_id)
+                .ok_or(SubscriptionError::MonitoredItemNotFound)?;
 
-        item.modify(sampling_interval_ms, queue_size, discard_oldest, None);
+            item.modify(sampling_interval_ms, queue_size, discard_oldest, None);
+        }
         debug!(subscription_id, item_id, "Monitored item modified");
+        self.mark_durable_dirty();
+        self.persist_if_due(true);
         Ok(())
     }
 
@@ -440,8 +636,16 @@ impl SubscriptionManager {
             .get(subscription_id)
             .ok_or(SubscriptionError::SubscriptionNotFound)?;
 
-        let mut sub = subscription.write();
-        Ok(sub.delete_monitored_item(item_id))
+        let deleted = {
+            let mut sub = subscription.write();
+            sub.delete_monitored_item(item_id)
+        };
+        if deleted {
+            self.mark_durable_dirty();
+            self.persist_if_due(true);
+            self.refresh_detached_count();
+        }
+        Ok(deleted)
     }
 
     /// Process a value change.
@@ -449,12 +653,16 @@ impl SubscriptionManager {
         self.catalog.for_each_mut(|subscription| {
             subscription.on_value_change(node_id, value.clone());
         });
+        self.mark_durable_dirty();
     }
 
     /// Process publish for a subscription.
     pub fn process_publish(&self, subscription_id: u32) -> Option<PublishResponse> {
         let subscription = self.catalog.get(subscription_id)?;
         let mut sub = subscription.write();
+        if !sub.is_publishable() {
+            return None;
+        }
         Some(PublishEngine::build_publish_response(
             subscription_id,
             &mut sub,
@@ -463,9 +671,15 @@ impl SubscriptionManager {
 
     /// Process all subscriptions (called periodically).
     pub async fn process_all(&self) {
-        self.runtime
+        let changed = self
+            .runtime
             .tick_all(&self.catalog, &self.notification_tx, &self.event_tx)
             .await;
+        if changed {
+            self.mark_durable_dirty();
+        }
+        self.refresh_detached_count();
+        self.persist_if_due(false);
     }
 
     /// Get subscription count.
@@ -502,7 +716,36 @@ impl SubscriptionManager {
     pub fn push_event_notification(&self, subscription_id: u32, field_list: EventFieldList) {
         if let Some(sub) = self.catalog.get(subscription_id) {
             sub.write().push_event_notification(field_list);
+            self.mark_durable_dirty();
         }
+    }
+
+    pub(crate) fn subscription_ownership(
+        &self,
+        subscription_id: u32,
+    ) -> Option<SubscriptionOwnershipState> {
+        self.catalog.ownership_state(subscription_id)
+    }
+
+    pub(crate) fn transfer_subscription(
+        &self,
+        subscription_id: u32,
+        owner_session_id: NodeId,
+    ) -> Result<TransferSubscriptionOutcome, SubscriptionError> {
+        let previous = self
+            .catalog
+            .transfer_subscription(subscription_id, owner_session_id)?;
+        self.mark_durable_dirty();
+        self.persist_if_due(true);
+        self.refresh_detached_count();
+        Ok(TransferSubscriptionOutcome {
+            previous_owner_session_id: previous.owner_session_id,
+            available_sequence_numbers: self
+                .catalog
+                .get(subscription_id)
+                .map(|subscription| vec![subscription.read().state_data.sequence_number])
+                .unwrap_or_default(),
+        })
     }
 }
 
@@ -543,6 +786,7 @@ pub enum SubscriptionError {
 mod tests {
     use super::*;
     use crate::types::Variant;
+    use tempfile::tempdir;
 
     #[test]
     fn test_create_subscription() {
@@ -631,5 +875,49 @@ mod tests {
         // Process publish
         let message = subscription.process_publish().unwrap();
         assert_eq!(message.notifications.len(), 1);
+    }
+
+    #[test]
+    fn persisted_durability_restores_subscriptions() {
+        let state_dir = tempdir().unwrap();
+        let config = SubscriptionManagerConfig {
+            durability: SubscriptionDurabilityConfig {
+                mode: SubscriptionDurabilityMode::Persisted,
+                state_dir: Some(state_dir.path().to_path_buf()),
+                flush_interval_ms: 0,
+                restore_on_start: true,
+            },
+            ..Default::default()
+        };
+        let manager = SubscriptionManager::with_config(config.clone());
+        let owner_session = NodeId::string(1, "session-a");
+        let subscription_id = manager
+            .create_subscription_for_owner(SubscriptionConfig::default(), Some(owner_session))
+            .unwrap();
+        let item_config = MonitoredItemConfig {
+            node_id: NodeId::numeric(2, 1001),
+            attribute_id: crate::types::AttributeId::Value,
+            sampling_interval_ms: 1000.0,
+            queue_size: 10,
+            discard_oldest: true,
+            filter: None,
+            ..Default::default()
+        };
+        let _ = manager
+            .create_monitored_item(subscription_id, item_config)
+            .unwrap();
+
+        let restored = SubscriptionManager::with_config(config);
+        assert_eq!(restored.subscription_count(), 1);
+        assert_eq!(restored.restored_subscription_count(), 1);
+        assert_eq!(restored.detached_subscription_count(), 1);
+        assert!(restored.process_publish(subscription_id).is_none());
+
+        let transfer = restored
+            .transfer_subscription(subscription_id, NodeId::string(1, "session-b"))
+            .unwrap();
+        assert_eq!(transfer.available_sequence_numbers.len(), 1);
+        assert_eq!(restored.detached_subscription_count(), 0);
+        assert!(restored.process_publish(subscription_id).is_some());
     }
 }

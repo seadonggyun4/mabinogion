@@ -1,5 +1,8 @@
 //! Canonical session-centric modeling surface for the OPC UA simulator.
 
+mod cache;
+mod codegen;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,7 +14,15 @@ use mabi_core::types::{AccessMode, Address, DataPointDef, DataType};
 use mabi_core::value::Value;
 use mabi_runtime::{ProtocolLaunchSpec, RuntimeExtensions};
 
-use crate::config::OpcUaServerConfig;
+pub use self::cache::CompilationCacheReport;
+use self::cache::{
+    build_compilation_cache_key, build_import_cache_key, ImportCacheCounters, ModelingCache,
+};
+use self::codegen::{build_generated_type_catalog, render_generated_rust_module};
+use crate::config::{
+    MessageSecurityMode, OpcUaServerConfig, SecurityPolicy, TransportConnectionMode,
+    TransportProtocol,
+};
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::nodes::base::{LocalizedText, QualifiedName};
 use crate::nodes::classes::{
@@ -19,6 +30,10 @@ use crate::nodes::classes::{
     VariableTypeNode, ViewNode,
 };
 use crate::nodes::{AddressSpace, Reference, ReferenceDirection, ReferenceTypeId};
+use crate::sdk::subscription::SubscriptionDurabilityConfig;
+use crate::security::{
+    DeprecatedPolicyHandling, RoleMappingRule, SecurityAuditSinkConfig, SecurityManagerConfig,
+};
 use crate::types::{AccessLevel, NodeId, NodeIdType, Variant};
 
 const STANDARD_NAMESPACE_URI: &str = "http://opcfoundation.org/UA/";
@@ -34,7 +49,11 @@ pub struct OpcUaSimulatorConfig {
     #[serde(default)]
     pub transports: BTreeMap<String, TransportDefinition>,
     #[serde(default)]
+    pub security_profiles: BTreeMap<String, SecurityProfileDefinition>,
+    #[serde(default)]
     pub nodesets: BTreeMap<String, NodeSetSource>,
+    #[serde(default)]
+    pub companion_packs: BTreeMap<String, CompanionPackDefinition>,
     #[serde(default)]
     pub models: BTreeMap<String, ModelDefinition>,
     #[serde(default)]
@@ -43,6 +62,8 @@ pub struct OpcUaSimulatorConfig {
     pub sessions: BTreeMap<String, SessionDefinition>,
     #[serde(default)]
     pub presets: BTreeMap<String, PresetDefinition>,
+    #[serde(default)]
+    pub generated_types: GeneratedTypesConfig,
 }
 
 impl OpcUaSimulatorConfig {
@@ -124,6 +145,50 @@ impl OpcUaSimulatorConfig {
             }
         }
 
+        for (name, transport) in &self.transports {
+            if let Some(profile_name) = &transport.security_profile {
+                resolve_security_profile_definition(self, profile_name).ok_or_else(|| {
+                    OpcUaError::Config(format!(
+                        "transport '{}' references unknown security profile '{}'",
+                        name, profile_name
+                    ))
+                })?;
+            }
+            if transport.protocol == TransportProtocol::Https
+                && (transport.certificate_path.is_none() || transport.private_key_path.is_none())
+            {
+                return Err(OpcUaError::Config(format!(
+                    "https transport '{}' requires certificate_path and private_key_path",
+                    name
+                )));
+            }
+            if transport.connection_mode == TransportConnectionMode::ReverseConnect {
+                if transport.protocol != TransportProtocol::OpcTcp {
+                    return Err(OpcUaError::Config(format!(
+                        "transport '{}' only supports reverse_connect with opc.tcp",
+                        name
+                    )));
+                }
+                if transport.reverse_connect_target.is_none() {
+                    return Err(OpcUaError::Config(format!(
+                        "transport '{}' requires reverse_connect_target when connection_mode is reverse_connect",
+                        name
+                    )));
+                }
+                if transport.retry_interval_ms == 0 {
+                    return Err(OpcUaError::Config(format!(
+                        "transport '{}' requires retry_interval_ms > 0 for reverse_connect",
+                        name
+                    )));
+                }
+            } else if transport.reverse_connect_target.is_some() {
+                return Err(OpcUaError::Config(format!(
+                    "transport '{}' sets reverse_connect_target but connection_mode is not reverse_connect",
+                    name
+                )));
+            }
+        }
+
         for (name, model) in &self.models {
             for nodeset in &model.nodesets {
                 let source = self.nodesets.get(nodeset).ok_or_else(|| {
@@ -133,6 +198,15 @@ impl OpcUaSimulatorConfig {
                     ))
                 })?;
                 validate_nodeset_source(nodeset, source, base_path)?;
+            }
+            for companion in &model.companions {
+                if !companion.name.is_empty() && !self.companion_packs.contains_key(&companion.name)
+                {
+                    return Err(OpcUaError::Config(format!(
+                        "model '{}' references unknown companion pack '{}'",
+                        name, companion.name
+                    )));
+                }
             }
             let mut overlay_ids = BTreeSet::new();
             for overlay in &model.overlays {
@@ -172,6 +246,30 @@ impl OpcUaSimulatorConfig {
         name: &str,
         base_path: Option<&Path>,
     ) -> OpcUaResult<CompiledOpcUaSession> {
+        self.compile_session_with_report(name, base_path)
+            .map(|(compiled, _)| compiled)
+    }
+
+    /// Compiles a named session and reports cache usage for CLI inspection surfaces.
+    pub fn compile_session_with_report(
+        &self,
+        name: &str,
+        base_path: Option<&Path>,
+    ) -> OpcUaResult<(CompiledOpcUaSession, CompilationCacheReport)> {
+        let cache = ModelingCache::new();
+        let cache_key = build_compilation_cache_key(self, name, base_path)?;
+        if let Some(compiled) = cache.load_compiled_session(&cache_key) {
+            return Ok((
+                compiled,
+                CompilationCacheReport {
+                    compilation_hit: true,
+                    import_hits: 0,
+                    import_misses: 0,
+                    cache_dir: cache.root_display(),
+                },
+            ));
+        }
+
         let session = self
             .sessions
             .get(name)
@@ -180,6 +278,21 @@ impl OpcUaSimulatorConfig {
             OpcUaError::Config(format!(
                 "session '{}' references unknown transport '{}'",
                 name, session.transport
+            ))
+        })?;
+        let resolved_security_profile = resolve_security_profile_definition(
+            self,
+            transport
+                .security_profile
+                .as_ref()
+                .or(self.defaults.security_profile.as_ref())
+                .map(String::as_str)
+                .unwrap_or("None"),
+        )
+        .ok_or_else(|| {
+            OpcUaError::Config(format!(
+                "session '{}' references unknown security profile",
+                name
             ))
         })?;
 
@@ -227,6 +340,7 @@ impl OpcUaSimulatorConfig {
         ];
         let mut plan_sources = Vec::new();
         let mut imported_nodesets = Vec::new();
+        let mut import_cache = ImportCacheCounters::default();
 
         for model_name in &ordered_model_names {
             let model = self
@@ -241,6 +355,11 @@ impl OpcUaSimulatorConfig {
                 if let Some(namespace_uri) = &companion.namespace_uri {
                     push_unique(&mut namespace_table, namespace_uri.clone());
                 }
+                if let Some(pack) = self.companion_packs.get(&companion.name) {
+                    if let Some(namespace_uri) = &pack.namespace_uri {
+                        push_unique(&mut namespace_table, namespace_uri.clone());
+                    }
+                }
             }
             for nodeset_name in &model.nodesets {
                 let source = self.nodesets.get(nodeset_name).ok_or_else(|| {
@@ -249,12 +368,43 @@ impl OpcUaSimulatorConfig {
                         model_name, nodeset_name
                     ))
                 })?;
-                let imported = import_nodeset_source(source, base_path)?;
+                let imported =
+                    import_nodeset_source_cached(source, base_path, &cache, &mut import_cache)?;
                 for uri in imported.local_namespace_table.iter().skip(1) {
                     push_unique(&mut namespace_table, uri.clone());
                 }
                 imported_nodesets.push((model_name.clone(), nodeset_name.clone(), imported));
                 plan_sources.push(format!("model:{} -> nodeset:{}", model_name, nodeset_name));
+            }
+            for companion in &model.companions {
+                if let Some(pack) = self.companion_packs.get(&companion.name) {
+                    for nodeset_name in &pack.nodesets {
+                        let source = self.nodesets.get(nodeset_name).ok_or_else(|| {
+                            OpcUaError::Config(format!(
+                                "companion pack '{}' references unknown nodeset '{}'",
+                                companion.name, nodeset_name
+                            ))
+                        })?;
+                        let imported = import_nodeset_source_cached(
+                            source,
+                            base_path,
+                            &cache,
+                            &mut import_cache,
+                        )?;
+                        for uri in imported.local_namespace_table.iter().skip(1) {
+                            push_unique(&mut namespace_table, uri.clone());
+                        }
+                        imported_nodesets.push((
+                            model_name.clone(),
+                            format!("companion:{}", nodeset_name),
+                            imported,
+                        ));
+                        plan_sources.push(format!(
+                            "model:{} -> companion:{} -> nodeset:{}",
+                            model_name, companion.name, nodeset_name
+                        ));
+                    }
+                }
             }
         }
 
@@ -398,13 +548,29 @@ impl OpcUaSimulatorConfig {
                 .flat_map(|device| device.points.iter().cloned())
                 .collect(),
         };
+        let generated_types = build_generated_type_catalog(
+            name,
+            &catalog,
+            &self.generated_types,
+            session.service_name.as_deref(),
+        );
+        let security = compile_security_profile(&resolved_security_profile);
 
         let compiled_launch = OpcUaCompiledLaunchConfig {
             session_name: name.to_string(),
-            server_config: build_server_config(&self.defaults, session, transport),
+            server_config: build_server_config(
+                &self.defaults,
+                session,
+                transport,
+                &security,
+                base_path,
+            ),
             catalog: catalog.clone(),
             devices: compiled_devices.clone(),
             control: session.control.clone(),
+            runtime: session.runtime.clone(),
+            generated_types: generated_types.clone(),
+            security,
             readiness_timeout_ms: session
                 .readiness_timeout_ms
                 .or(self.defaults.readiness_timeout_ms),
@@ -422,37 +588,69 @@ impl OpcUaSimulatorConfig {
                 .map_err(|error| OpcUaError::Config(error.to_string()))?,
         };
 
-        Ok(CompiledOpcUaSession {
+        let compiled = CompiledOpcUaSession {
             session_name: name.to_string(),
             launch,
             namespace_plan: catalog.namespace_plan.clone(),
             catalog,
             devices: compiled_devices,
             control: session.control.clone(),
+            runtime: session.runtime.clone(),
+            generated_types,
+            security: compiled_launch.security.clone(),
             readiness_timeout_ms: compiled_launch.readiness_timeout_ms,
-        })
+        };
+
+        let _ = cache.save_compiled_session(&cache_key, &compiled);
+
+        Ok((
+            compiled,
+            CompilationCacheReport {
+                compilation_hit: false,
+                import_hits: import_cache.hits,
+                import_misses: import_cache.misses,
+                cache_dir: cache.root_display(),
+            },
+        ))
     }
 
     /// Returns a stable inspection summary for CLI surfaces.
     pub fn inspect_summary(&self) -> OpcUaConfigSummary {
         OpcUaConfigSummary {
             transports: self.transports.keys().cloned().collect(),
+            security_profiles: self.security_profiles.keys().cloned().collect(),
             nodesets: self.nodesets.keys().cloned().collect(),
+            companion_packs: self.companion_packs.keys().cloned().collect(),
             models: self.models.keys().cloned().collect(),
             devices: self.devices.keys().cloned().collect(),
             sessions: self
                 .sessions
                 .iter()
-                .map(|(name, session)| OpcUaSessionSummary {
-                    name: name.clone(),
-                    transport: session.transport.clone(),
-                    models: session.models.clone(),
-                    devices: session.devices.clone(),
-                    preset: session.preset.clone(),
-                    service_name: session.service_name.clone(),
+                .map(|(name, session)| {
+                    let transport_protocol = self
+                        .transports
+                        .get(&session.transport)
+                        .map(|transport| transport.protocol)
+                        .unwrap_or_default();
+                    let transport_connection_mode = self
+                        .transports
+                        .get(&session.transport)
+                        .map(|transport| transport.connection_mode)
+                        .unwrap_or_default();
+                    OpcUaSessionSummary {
+                        name: name.clone(),
+                        transport: session.transport.clone(),
+                        transport_protocol,
+                        transport_connection_mode,
+                        models: session.models.clone(),
+                        devices: session.devices.clone(),
+                        preset: session.preset.clone(),
+                        service_name: session.service_name.clone(),
+                    }
                 })
                 .collect(),
             presets: self.presets.keys().cloned().collect(),
+            generated_types_enabled: self.generated_types.enabled,
         }
     }
 }
@@ -471,6 +669,37 @@ pub fn compile_session(
     config.compile_session(session_name, base_path)
 }
 
+/// Compiles a named session and reports cache usage.
+pub fn compile_session_with_report(
+    config: &OpcUaSimulatorConfig,
+    session_name: &str,
+    base_path: Option<&Path>,
+) -> OpcUaResult<(CompiledOpcUaSession, CompilationCacheReport)> {
+    config.compile_session_with_report(session_name, base_path)
+}
+
+/// Generates a deterministic Rust wrapper module from the canonical compilation graph.
+pub fn generate_types(
+    config: &OpcUaSimulatorConfig,
+    session_name: &str,
+    base_path: Option<&Path>,
+) -> OpcUaResult<GeneratedRustModule> {
+    generate_types_with_report(config, session_name, base_path).map(|(generated, _)| generated)
+}
+
+/// Generates deterministic Rust wrappers and reports cache usage.
+pub fn generate_types_with_report(
+    config: &OpcUaSimulatorConfig,
+    session_name: &str,
+    base_path: Option<&Path>,
+) -> OpcUaResult<(GeneratedRustModule, CompilationCacheReport)> {
+    let (compiled, report) = config.compile_session_with_report(session_name, base_path)?;
+    Ok((
+        render_generated_rust_module(&compiled.generated_types),
+        report,
+    ))
+}
+
 /// Returns the canonical schema summary for CLI inspection.
 pub fn schema_summary() -> OpcUaSchemaSummary {
     OpcUaSchemaSummary {
@@ -483,11 +712,26 @@ pub fn schema_summary() -> OpcUaSchemaSummary {
                 "Runtime-wide default namespace and server settings",
             ),
             SchemaSection::new("transports", true, "Named OPC UA endpoint definitions"),
+            SchemaSection::new(
+                "security_profiles",
+                false,
+                "Named security policy, audit, and role-mapping presets",
+            ),
             SchemaSection::new("nodesets", false, "NodeSet2 import sources"),
+            SchemaSection::new(
+                "companion_packs",
+                false,
+                "Named companion-model bundles over NodeSet2 imports",
+            ),
             SchemaSection::new("models", false, "Address-space composition and overlays"),
             SchemaSection::new("devices", false, "Runtime-visible point bindings"),
             SchemaSection::new("sessions", true, "Named runtime sessions"),
             SchemaSection::new("presets", false, "Legacy convenience generation"),
+            SchemaSection::new(
+                "generated_types",
+                false,
+                "Deterministic Rust wrapper generation settings",
+            ),
         ],
         commands: vec![
             "mabi inspect opcua-schema",
@@ -495,6 +739,7 @@ pub fn schema_summary() -> OpcUaSchemaSummary {
             "mabi validate opcua-config <file>",
             "mabi serve opcua --config <file> --session <name>",
             "mabi control opcua --config <file> --session <name> ...",
+            "mabi generate opcua-types --config <file> --session <name> --out <dir>",
         ],
         notes: vec![
             "NodeSet2 imports are runtime-loaded and deterministic",
@@ -539,6 +784,10 @@ impl Default for SimulatorDefaults {
 /// Named transport definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransportDefinition {
+    #[serde(default)]
+    pub protocol: TransportProtocol,
+    #[serde(default)]
+    pub connection_mode: TransportConnectionMode,
     #[serde(default = "default_bind_address")]
     pub bind: String,
     #[serde(default = "default_port")]
@@ -546,19 +795,93 @@ pub struct TransportDefinition {
     #[serde(default = "default_endpoint_path")]
     pub endpoint_path: String,
     #[serde(default)]
+    pub reverse_connect_target: Option<String>,
+    #[serde(default = "default_retry_interval_ms")]
+    pub retry_interval_ms: u64,
+    #[serde(default)]
     pub security_profile: Option<String>,
     #[serde(default)]
     pub server_name: Option<String>,
+    #[serde(default)]
+    pub certificate_path: Option<PathBuf>,
+    #[serde(default)]
+    pub private_key_path: Option<PathBuf>,
 }
 
 impl Default for TransportDefinition {
     fn default() -> Self {
         Self {
+            protocol: TransportProtocol::OpcTcp,
+            connection_mode: TransportConnectionMode::Listener,
             bind: default_bind_address(),
             port: default_port(),
             endpoint_path: default_endpoint_path(),
+            reverse_connect_target: None,
+            retry_interval_ms: default_retry_interval_ms(),
             security_profile: Some("None".into()),
             server_name: None,
+            certificate_path: None,
+            private_key_path: None,
+        }
+    }
+}
+
+/// Named security runtime preset referenced by transports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityProfileDefinition {
+    #[serde(default = "default_security_profile_policy")]
+    pub policy: String,
+    #[serde(default)]
+    pub mode: Option<MessageSecurityMode>,
+    #[serde(default)]
+    pub deprecated_policies: DeprecatedPolicyHandling,
+    #[serde(default)]
+    pub audit_sink: SecurityAuditSinkConfig,
+    #[serde(default)]
+    pub role_rules: Vec<RoleMappingRule>,
+    #[serde(default = "default_true")]
+    pub allow_trust_reload: bool,
+    #[serde(default = "default_true")]
+    pub allow_certificate_rotation: bool,
+}
+
+impl Default for SecurityProfileDefinition {
+    fn default() -> Self {
+        Self {
+            policy: default_security_profile_policy(),
+            mode: Some(MessageSecurityMode::None),
+            deprecated_policies: DeprecatedPolicyHandling::Allow,
+            audit_sink: SecurityAuditSinkConfig::default(),
+            role_rules: Vec::new(),
+            allow_trust_reload: true,
+            allow_certificate_rotation: true,
+        }
+    }
+}
+
+/// Named companion-model bundle.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CompanionPackDefinition {
+    #[serde(default)]
+    pub namespace_uri: Option<String>,
+    #[serde(default)]
+    pub nodesets: Vec<String>,
+}
+
+/// Codegen configuration for deterministic typed wrappers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneratedTypesConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub module_name: Option<String>,
+}
+
+impl Default for GeneratedTypesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            module_name: None,
         }
     }
 }
@@ -648,14 +971,24 @@ pub struct NodeBindingDefinition {
 pub struct SessionControlConfig {
     #[serde(default = "default_true")]
     pub allow_raw_node_access: bool,
+    #[serde(default)]
+    pub clear_persisted_subscriptions_on_reset: bool,
 }
 
 impl Default for SessionControlConfig {
     fn default() -> Self {
         Self {
             allow_raw_node_access: true,
+            clear_persisted_subscriptions_on_reset: false,
         }
     }
+}
+
+/// Session-scoped runtime defaults.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionRuntimeConfig {
+    #[serde(default)]
+    pub durability: SubscriptionDurabilityConfig,
 }
 
 /// Named execution unit.
@@ -674,6 +1007,8 @@ pub struct SessionDefinition {
     pub readiness_timeout_ms: Option<u64>,
     #[serde(default)]
     pub control: SessionControlConfig,
+    #[serde(default)]
+    pub runtime: SessionRuntimeConfig,
 }
 
 /// Legacy convenience generation preset.
@@ -967,6 +1302,46 @@ pub struct GeneratedNodeCatalog {
     pub point_bindings: Vec<CompiledPointBinding>,
 }
 
+/// Deterministic typed wrapper metadata generated from a compiled session catalog.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GeneratedTypeCatalog {
+    pub session_name: String,
+    pub module_name: String,
+    pub entries: Vec<GeneratedTypeEntry>,
+}
+
+/// One generated Rust-access wrapper entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneratedTypeEntry {
+    pub rust_ident: String,
+    pub node_id: String,
+    pub browse_name: String,
+    pub display_name: String,
+    pub node_class: String,
+}
+
+/// Deterministic Rust module output derived from the canonical compilation graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneratedRustModule {
+    pub module_name: String,
+    pub source: String,
+    pub manifest_json: String,
+}
+
+/// Resolved security profile compiled into a runtime-ready bundle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompiledSecurityProfile {
+    pub name: String,
+    pub policy: String,
+    pub mode: MessageSecurityMode,
+    pub deprecated_policies: DeprecatedPolicyHandling,
+    pub audit_sink: SecurityAuditSinkConfig,
+    pub role_rules: Vec<RoleMappingRule>,
+    pub allow_trust_reload: bool,
+    pub allow_certificate_rotation: bool,
+    pub manager_config: SecurityManagerConfig,
+}
+
 impl GeneratedNodeCatalog {
     /// Materializes the catalog into the provided address space.
     pub fn materialize(&self, address_space: &AddressSpace) -> OpcUaResult<()> {
@@ -997,6 +1372,9 @@ pub struct CompiledOpcUaSession {
     pub catalog: GeneratedNodeCatalog,
     pub devices: Vec<CompiledDeviceDefinition>,
     pub control: SessionControlConfig,
+    pub runtime: SessionRuntimeConfig,
+    pub generated_types: GeneratedTypeCatalog,
+    pub security: CompiledSecurityProfile,
     pub readiness_timeout_ms: Option<u64>,
 }
 
@@ -1015,6 +1393,9 @@ pub struct OpcUaCompiledLaunchConfig {
     pub catalog: GeneratedNodeCatalog,
     pub devices: Vec<CompiledDeviceDefinition>,
     pub control: SessionControlConfig,
+    pub runtime: SessionRuntimeConfig,
+    pub generated_types: GeneratedTypeCatalog,
+    pub security: CompiledSecurityProfile,
     pub readiness_timeout_ms: Option<u64>,
 }
 
@@ -1463,11 +1844,14 @@ impl SchemaSection {
 #[derive(Debug, Clone, Serialize)]
 pub struct OpcUaConfigSummary {
     pub transports: Vec<String>,
+    pub security_profiles: Vec<String>,
     pub nodesets: Vec<String>,
+    pub companion_packs: Vec<String>,
     pub models: Vec<String>,
     pub devices: Vec<String>,
     pub sessions: Vec<OpcUaSessionSummary>,
     pub presets: Vec<String>,
+    pub generated_types_enabled: bool,
 }
 
 /// Summary of one named session.
@@ -1475,6 +1859,8 @@ pub struct OpcUaConfigSummary {
 pub struct OpcUaSessionSummary {
     pub name: String,
     pub transport: String,
+    pub transport_protocol: TransportProtocol,
+    pub transport_connection_mode: TransportConnectionMode,
     pub models: Vec<String>,
     pub devices: Vec<String>,
     pub preset: Option<String>,
@@ -1485,6 +1871,8 @@ fn build_server_config(
     defaults: &SimulatorDefaults,
     session: &SessionDefinition,
     transport: &TransportDefinition,
+    security: &CompiledSecurityProfile,
+    base_path: Option<&Path>,
 ) -> OpcUaServerConfig {
     let server_name = transport
         .server_name
@@ -1492,23 +1880,120 @@ fn build_server_config(
         .or_else(|| session.service_name.clone())
         .unwrap_or_else(|| defaults.server_name.clone());
     let endpoint_url = format!(
-        "opc.tcp://{}:{}{}",
-        transport.bind, transport.port, transport.endpoint_path
+        "{}://{}:{}{}",
+        transport.protocol.scheme(),
+        transport.bind,
+        transport.port,
+        transport.endpoint_path
     );
     let mut config = OpcUaServerConfig {
         endpoint_url,
+        endpoint_protocol: transport.protocol,
+        connection_mode: transport.connection_mode,
+        reverse_connect_target: transport.reverse_connect_target.clone(),
+        retry_interval_ms: transport.retry_interval_ms,
         server_name,
-        security_policy: transport
-            .security_profile
-            .clone()
-            .or_else(|| defaults.security_profile.clone())
-            .unwrap_or_else(|| "None".into()),
+        security_policy: security.policy.clone(),
+        certificate_path: resolve_optional_path(base_path, transport.certificate_path.as_ref()),
+        private_key_path: resolve_optional_path(base_path, transport.private_key_path.as_ref()),
         ..Default::default()
     };
     if let Some(min_publishing_interval_ms) = defaults.min_publishing_interval_ms {
         config.min_publishing_interval_ms = min_publishing_interval_ms;
     }
     config
+}
+
+fn resolve_optional_path(base_path: Option<&Path>, path: Option<&PathBuf>) -> Option<PathBuf> {
+    let path = path?;
+    if path.is_absolute() {
+        return Some(path.clone());
+    }
+    base_path
+        .and_then(|base| base.parent())
+        .map(|parent| parent.join(path))
+        .or_else(|| Some(path.clone()))
+}
+
+fn default_security_profile_policy() -> String {
+    "None".into()
+}
+
+fn default_retry_interval_ms() -> u64 {
+    5_000
+}
+
+fn resolve_security_profile_definition(
+    config: &OpcUaSimulatorConfig,
+    name: &str,
+) -> Option<(String, SecurityProfileDefinition)> {
+    if let Some(profile) = config.security_profiles.get(name) {
+        return Some((name.to_string(), profile.clone()));
+    }
+
+    builtin_security_profile(name).map(|profile| (name.to_string(), profile))
+}
+
+fn builtin_security_profile(name: &str) -> Option<SecurityProfileDefinition> {
+    let policy = match name {
+        "None" => "None",
+        "Basic128Rsa15" => "Basic128Rsa15",
+        "Basic256" => "Basic256",
+        "Basic256Sha256" => "Basic256Sha256",
+        "Aes128Sha256RsaOaep" => "Aes128Sha256RsaOaep",
+        "Aes256Sha256RsaPss" => "Aes256Sha256RsaPss",
+        _ => return None,
+    };
+
+    Some(SecurityProfileDefinition {
+        policy: policy.into(),
+        mode: Some(if policy == "None" {
+            MessageSecurityMode::None
+        } else {
+            MessageSecurityMode::SignAndEncrypt
+        }),
+        ..Default::default()
+    })
+}
+
+fn compile_security_profile(
+    (name, profile): &(String, SecurityProfileDefinition),
+) -> CompiledSecurityProfile {
+    let policy = profile.policy.clone();
+    let mut manager_config = SecurityManagerConfig::default();
+    manager_config.default_policy = parse_security_policy_name(&policy);
+    manager_config.enabled_policies =
+        vec![SecurityPolicy::None, parse_security_policy_name(&policy)];
+    manager_config.reject_deprecated_policies = matches!(
+        profile.deprecated_policies,
+        DeprecatedPolicyHandling::Reject
+    );
+    manager_config.deprecated_policy_handling = profile.deprecated_policies;
+    manager_config.audit_sink = profile.audit_sink.clone();
+    manager_config.role_rules = profile.role_rules.clone();
+
+    CompiledSecurityProfile {
+        name: name.clone(),
+        policy,
+        mode: profile.mode.unwrap_or(MessageSecurityMode::None),
+        deprecated_policies: profile.deprecated_policies,
+        audit_sink: profile.audit_sink.clone(),
+        role_rules: profile.role_rules.clone(),
+        allow_trust_reload: profile.allow_trust_reload,
+        allow_certificate_rotation: profile.allow_certificate_rotation,
+        manager_config,
+    }
+}
+
+fn parse_security_policy_name(value: &str) -> SecurityPolicy {
+    match value {
+        "Basic128Rsa15" => SecurityPolicy::Basic128Rsa15,
+        "Basic256" => SecurityPolicy::Basic256,
+        "Basic256Sha256" => SecurityPolicy::Basic256Sha256,
+        "Aes128Sha256RsaOaep" => SecurityPolicy::Aes128Sha256RsaOaep,
+        "Aes256Sha256RsaPss" => SecurityPolicy::Aes256Sha256RsaPss,
+        _ => SecurityPolicy::None,
+    }
 }
 
 fn compile_device(
@@ -1692,14 +2177,32 @@ fn map_data_type(data_type: &NodeId) -> DataType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImportedNodeSet {
     local_namespace_table: Vec<String>,
     nodes: Vec<GeneratedNodeDefinition>,
     references: Vec<CompiledNodeReference>,
 }
 
-fn import_nodeset_source(
+fn import_nodeset_source_cached(
+    source: &NodeSetSource,
+    base_path: Option<&Path>,
+    cache: &ModelingCache,
+    counters: &mut ImportCacheCounters,
+) -> OpcUaResult<ImportedNodeSet> {
+    let cache_key = build_import_cache_key(source, base_path)?;
+    if let Some(imported) = cache.load_imported_nodeset(&cache_key) {
+        counters.record_hit();
+        return Ok(imported);
+    }
+
+    let imported = import_nodeset_source_uncached(source, base_path)?;
+    let _ = cache.save_imported_nodeset(&cache_key, &imported);
+    counters.record_miss();
+    Ok(imported)
+}
+
+fn import_nodeset_source_uncached(
     source: &NodeSetSource,
     base_path: Option<&Path>,
 ) -> OpcUaResult<ImportedNodeSet> {
@@ -2326,6 +2829,14 @@ mod tests {
             .top_level_sections
             .iter()
             .any(|section| section.name == "nodesets"));
+        assert!(summary
+            .top_level_sections
+            .iter()
+            .any(|section| section.name == "security_profiles"));
+        assert!(summary
+            .top_level_sections
+            .iter()
+            .any(|section| section.name == "generated_types"));
     }
 
     #[test]
@@ -2345,11 +2856,17 @@ mod tests {
             transports: BTreeMap::from([(
                 "main".into(),
                 TransportDefinition {
+                    protocol: TransportProtocol::OpcTcp,
+                    connection_mode: TransportConnectionMode::Listener,
                     bind: "127.0.0.1".into(),
                     port: 4840,
                     endpoint_path: "/sim".into(),
+                    reverse_connect_target: None,
+                    retry_interval_ms: 5_000,
                     security_profile: Some("None".into()),
                     server_name: None,
+                    certificate_path: None,
+                    private_key_path: None,
                 },
             )]),
             nodesets: BTreeMap::from([(
@@ -2376,6 +2893,7 @@ mod tests {
                     service_name: Some("opcua-demo".into()),
                     readiness_timeout_ms: Some(1_000),
                     control: SessionControlConfig::default(),
+                    runtime: SessionRuntimeConfig::default(),
                 },
             )]),
             ..Default::default()
@@ -2410,5 +2928,58 @@ mod tests {
         let compiled = config.compile_session("legacy", None).unwrap();
         assert!(!compiled.catalog.nodes.is_empty());
         assert!(!compiled.devices.is_empty());
+    }
+
+    #[test]
+    fn generate_types_renders_stable_module() {
+        let config = OpcUaSimulatorConfig {
+            transports: BTreeMap::from([("main".into(), TransportDefinition::default())]),
+            presets: BTreeMap::from([("legacy".into(), PresetDefinition::default())]),
+            sessions: BTreeMap::from([(
+                "legacy".into(),
+                SessionDefinition {
+                    transport: "main".into(),
+                    preset: Some("legacy".into()),
+                    service_name: Some("legacy-service".into()),
+                    ..Default::default()
+                },
+            )]),
+            generated_types: GeneratedTypesConfig {
+                enabled: true,
+                module_name: Some("legacy_types".into()),
+            },
+            ..Default::default()
+        };
+
+        let generated = generate_types(&config, "legacy", None).unwrap();
+        assert_eq!(generated.module_name, "legacy_types");
+        assert!(generated.source.contains("pub mod legacy_types"));
+        assert!(generated
+            .manifest_json
+            .contains("\"module_name\": \"legacy_types\""));
+    }
+
+    #[test]
+    fn compile_session_reports_cache_hits() {
+        let session_name = format!("legacy-{}", uuid::Uuid::new_v4());
+        let config = OpcUaSimulatorConfig {
+            transports: BTreeMap::from([("main".into(), TransportDefinition::default())]),
+            presets: BTreeMap::from([("legacy".into(), PresetDefinition::default())]),
+            sessions: BTreeMap::from([(
+                session_name.clone(),
+                SessionDefinition {
+                    transport: "main".into(),
+                    preset: Some("legacy".into()),
+                    service_name: Some("legacy-service".into()),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+
+        let (_, first) = compile_session_with_report(&config, &session_name, None).unwrap();
+        let (_, second) = compile_session_with_report(&config, &session_name, None).unwrap();
+        assert!(!first.compilation_hit);
+        assert!(second.compilation_hit);
     }
 }

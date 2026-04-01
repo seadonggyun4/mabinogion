@@ -364,13 +364,13 @@ pub async fn handle_connection(
 /// Template for creating per-connection ServiceContext instances.
 /// Holds shared references to all server components.
 pub struct ServiceContextTemplate {
-    pub session_manager: Arc<SessionManager>,
-    pub address_space: Arc<crate::nodes::AddressSpace>,
-    pub subscription_manager: Arc<SubscriptionManager>,
-    pub history_store: Arc<HistoryStore>,
-    pub security_manager: Arc<crate::security::SecurityManager>,
-    pub server_config: Arc<crate::config::OpcUaServerConfig>,
-    pub method_registry: Arc<MethodRegistry>,
+    pub(crate) session_manager: Arc<SessionManager>,
+    pub(crate) address_space: Arc<crate::nodes::AddressSpace>,
+    pub(crate) subscription_manager: Arc<SubscriptionManager>,
+    pub(crate) history_store: Arc<HistoryStore>,
+    pub(crate) security_manager: Arc<crate::security::SecurityManager>,
+    pub(crate) server_config: Arc<crate::config::OpcUaServerConfig>,
+    pub(crate) method_registry: Arc<MethodRegistry>,
 }
 
 // =============================================================================

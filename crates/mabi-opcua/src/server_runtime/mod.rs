@@ -1,5 +1,6 @@
 mod methods;
 
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,21 +12,29 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::info;
 
-use crate::config::OpcUaServerConfig;
+use crate::config::{OpcUaServerConfig, TransportConnectionMode, TransportProtocol};
 use crate::core::services::BuiltinServiceSet;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::modeling::GeneratedNodeCatalog;
+#[cfg(feature = "experimental-namespace-api")]
+use crate::namespace::{adapt_namespace_manager_plugin, NamespaceManagerPlugin};
 use crate::nodes::{
     AddressSpace, AddressSpaceConfig, NodeCache, NodeCacheConfig, NodePrefetcher, PrefetchConfig,
 };
+use crate::sdk::address_space::{CatalogNodeManager, DiagnosticsSnapshot, NodeManager};
 use crate::sdk::history::{HistoryStore, HistoryStoreConfig};
 use crate::sdk::session::{SessionManager, SessionManagerConfig};
 use crate::sdk::subscription::{SubscriptionManager, SubscriptionManagerConfig};
 use crate::security::{SecurityManager, SecurityManagerConfig};
+use crate::transport::adapter::{
+    ConnectionInitiationMode, TransportAdapterConfig, TransportListener,
+};
 use crate::transport::connection::ServiceContextTemplate;
 use crate::transport::hooks::TransportHooks;
+use crate::transport::https_listener::{HttpsTransportConfig, OpcUaHttpsListener};
 use crate::transport::runtime::{TransportRuntime, TransportRuntimePolicy};
 use crate::transport::tcp_listener::{OpcUaTcpListener, TcpTransportConfig};
+use crate::transport::tcp_reverse_connector::{TcpReverseConnectConfig, TcpReverseConnector};
 
 use self::methods::build_method_registry;
 
@@ -56,6 +65,9 @@ pub(crate) struct ServerBuildDefaults {
 
 impl ServerBuildDefaults {
     pub(crate) fn for_server_config(config: &OpcUaServerConfig) -> Self {
+        let mut security = SecurityManagerConfig::default();
+        security.certificate_config.certificate_path = config.certificate_path.clone();
+        security.certificate_config.private_key_path = config.private_key_path.clone();
         Self {
             session: SessionManagerConfig {
                 max_sessions: 1000,
@@ -67,6 +79,7 @@ impl ServerBuildDefaults {
                 max_monitored_items_per_subscription: config.max_monitored_items,
                 notification_buffer_size: 10_000,
                 event_buffer_size: 1000,
+                durability: Default::default(),
             },
             address_space: AddressSpaceConfig {
                 max_nodes: 1_000_000,
@@ -82,12 +95,13 @@ impl ServerBuildDefaults {
                 value_cache_ttl_ms: 1000,
             },
             prefetch: PrefetchConfig::default(),
-            security: SecurityManagerConfig::default(),
+            security,
             tcp: TcpTransportConfig {
                 bind_address: SocketAddr::from(([0, 0, 0, 0], 4840)),
                 max_connections: 1000,
                 connection_timeout: Duration::from_secs(60),
                 server_buffer_size: 65_535,
+                initiation_mode: ConnectionInitiationMode::Listener,
             },
         }
     }
@@ -101,6 +115,8 @@ pub(crate) struct ServerBuildSpec {
     pub(crate) transport_policy: TransportRuntimePolicy,
     pub(crate) transport_hooks: TransportHooks,
     pub(crate) defaults: ServerBuildDefaults,
+    #[cfg(feature = "experimental-namespace-api")]
+    pub(crate) namespace_managers: Vec<Arc<dyn NamespaceManagerPlugin>>,
 }
 
 impl ServerBuildSpec {
@@ -117,6 +133,8 @@ impl ServerBuildSpec {
             transport_policy,
             transport_hooks: TransportHooks::new(),
             defaults,
+            #[cfg(feature = "experimental-namespace-api")]
+            namespace_managers: Vec::new(),
         }
     }
 
@@ -125,6 +143,15 @@ impl ServerBuildSpec {
         generated_catalog: GeneratedNodeCatalog,
     ) -> Self {
         self.generated_catalog = Some(generated_catalog);
+        self
+    }
+
+    #[cfg(feature = "experimental-namespace-api")]
+    pub(crate) fn with_namespace_managers(
+        mut self,
+        namespace_managers: Vec<Arc<dyn NamespaceManagerPlugin>>,
+    ) -> Self {
+        self.namespace_managers = namespace_managers;
         self
     }
 }
@@ -141,7 +168,22 @@ impl ServerRuntimeBuilder {
         let subscription_manager = Arc::new(SubscriptionManager::with_config(
             spec.defaults.subscription.clone(),
         ));
-        let address_space = Arc::new(AddressSpace::new(spec.defaults.address_space.clone()));
+        let mut address_space_config = spec.defaults.address_space.clone();
+        if let Some(namespace_uri) = spec
+            .generated_catalog
+            .as_ref()
+            .and_then(|catalog| catalog.namespace_table.get(1))
+        {
+            address_space_config.default_namespace_uri = namespace_uri.clone();
+        }
+        let address_space = Arc::new(AddressSpace::new_with_internal_managers(
+            address_space_config,
+            build_internal_managers(
+                spec.generated_catalog.as_ref(),
+                #[cfg(feature = "experimental-namespace-api")]
+                &spec.namespace_managers,
+            ),
+        ));
         let history_store = Arc::new(HistoryStore::new(spec.defaults.history_store.clone()));
         let node_cache = Arc::new(NodeCache::new(spec.defaults.node_cache.clone()));
         let node_prefetcher = Arc::new(NodePrefetcher::new(
@@ -172,12 +214,20 @@ impl ServerRuntimeBuilder {
             "Registered built-in service handlers"
         );
 
-        let tcp_config = TcpTransportConfig {
-            bind_address: parse_endpoint_url(&spec.server_config.endpoint_url)?,
-            max_connections: spec.defaults.tcp.max_connections,
-            connection_timeout: spec.transport_policy.connection_timeout,
-            server_buffer_size: spec.transport_policy.server_buffer_size,
-        };
+        let mut transport_config = build_transport_config(&spec.server_config, &spec.defaults)?;
+        match &mut transport_config {
+            TransportAdapterConfig::TcpListener(config) => {
+                config.connection_timeout = spec.transport_policy.connection_timeout;
+                config.server_buffer_size = spec.transport_policy.server_buffer_size;
+            }
+            TransportAdapterConfig::TcpReverse(config) => {
+                config.connection_timeout = spec.transport_policy.connection_timeout;
+                config.server_buffer_size = spec.transport_policy.server_buffer_size;
+            }
+            TransportAdapterConfig::Https(config) => {
+                config.connection_timeout = spec.transport_policy.connection_timeout;
+            }
+        }
 
         let transport_runtime = Arc::new(TransportRuntime::new(
             builtins.clone(),
@@ -193,8 +243,9 @@ impl ServerRuntimeBuilder {
             history_store,
             node_cache,
             node_prefetcher,
+            security_manager,
             builtins,
-            tcp_config,
+            transport_config,
             transport_runtime,
         })
     }
@@ -207,8 +258,9 @@ pub(crate) struct BuiltServerRuntime {
     history_store: Arc<HistoryStore>,
     node_cache: Arc<NodeCache>,
     node_prefetcher: Arc<NodePrefetcher>,
+    security_manager: Arc<SecurityManager>,
     builtins: Arc<BuiltinServiceSet>,
-    tcp_config: TcpTransportConfig,
+    transport_config: TransportAdapterConfig,
     transport_runtime: Arc<TransportRuntime>,
 }
 
@@ -221,11 +273,12 @@ impl BuiltServerRuntime {
             history_store: self.history_store,
             node_cache: self.node_cache,
             node_prefetcher: self.node_prefetcher,
+            security_manager: self.security_manager,
             builtins: self.builtins,
-            tcp_config: self.tcp_config,
+            transport_config: self.transport_config,
             transport_runtime: self.transport_runtime,
-            tcp_listener: RwLock::new(None),
-            tcp_listener_task: RwLock::new(None),
+            transport_listener: RwLock::new(None),
+            transport_listener_task: RwLock::new(None),
             background_tasks: RwLock::new(None),
         }
     }
@@ -238,12 +291,13 @@ pub(crate) struct ServerRuntimeHandle {
     history_store: Arc<HistoryStore>,
     node_cache: Arc<NodeCache>,
     node_prefetcher: Arc<NodePrefetcher>,
+    security_manager: Arc<SecurityManager>,
     #[allow(dead_code)]
     builtins: Arc<BuiltinServiceSet>,
-    tcp_config: TcpTransportConfig,
+    transport_config: TransportAdapterConfig,
     transport_runtime: Arc<TransportRuntime>,
-    tcp_listener: RwLock<Option<Arc<OpcUaTcpListener>>>,
-    tcp_listener_task: RwLock<Option<JoinHandle<()>>>,
+    transport_listener: RwLock<Option<TransportListener>>,
+    transport_listener_task: RwLock<Option<JoinHandle<()>>>,
     background_tasks: RwLock<Option<ServerBackgroundTasks>>,
 }
 
@@ -276,39 +330,74 @@ impl ServerRuntimeHandle {
     }
 
     pub(crate) async fn start_transport(&self, shutdown: Arc<AtomicBool>) -> OpcUaResult<()> {
-        if self.tcp_listener.read().is_some() {
+        if self.transport_listener.read().is_some() {
             return Ok(());
         }
 
-        let tcp_listener = Arc::new(OpcUaTcpListener::new(
-            self.tcp_config.clone(),
-            self.transport_runtime.clone(),
-        ));
+        let listener = match &self.transport_config {
+            TransportAdapterConfig::TcpListener(config) => {
+                TransportListener::TcpListener(Arc::new(OpcUaTcpListener::new(
+                    config.clone(),
+                    self.transport_runtime.clone(),
+                )))
+            }
+            TransportAdapterConfig::TcpReverse(config) => TransportListener::TcpReverse(Arc::new(
+                TcpReverseConnector::new(config.clone(), self.transport_runtime.clone()),
+            )),
+            TransportAdapterConfig::Https(config) => {
+                config.validate()?;
+                TransportListener::Https(Arc::new(OpcUaHttpsListener::new(
+                    config.clone(),
+                    self.transport_runtime.clone(),
+                )))
+            }
+        };
         let listener_task = {
-            let tcp_listener = tcp_listener.clone();
+            let listener = listener.clone();
             tokio::spawn(async move {
-                if let Err(error) = tcp_listener.run().await {
-                    tracing::warn!(error = %error, "TCP listener error");
+                if let Err(error) = listener.run().await {
+                    tracing::warn!(error = %error, "Transport listener error");
                 }
             })
         };
 
         shutdown.store(false, Ordering::Relaxed);
-        *self.tcp_listener.write() = Some(tcp_listener);
-        *self.tcp_listener_task.write() = Some(listener_task);
+        *self.transport_listener.write() = Some(listener);
+        *self.transport_listener_task.write() = Some(listener_task);
+        let snapshot = self.stats_snapshot_inputs();
+        self.address_space.on_runtime_start(&DiagnosticsSnapshot {
+            current_sessions: snapshot.active_sessions as u32,
+            current_subscriptions: snapshot.active_subscriptions as u32,
+            total_nodes: snapshot.total_nodes as u32,
+            namespace_count: snapshot.namespace_count as u32,
+            security_profile_summary: snapshot.security_profile_summary,
+            durable_restore_summary: snapshot.durable_restore_summary,
+            manager_ownership_summary: snapshot.manager_ownership_summary,
+        });
         Ok(())
     }
 
     pub(crate) async fn stop_transport(&self) {
-        if let Some(listener) = self.tcp_listener.read().as_ref() {
+        let snapshot = self.stats_snapshot_inputs();
+        self.address_space.on_runtime_stop(&DiagnosticsSnapshot {
+            current_sessions: snapshot.active_sessions as u32,
+            current_subscriptions: snapshot.active_subscriptions as u32,
+            total_nodes: snapshot.total_nodes as u32,
+            namespace_count: snapshot.namespace_count as u32,
+            security_profile_summary: snapshot.security_profile_summary,
+            durable_restore_summary: snapshot.durable_restore_summary,
+            manager_ownership_summary: snapshot.manager_ownership_summary,
+        });
+
+        if let Some(listener) = self.transport_listener.read().as_ref() {
             listener.shutdown();
         }
 
-        let listener_task = self.tcp_listener_task.write().take();
+        let listener_task = self.transport_listener_task.write().take();
         if let Some(listener_task) = listener_task {
             let _ = tokio::time::timeout(Duration::from_secs(5), listener_task).await;
         }
-        self.tcp_listener.write().take();
+        self.transport_listener.write().take();
     }
 
     pub(crate) fn spawn_background_tasks(&self, shutdown: Arc<AtomicBool>) {
@@ -321,6 +410,8 @@ impl ServerRuntimeHandle {
             self.session_manager.clone(),
             self.history_store.clone(),
             self.node_prefetcher.clone(),
+            self.address_space.clone(),
+            self.security_manager.clone(),
             shutdown,
         ));
     }
@@ -344,8 +435,31 @@ impl ServerRuntimeHandle {
             active_sessions: self.session_manager.session_count(),
             active_subscriptions: self.subscription_manager.subscription_count(),
             total_nodes: self.address_space.node_count(),
+            namespace_count: self.address_space.namespaces().len(),
+            security_profile_summary: self.security_manager.diagnostics_summary(),
+            durable_restore_summary: format!(
+                "{:?}/restored={}/detached={}",
+                self.subscription_manager.durability_mode(),
+                self.subscription_manager.restored_subscription_count(),
+                self.subscription_manager.detached_subscription_count()
+            ),
+            manager_ownership_summary: self.address_space.manager_ownership_summary().join("; "),
             cache_hit_rate: cache_stats.hit_rate(),
         }
+    }
+
+    pub(crate) fn refresh_diagnostics(&self) {
+        let snapshot = self.stats_snapshot_inputs();
+        self.address_space
+            .refresh_diagnostics(&DiagnosticsSnapshot {
+                current_sessions: snapshot.active_sessions as u32,
+                current_subscriptions: snapshot.active_subscriptions as u32,
+                total_nodes: snapshot.total_nodes as u32,
+                namespace_count: snapshot.namespace_count as u32,
+                security_profile_summary: snapshot.security_profile_summary,
+                durable_restore_summary: snapshot.durable_restore_summary,
+                manager_ownership_summary: snapshot.manager_ownership_summary,
+            });
     }
 }
 
@@ -354,6 +468,10 @@ pub(crate) struct ServerStatsInputs {
     pub(crate) active_sessions: usize,
     pub(crate) active_subscriptions: usize,
     pub(crate) total_nodes: usize,
+    pub(crate) namespace_count: usize,
+    pub(crate) security_profile_summary: String,
+    pub(crate) durable_restore_summary: String,
+    pub(crate) manager_ownership_summary: String,
     pub(crate) cache_hit_rate: f64,
 }
 
@@ -368,16 +486,26 @@ impl ServerBackgroundTasks {
         session_manager: Arc<SessionManager>,
         history_store: Arc<HistoryStore>,
         node_prefetcher: Arc<NodePrefetcher>,
+        address_space: Arc<AddressSpace>,
+        security_manager: Arc<SecurityManager>,
         shutdown: Arc<AtomicBool>,
     ) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
+        let subscription_manager_for_tick = subscription_manager.clone();
+        let subscription_manager_for_diagnostics = subscription_manager.clone();
+        let session_manager_for_cleanup = session_manager.clone();
+        let session_manager_for_diagnostics = session_manager.clone();
+        let history_store_for_cleanup = history_store.clone();
+        let node_prefetcher_for_processing = node_prefetcher.clone();
+        let address_space_for_diagnostics = address_space.clone();
+        let security_manager_for_diagnostics = security_manager.clone();
         let handles = vec![
             spawn_shutdown_task(
                 shutdown.clone(),
                 shutdown_tx.subscribe(),
                 Duration::from_millis(100),
                 move || {
-                    let subscription_manager = subscription_manager.clone();
+                    let subscription_manager = subscription_manager_for_tick.clone();
                     async move { subscription_manager.process_all().await }
                 },
             ),
@@ -386,7 +514,7 @@ impl ServerBackgroundTasks {
                 shutdown_tx.subscribe(),
                 Duration::from_secs(10),
                 move || {
-                    let session_manager = session_manager.clone();
+                    let session_manager = session_manager_for_cleanup.clone();
                     async move { session_manager.cleanup_expired() }
                 },
             ),
@@ -395,18 +523,47 @@ impl ServerBackgroundTasks {
                 shutdown_tx.subscribe(),
                 Duration::from_secs(3600),
                 move || {
-                    let history_store = history_store.clone();
+                    let history_store = history_store_for_cleanup.clone();
                     async move { history_store.cleanup() }
+                },
+            ),
+            spawn_shutdown_task(
+                shutdown.clone(),
+                shutdown_tx.subscribe(),
+                Duration::from_millis(10),
+                move || {
+                    let node_prefetcher = node_prefetcher_for_processing.clone();
+                    async move {
+                        let _ = node_prefetcher.process_pending();
+                    }
                 },
             ),
             spawn_shutdown_task(
                 shutdown,
                 shutdown_tx.subscribe(),
-                Duration::from_millis(10),
+                Duration::from_secs(1),
                 move || {
-                    let node_prefetcher = node_prefetcher.clone();
+                    let address_space = address_space_for_diagnostics.clone();
+                    let session_manager = session_manager_for_diagnostics.clone();
+                    let subscription_manager = subscription_manager_for_diagnostics.clone();
+                    let security_manager = security_manager_for_diagnostics.clone();
                     async move {
-                        let _ = node_prefetcher.process_pending();
+                        address_space.refresh_diagnostics(&DiagnosticsSnapshot {
+                            current_sessions: session_manager.session_count() as u32,
+                            current_subscriptions: subscription_manager.subscription_count() as u32,
+                            total_nodes: address_space.node_count() as u32,
+                            namespace_count: address_space.namespaces().len() as u32,
+                            security_profile_summary: security_manager.diagnostics_summary(),
+                            durable_restore_summary: format!(
+                                "{:?}/restored={}/detached={}",
+                                subscription_manager.durability_mode(),
+                                subscription_manager.restored_subscription_count(),
+                                subscription_manager.detached_subscription_count()
+                            ),
+                            manager_ownership_summary: address_space
+                                .manager_ownership_summary()
+                                .join("; "),
+                        });
                     }
                 },
             ),
@@ -460,12 +617,134 @@ where
     })
 }
 
-fn parse_endpoint_url(url: &str) -> OpcUaResult<SocketAddr> {
-    let addr_part = url.strip_prefix("opc.tcp://").unwrap_or(url);
+fn build_transport_config(
+    server_config: &OpcUaServerConfig,
+    defaults: &ServerBuildDefaults,
+) -> OpcUaResult<TransportAdapterConfig> {
+    let (protocol, bind_address, endpoint_path) =
+        parse_endpoint_url(server_config.endpoint_protocol, &server_config.endpoint_url)?;
+    match (protocol, server_config.connection_mode) {
+        (TransportProtocol::OpcTcp, TransportConnectionMode::Listener) => {
+            Ok(TransportAdapterConfig::TcpListener(TcpTransportConfig {
+                bind_address,
+                max_connections: defaults.tcp.max_connections,
+                connection_timeout: defaults.tcp.connection_timeout,
+                server_buffer_size: defaults.tcp.server_buffer_size,
+                initiation_mode: ConnectionInitiationMode::Listener,
+            }))
+        }
+        (TransportProtocol::OpcTcp, TransportConnectionMode::ReverseConnect) => {
+            let reverse_target =
+                server_config
+                    .reverse_connect_target
+                    .as_ref()
+                    .ok_or_else(|| {
+                        OpcUaError::Config(
+                            "reverse_connect transport requires reverse_connect_target".to_string(),
+                        )
+                    })?;
+            let (target_protocol, target_address, _) =
+                parse_endpoint_url(TransportProtocol::OpcTcp, reverse_target)?;
+            if target_protocol != TransportProtocol::OpcTcp {
+                return Err(OpcUaError::Config(
+                    "reverse_connect only supports opc.tcp targets".to_string(),
+                ));
+            }
+            if server_config.retry_interval_ms == 0 {
+                return Err(OpcUaError::Config(
+                    "reverse_connect requires retry_interval_ms > 0".to_string(),
+                ));
+            }
+            Ok(TransportAdapterConfig::TcpReverse(
+                TcpReverseConnectConfig {
+                    target_address,
+                    retry_interval: Duration::from_millis(server_config.retry_interval_ms),
+                    connection_timeout: defaults.tcp.connection_timeout,
+                    server_buffer_size: defaults.tcp.server_buffer_size,
+                    initiation_mode: ConnectionInitiationMode::ReverseConnect,
+                },
+            ))
+        }
+        (TransportProtocol::Https, TransportConnectionMode::Listener) => {
+            Ok(TransportAdapterConfig::Https(HttpsTransportConfig {
+                bind_address,
+                endpoint_path,
+                max_connections: defaults.tcp.max_connections,
+                connection_timeout: defaults.tcp.connection_timeout,
+                initiation_mode: ConnectionInitiationMode::Listener,
+                certificate_path: server_config.certificate_path.clone(),
+                private_key_path: server_config.private_key_path.clone(),
+            }))
+        }
+        (TransportProtocol::Https, TransportConnectionMode::ReverseConnect) => Err(
+            OpcUaError::Config("https transport does not support reverse_connect".to_string()),
+        ),
+    }
+}
+
+fn build_internal_managers(
+    catalog: Option<&GeneratedNodeCatalog>,
+    #[cfg(feature = "experimental-namespace-api")]
+    namespace_managers: &[Arc<dyn NamespaceManagerPlugin>],
+) -> Vec<Arc<dyn NodeManager>> {
+    let mut managers: Vec<Arc<dyn NodeManager>> = Vec::new();
+
+    if let Some(catalog) = catalog {
+        let mut seen = BTreeSet::new();
+        managers.extend(
+            catalog
+                .namespace_table
+                .iter()
+                .enumerate()
+                .filter(|(index, uri)| {
+                    *index > 0
+                        && uri.as_str()
+                            != crate::sdk::address_space::DiagnosticsNodeManager::NAMESPACE_URI
+                        && seen.insert((*uri).clone())
+                })
+                .map(|(_, uri)| {
+                    Arc::new(CatalogNodeManager::new(uri.clone())) as Arc<dyn NodeManager>
+                }),
+        );
+    }
+
+    #[cfg(feature = "experimental-namespace-api")]
+    {
+        managers.extend(
+            namespace_managers
+                .iter()
+                .cloned()
+                .map(adapt_namespace_manager_plugin),
+        );
+    }
+
+    managers
+}
+
+fn parse_endpoint_url(
+    transport_protocol: TransportProtocol,
+    url: &str,
+) -> OpcUaResult<(TransportProtocol, SocketAddr, String)> {
+    let (protocol, addr_part) = if let Some(addr) = url.strip_prefix("opc.tcp://") {
+        (TransportProtocol::OpcTcp, addr)
+    } else if let Some(addr) = url.strip_prefix("https://") {
+        (TransportProtocol::Https, addr)
+    } else {
+        (transport_protocol, url)
+    };
+    let path = {
+        let path_start = addr_part.find('/').unwrap_or(addr_part.len());
+        let raw = &addr_part[path_start..];
+        if raw.is_empty() {
+            "/".to_string()
+        } else {
+            raw.to_string()
+        }
+    };
     let addr_part = addr_part.split('/').next().unwrap_or(addr_part);
 
     if let Ok(socket_addr) = addr_part.parse::<SocketAddr>() {
-        return Ok(socket_addr);
+        return Ok((protocol, socket_addr, path));
     }
 
     addr_part
@@ -477,6 +756,7 @@ fn parse_endpoint_url(url: &str) -> OpcUaResult<SocketAddr> {
             ))
         })?
         .next()
+        .map(|socket_addr| (protocol, socket_addr, path))
         .ok_or_else(|| {
             OpcUaError::Server(format!(
                 "Failed to resolve endpoint URL '{}' as socket address",

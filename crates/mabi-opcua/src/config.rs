@@ -3,6 +3,58 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Transport protocol for OPC UA endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportProtocol {
+    /// UA-TCP binary protocol.
+    OpcTcp,
+    /// HTTPS transport for request/response service dispatch.
+    Https,
+}
+
+impl Default for TransportProtocol {
+    fn default() -> Self {
+        Self::OpcTcp
+    }
+}
+
+impl TransportProtocol {
+    /// URI scheme for the transport.
+    pub fn scheme(&self) -> &'static str {
+        match self {
+            Self::OpcTcp => "opc.tcp",
+            Self::Https => "https",
+        }
+    }
+}
+
+/// Connection initiation mode for an OPC UA transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportConnectionMode {
+    /// The server listens for inbound client connections.
+    Listener,
+    /// The server establishes an outbound UA-TCP connection to a remote listener.
+    ReverseConnect,
+}
+
+impl Default for TransportConnectionMode {
+    fn default() -> Self {
+        Self::Listener
+    }
+}
+
+impl TransportConnectionMode {
+    /// Stable string form used in summaries and diagnostics.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Listener => "listener",
+            Self::ReverseConnect => "reverse_connect",
+        }
+    }
+}
+
 /// Security policy for OPC UA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SecurityPolicy {
@@ -112,6 +164,9 @@ impl Default for UserTokenType {
 /// Endpoint configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EndpointConfig {
+    /// Transport protocol.
+    #[serde(default)]
+    pub protocol: TransportProtocol,
     /// Endpoint path (e.g., "/opcua").
     pub path: String,
     /// Security policy.
@@ -125,6 +180,7 @@ pub struct EndpointConfig {
 impl Default for EndpointConfig {
     fn default() -> Self {
         Self {
+            protocol: TransportProtocol::OpcTcp,
             path: "/opcua".to_string(),
             security_policy: SecurityPolicy::None,
             security_mode: MessageSecurityMode::None,
@@ -137,6 +193,7 @@ impl EndpointConfig {
     /// Create a new endpoint with no security.
     pub fn no_security(path: impl Into<String>) -> Self {
         Self {
+            protocol: TransportProtocol::OpcTcp,
             path: path.into(),
             security_policy: SecurityPolicy::None,
             security_mode: MessageSecurityMode::None,
@@ -147,6 +204,7 @@ impl EndpointConfig {
     /// Create a new endpoint with sign mode.
     pub fn signed(path: impl Into<String>, policy: SecurityPolicy) -> Self {
         Self {
+            protocol: TransportProtocol::OpcTcp,
             path: path.into(),
             security_policy: policy,
             security_mode: MessageSecurityMode::Sign,
@@ -157,6 +215,7 @@ impl EndpointConfig {
     /// Create a new endpoint with sign and encrypt mode.
     pub fn encrypted(path: impl Into<String>, policy: SecurityPolicy) -> Self {
         Self {
+            protocol: TransportProtocol::OpcTcp,
             path: path.into(),
             security_policy: policy,
             security_mode: MessageSecurityMode::SignAndEncrypt,
@@ -171,6 +230,18 @@ pub struct OpcUaServerConfig {
     /// Endpoint URL.
     #[serde(default = "default_endpoint")]
     pub endpoint_url: String,
+    /// Canonical transport protocol for the endpoint.
+    #[serde(default)]
+    pub endpoint_protocol: TransportProtocol,
+    /// Connection initiation mode.
+    #[serde(default)]
+    pub connection_mode: TransportConnectionMode,
+    /// Reverse-connect target URL when `connection_mode` is `reverse_connect`.
+    #[serde(default)]
+    pub reverse_connect_target: Option<String>,
+    /// Fixed retry interval for reverse-connect reconnect attempts.
+    #[serde(default = "default_retry_interval_ms")]
+    pub retry_interval_ms: u64,
 
     /// Server name.
     #[serde(default = "default_server_name")]
@@ -211,6 +282,10 @@ fn default_security_policy() -> String {
     "None".to_string()
 }
 
+fn default_retry_interval_ms() -> u64 {
+    5_000
+}
+
 fn default_max_subscriptions() -> usize {
     100
 }
@@ -227,6 +302,10 @@ impl Default for OpcUaServerConfig {
     fn default() -> Self {
         Self {
             endpoint_url: default_endpoint(),
+            endpoint_protocol: TransportProtocol::OpcTcp,
+            connection_mode: TransportConnectionMode::Listener,
+            reverse_connect_target: None,
+            retry_interval_ms: default_retry_interval_ms(),
             server_name: default_server_name(),
             security_policy: default_security_policy(),
             certificate_path: None,

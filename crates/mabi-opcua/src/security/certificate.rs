@@ -2,6 +2,7 @@
 //!
 //! Provides certificate storage, validation, and generation capabilities.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -613,6 +614,39 @@ impl CertificateManager {
         Ok(())
     }
 
+    pub fn reload_trust_store(&self) -> CertificateResult<()> {
+        self.trusted_store.clear();
+        self.rejected_store.clear();
+        self.issuer_store.clear();
+
+        self.reload_store_from_disk(self.trusted_store.as_ref())?;
+        self.reload_store_from_disk(self.rejected_store.as_ref())?;
+        self.reload_store_from_disk(self.issuer_store.as_ref())?;
+        Ok(())
+    }
+
+    fn reload_store_from_disk(&self, store: &CertificateStore) -> CertificateResult<()> {
+        if !store.path().exists() {
+            return Ok(());
+        }
+
+        for entry in
+            fs::read_dir(store.path()).map_err(|error| CertificateError::Io(error.to_string()))?
+        {
+            let entry = entry.map_err(|error| CertificateError::Io(error.to_string()))?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let der_data =
+                fs::read(&path).map_err(|error| CertificateError::Io(error.to_string()))?;
+            let certificate = Certificate::from_der(der_data)?;
+            store.add(certificate)?;
+        }
+
+        Ok(())
+    }
+
     /// Generate a self-signed certificate.
     pub fn generate_self_signed(&self) -> CertificateResult<(Certificate, Vec<u8>)> {
         // Generate key pair (simulated)
@@ -656,6 +690,21 @@ impl CertificateManager {
     /// Get own certificate.
     pub fn own_certificate(&self) -> Option<Certificate> {
         self.own_certificate.read().clone()
+    }
+
+    pub fn rotate_server_certificate(
+        &self,
+        certificate_path: &Path,
+        private_key_path: &Path,
+    ) -> CertificateResult<Certificate> {
+        let der_data =
+            fs::read(certificate_path).map_err(|error| CertificateError::Io(error.to_string()))?;
+        let private_key =
+            fs::read(private_key_path).map_err(|error| CertificateError::Io(error.to_string()))?;
+        let certificate = Certificate::from_der(der_data)?;
+        *self.own_certificate.write() = Some(certificate.clone());
+        *self.private_key.write() = Some(private_key);
+        Ok(certificate)
     }
 
     /// Get private key.

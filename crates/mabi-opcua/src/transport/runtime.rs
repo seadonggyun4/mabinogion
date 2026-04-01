@@ -11,6 +11,7 @@ use crate::channel::message::{
     build_msg_response_body, build_opn_response_body, OpenSecureChannelBody, SecureMessageBody,
     SequenceHeader,
 };
+use crate::channel::secure_channel::SecureChannel;
 use crate::codec::decoder::BinaryDecodable;
 use crate::codec::encoder::BinaryEncodable;
 use crate::core::dispatch::dispatch_payload;
@@ -72,8 +73,51 @@ impl TransportRuntime {
         self.hooks.metrics()
     }
 
+    pub(crate) fn record_connection(&self) {
+        self.hooks.record_connection();
+    }
+
+    pub(crate) fn record_disconnection(&self) {
+        self.hooks.record_disconnection();
+    }
+
     pub(crate) fn record_rejection(&self) {
         self.hooks.record_rejection();
+    }
+
+    pub(crate) fn record_message_received(&self, bytes: usize) {
+        self.hooks.record_message_received(bytes);
+    }
+
+    pub(crate) fn record_message_sent(&self, bytes: usize) {
+        self.hooks.record_message_sent(bytes);
+    }
+
+    pub(crate) fn record_error(&self) {
+        self.hooks.record_error();
+    }
+
+    pub(crate) fn build_service_context(&self, channel: Arc<SecureChannel>) -> Arc<ServiceContext> {
+        Arc::new(ServiceContext {
+            session_manager: self.context_template.session_manager.clone(),
+            address_space: self.context_template.address_space.clone(),
+            subscription_manager: self.context_template.subscription_manager.clone(),
+            history_store: self.context_template.history_store.clone(),
+            security_manager: self.context_template.security_manager.clone(),
+            server_config: self.context_template.server_config.clone(),
+            method_registry: self.context_template.method_registry.clone(),
+            channel,
+            session_id: parking_lot::RwLock::new(None),
+            auth_token: parking_lot::RwLock::new(None),
+        })
+    }
+
+    pub(crate) async fn dispatch_service_payload(
+        &self,
+        payload: &[u8],
+        context: &Arc<ServiceContext>,
+    ) -> Result<Vec<u8>, ServiceError> {
+        dispatch_payload(payload, context, &self.services).await
     }
 
     pub(crate) async fn handle_tcp_stream(
@@ -82,13 +126,13 @@ impl TransportRuntime {
         shutdown: Arc<AtomicBool>,
     ) -> OpcUaResult<()> {
         let peer = stream.peer_addr().map_err(OpcUaError::Io)?;
-        self.hooks.record_connection();
+        self.record_connection();
         info!(peer = %peer, "New OPC UA connection");
 
         let result = self.handle_tcp_stream_inner(stream, shutdown).await;
-        self.hooks.record_disconnection();
+        self.record_disconnection();
         if let Err(error) = &result {
-            self.hooks.record_error();
+            self.record_error();
             warn!(peer = %peer, error = %error, "Transport runtime error");
         }
         info!(peer = %peer, "Connection closed");
@@ -116,8 +160,7 @@ impl TransportRuntime {
                         .await;
                     return Err(OpcUaError::ProtocolError("Expected HEL".into()));
                 }
-                self.hooks
-                    .record_message_received(message.body.len() + MessageHeader::SIZE);
+                self.record_message_received(message.body.len() + MessageHeader::SIZE);
                 let mut body = bytes::Bytes::from(message.body);
                 HelloMessage::decode(&mut body)?
             }
@@ -136,8 +179,7 @@ impl TransportRuntime {
         acknowledge.encode(&mut ack_body)?;
         let ack_message = build_response(MessageType::Acknowledge, ack_body.to_vec());
         framed.send(ack_message).await.map_err(io_error_from_sink)?;
-        self.hooks
-            .record_message_sent(ack_body.len() + MessageHeader::SIZE);
+        self.record_message_sent(ack_body.len() + MessageHeader::SIZE);
 
         debug!(peer = %peer, "Sent Acknowledge");
 
@@ -154,8 +196,7 @@ impl TransportRuntime {
                             .await;
                         return Err(OpcUaError::ProtocolError("Expected OPN".into()));
                     }
-                    self.hooks
-                        .record_message_received(message.body.len() + MessageHeader::SIZE);
+                    self.record_message_received(message.body.len() + MessageHeader::SIZE);
 
                     let request = OpenSecureChannelBody::decode_from(&message.body)?;
                     let (request_handle, requested_lifetime_ms) =
@@ -178,8 +219,7 @@ impl TransportRuntime {
                     let response =
                         build_response(MessageType::OpenSecureChannel, response_body.clone());
                     framed.send(response).await.map_err(io_error_from_sink)?;
-                    self.hooks
-                        .record_message_sent(response_body.len() + MessageHeader::SIZE);
+                    self.record_message_sent(response_body.len() + MessageHeader::SIZE);
                     secure_channel
                 }
                 Ok(Some(Err(error))) => return Err(error),
@@ -187,18 +227,7 @@ impl TransportRuntime {
                 Err(_) => return Err(OpcUaError::ProtocolError("OPN timeout".into())),
             };
 
-        let context = Arc::new(ServiceContext {
-            session_manager: self.context_template.session_manager.clone(),
-            address_space: self.context_template.address_space.clone(),
-            subscription_manager: self.context_template.subscription_manager.clone(),
-            history_store: self.context_template.history_store.clone(),
-            security_manager: self.context_template.security_manager.clone(),
-            server_config: self.context_template.server_config.clone(),
-            method_registry: self.context_template.method_registry.clone(),
-            channel: secure_channel.channel(),
-            session_id: parking_lot::RwLock::new(None),
-            auth_token: parking_lot::RwLock::new(None),
-        });
+        let context = self.build_service_context(secure_channel.channel());
 
         loop {
             if shutdown.load(Ordering::Relaxed) {
@@ -216,8 +245,7 @@ impl TransportRuntime {
                     }
                 };
 
-            self.hooks
-                .record_message_received(message.body.len() + MessageHeader::SIZE);
+            self.record_message_received(message.body.len() + MessageHeader::SIZE);
 
             match message.header.message_type {
                 MessageType::OpenSecureChannel => {
@@ -239,21 +267,20 @@ impl TransportRuntime {
                     let response =
                         build_response(MessageType::OpenSecureChannel, response_body.clone());
                     framed.send(response).await.map_err(io_error_from_sink)?;
-                    self.hooks
-                        .record_message_sent(response_body.len() + MessageHeader::SIZE);
+                    self.record_message_sent(response_body.len() + MessageHeader::SIZE);
                 }
                 MessageType::Message => {
                     let secure_message = match SecureMessageBody::decode_from(&message.body) {
                         Ok(message) => message,
                         Err(error) => {
-                            self.hooks.record_error();
+                            self.record_error();
                             warn!(peer = %peer, error = %error, "Failed to decode MSG");
                             continue;
                         }
                     };
 
                     if let Err(error) = secure_channel.validate_message(&secure_message) {
-                        self.hooks.record_error();
+                        self.record_error();
                         let fault_payload = build_service_fault(
                             secure_message.sequence_header.request_id,
                             map_service_status(&ServiceError::from(error)),
@@ -289,11 +316,10 @@ impl TransportRuntime {
                             let response =
                                 build_response(MessageType::Message, response_body.clone());
                             framed.send(response).await.map_err(io_error_from_sink)?;
-                            self.hooks
-                                .record_message_sent(response_body.len() + MessageHeader::SIZE);
+                            self.record_message_sent(response_body.len() + MessageHeader::SIZE);
                         }
                         Err(error) => {
-                            self.hooks.record_error();
+                            self.record_error();
                             let fault_payload = build_service_fault(
                                 secure_message.sequence_header.request_id,
                                 map_service_status(&error),
@@ -313,8 +339,7 @@ impl TransportRuntime {
                                 error!(peer = %peer, error = %send_error, "Failed to send ServiceFault");
                                 break;
                             }
-                            self.hooks
-                                .record_message_sent(response_body.len() + MessageHeader::SIZE);
+                            self.record_message_sent(response_body.len() + MessageHeader::SIZE);
                         }
                     }
                 }
@@ -337,12 +362,11 @@ impl TransportRuntime {
                     let response =
                         build_response(MessageType::CloseSecureChannel, response_body.clone());
                     let _ = framed.send(response).await;
-                    self.hooks
-                        .record_message_sent(response_body.len() + MessageHeader::SIZE);
+                    self.record_message_sent(response_body.len() + MessageHeader::SIZE);
                     break;
                 }
                 other => {
-                    self.hooks.record_error();
+                    self.record_error();
                     warn!(peer = %peer, ?other, "Unexpected message type in service loop");
                 }
             }

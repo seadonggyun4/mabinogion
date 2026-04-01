@@ -9,6 +9,7 @@ use tokio::sync::{broadcast, Semaphore};
 use tracing::{error, info, warn};
 
 use crate::error::{OpcUaError, OpcUaResult};
+use crate::transport::adapter::ConnectionInitiationMode;
 use crate::transport::runtime::TransportRuntime;
 
 /// Configuration for the OPC UA TCP listener.
@@ -22,6 +23,8 @@ pub struct TcpTransportConfig {
     pub connection_timeout: std::time::Duration,
     /// Server buffer size for Hello/Acknowledge negotiation.
     pub server_buffer_size: u32,
+    /// Internal connection initiation mode seam for future reverse-connect support.
+    pub(crate) initiation_mode: ConnectionInitiationMode,
 }
 
 impl Default for TcpTransportConfig {
@@ -31,6 +34,7 @@ impl Default for TcpTransportConfig {
             max_connections: 1000,
             connection_timeout: std::time::Duration::from_secs(60),
             server_buffer_size: 65535,
+            initiation_mode: ConnectionInitiationMode::Listener,
         }
     }
 }

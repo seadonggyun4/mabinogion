@@ -10,8 +10,11 @@ use super::base::{LocalizedText, Node, QualifiedName, SharedNode};
 use super::classes::{DataTypeNode, ObjectNode, ObjectTypeNode, VariableNode};
 use super::reference::{BrowseDirection, BrowseResult, Reference, ReferenceTypeId};
 use crate::error::{OpcUaError, OpcUaResult};
+#[cfg(feature = "experimental-namespace-api")]
+use crate::namespace::{adapt_namespace_manager_plugin, NamespaceManagerPlugin};
 use crate::sdk::address_space::{
-    AddressSpaceRuntime, AttributeAccessPort, BrowsePathPort, BrowsePort, TypeHierarchyPort,
+    AddressSpaceRuntime, AttributeAccessPort, BrowsePathPort, BrowsePort, DiagnosticsSnapshot,
+    NamespaceDiagnosticsState, NodeManager, TypeHierarchyPort,
 };
 use crate::types::{AttributeId, DataValue, NodeId, StatusCode, Variant};
 
@@ -129,10 +132,32 @@ pub struct AddressSpace {
 impl AddressSpace {
     /// Create a new address space.
     pub fn new(config: AddressSpaceConfig) -> Self {
+        Self::new_with_internal_managers(config, Vec::new())
+    }
+
+    #[cfg(feature = "experimental-namespace-api")]
+    pub fn new_with_namespace_managers(
+        config: AddressSpaceConfig,
+        managers: Vec<std::sync::Arc<dyn NamespaceManagerPlugin>>,
+    ) -> Self {
+        Self::new_with_internal_managers(
+            config,
+            managers
+                .into_iter()
+                .map(adapt_namespace_manager_plugin)
+                .collect(),
+        )
+    }
+
+    pub(crate) fn new_with_internal_managers(
+        config: AddressSpaceConfig,
+        managers: Vec<std::sync::Arc<dyn NodeManager>>,
+    ) -> Self {
         let address_space = Self {
-            runtime: AddressSpaceRuntime::new(
+            runtime: AddressSpaceRuntime::with_managers(
                 config.default_namespace_uri.clone(),
                 config.max_nodes,
+                managers,
             ),
             config,
             read_counter: AtomicU64::new(0),
@@ -144,6 +169,8 @@ impl AddressSpace {
         if address_space.config.enable_standard_namespace {
             address_space.init_standard_nodes();
         }
+
+        address_space.runtime.materialize_managers(&address_space);
 
         address_space
     }
@@ -444,6 +471,30 @@ impl AddressSpace {
         self.runtime.namespaces()
     }
 
+    pub(crate) fn refresh_diagnostics(&self, snapshot: &DiagnosticsSnapshot) {
+        self.runtime.refresh_diagnostics(self, snapshot);
+    }
+
+    pub(crate) fn on_runtime_start(&self, snapshot: &DiagnosticsSnapshot) {
+        self.runtime.on_runtime_start(self, snapshot);
+    }
+
+    pub(crate) fn on_runtime_stop(&self, snapshot: &DiagnosticsSnapshot) {
+        self.runtime.on_runtime_stop(self, snapshot);
+    }
+
+    pub(crate) fn namespace_diagnostics_state(&self) -> Vec<NamespaceDiagnosticsState> {
+        self.runtime.namespace_diagnostics_state()
+    }
+
+    pub(crate) fn diagnostics_namespace_index(&self) -> Option<u16> {
+        self.runtime.diagnostics_namespace_index()
+    }
+
+    pub(crate) fn manager_ownership_summary(&self) -> Vec<String> {
+        self.runtime.manager_ownership_summary()
+    }
+
     // =========================================================================
     // Node Operations
     // =========================================================================
@@ -629,6 +680,7 @@ impl AddressSpace {
     ) -> BrowseResult {
         self.browse_counter.fetch_add(1, Ordering::Relaxed);
         self.runtime.browse(
+            self,
             node_id,
             direction,
             reference_type_filter,
@@ -666,7 +718,7 @@ impl AddressSpace {
         starting_node: &NodeId,
         elements: &[RelativePathElement],
     ) -> BrowsePathResult {
-        self.runtime.resolve_browse_path(starting_node, elements)
+        self.runtime.resolve_browse_path(self, starting_node, elements)
     }
 
     // =========================================================================
@@ -676,7 +728,7 @@ impl AddressSpace {
     /// Read an attribute from a node.
     pub fn read(&self, node_id: &NodeId, attribute_id: AttributeId) -> DataValue {
         self.read_counter.fetch_add(1, Ordering::Relaxed);
-        self.runtime.read(node_id, attribute_id)
+        self.runtime.read(self, node_id, attribute_id)
     }
 
     /// Read the value attribute from a variable node.
@@ -692,7 +744,7 @@ impl AddressSpace {
         value: DataValue,
     ) -> StatusCode {
         self.write_counter.fetch_add(1, Ordering::Relaxed);
-        self.runtime.write(node_id, attribute_id, value)
+        self.runtime.write(self, node_id, attribute_id, value)
     }
 
     /// Write the value attribute to a variable node.
@@ -805,11 +857,11 @@ impl BrowsePathPort for AddressSpace {
 
 impl TypeHierarchyPort for AddressSpace {
     fn is_reference_subtype(&self, candidate: &ReferenceTypeId, parent: &ReferenceTypeId) -> bool {
-        self.runtime.is_reference_subtype(candidate, parent)
+        self.runtime.is_reference_subtype(self, candidate, parent)
     }
 
     fn is_node_subtype_of(&self, candidate: &NodeId, parent: &NodeId) -> bool {
-        self.runtime.is_node_subtype_of(candidate, parent)
+        self.runtime.is_node_subtype_of(self, candidate, parent)
     }
 }
 

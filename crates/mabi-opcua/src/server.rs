@@ -24,6 +24,8 @@ use tracing::{info, instrument};
 use crate::config::OpcUaServerConfig;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::modeling::GeneratedNodeCatalog;
+#[cfg(feature = "experimental-namespace-api")]
+use crate::namespace::NamespaceManagerPlugin;
 use crate::nodes::{AddressSpace, NodeCache};
 use crate::sdk::history::HistoryStore;
 use crate::sdk::session::SessionManager;
@@ -406,6 +408,7 @@ impl OpcUaServer {
 
         self.runtime.start_transport(self.shutdown.clone()).await?;
         self.runtime.spawn_background_tasks(self.shutdown.clone());
+        self.runtime.refresh_diagnostics();
 
         // Update state
         *self.state.write() = ServerState::Running;
@@ -451,6 +454,7 @@ impl OpcUaServer {
         self.runtime.close_active_sessions();
         self.runtime.stop_transport().await;
         self.runtime.shutdown_background_tasks().await;
+        self.runtime.refresh_diagnostics();
 
         // Update state
         *self.state.write() = ServerState::Stopped;
@@ -489,6 +493,10 @@ impl OpcUaServer {
             active_sessions,
             active_subscriptions,
             total_nodes,
+            namespace_count: _,
+            security_profile_summary: _,
+            durable_restore_summary: _,
+            manager_ownership_summary: _,
             cache_hit_rate,
         } = self.runtime.stats_snapshot_inputs();
 
@@ -508,6 +516,8 @@ impl OpcUaServer {
 /// Builder for OPC UA server.
 pub struct OpcUaServerBuilder {
     config: OpcUaServerConfig,
+    #[cfg(feature = "experimental-namespace-api")]
+    namespace_managers: Vec<Arc<dyn NamespaceManagerPlugin>>,
 }
 
 impl OpcUaServerBuilder {
@@ -515,6 +525,8 @@ impl OpcUaServerBuilder {
     pub fn new() -> Self {
         Self {
             config: OpcUaServerConfig::default(),
+            #[cfg(feature = "experimental-namespace-api")]
+            namespace_managers: Vec::new(),
         }
     }
 
@@ -548,9 +560,25 @@ impl OpcUaServerBuilder {
         self
     }
 
+    /// Register an experimental namespace manager plugin.
+    #[cfg(feature = "experimental-namespace-api")]
+    pub fn with_namespace_manager(
+        mut self,
+        manager: impl NamespaceManagerPlugin + 'static,
+    ) -> Self {
+        self.namespace_managers.push(Arc::new(manager));
+        self
+    }
+
     /// Build the server.
     pub fn build(self) -> OpcUaResult<OpcUaServer> {
-        OpcUaServer::new(self.config)
+        let spec = {
+            let spec = ServerBuildSpec::from_server_config(self.config);
+            #[cfg(feature = "experimental-namespace-api")]
+            let spec = spec.with_namespace_managers(self.namespace_managers);
+            spec
+        };
+        OpcUaServer::from_build_spec(spec)
     }
 }
 
@@ -642,6 +670,11 @@ mod tests {
             OpcUaServer::from_generated_catalog(OpcUaServerConfig::default(), &catalog).unwrap();
 
         assert!(server.address_space().contains_node(&generated_folder));
+        assert!(server
+            .address_space()
+            .manager_ownership_summary()
+            .iter()
+            .any(|summary| summary.contains("manager=catalog")));
     }
 
     #[tokio::test]
@@ -705,5 +738,45 @@ mod tests {
         assert_eq!(server.state(), ServerState::Running);
         server.stop().await.unwrap();
         assert_eq!(server.state(), ServerState::Stopped);
+    }
+
+    #[tokio::test]
+    async fn test_server_refreshes_live_diagnostics() {
+        let config = OpcUaServerConfig {
+            endpoint_url: "opc.tcp://127.0.0.1:0".to_string(),
+            ..Default::default()
+        };
+        let server = OpcUaServer::new(config).unwrap();
+
+        server.start().await.unwrap();
+
+        let ns = server
+            .address_space()
+            .get_namespace_index(crate::sdk::address_space::DiagnosticsNodeManager::NAMESPACE_URI)
+            .unwrap();
+        let session_count = server
+            .address_space()
+            .read_value(&NodeId::string(ns, "Diagnostics.CurrentSessionCount"));
+        let namespace_count = server
+            .address_space()
+            .read_value(&NodeId::string(ns, "Diagnostics.NamespaceCount"));
+        let security_summary = server
+            .address_space()
+            .read_value(&NodeId::string(ns, "Diagnostics.SecurityProfileSummary"));
+
+        assert_eq!(session_count.value().and_then(|v| v.as_u32()), Some(0));
+        assert!(
+            namespace_count
+                .value()
+                .and_then(|v| v.as_u32())
+                .unwrap_or(0)
+                >= 2
+        );
+        assert!(security_summary
+            .value()
+            .and_then(|v| v.as_str())
+            .is_some_and(|summary| !summary.is_empty()));
+
+        server.stop().await.unwrap();
     }
 }

@@ -1,213 +1,14 @@
-//! Internal provider-based security runtime building blocks.
-//!
-//! These types keep the public `SecurityManager` surface stable while splitting
-//! the concrete responsibilities into trust, policy, identity, and secure
-//! channel runtime components.
-
-use std::sync::Arc;
-
 use dashmap::DashMap;
 use tracing::{debug, info};
 
-use super::certificate::{Certificate, CertificateManager, ValidationResult};
-use super::crypto::{CryptoProvider, CryptoProviderConfig};
-use super::manager::{SecurityContext, SecurityError, SecurityManagerConfig, SecurityResult};
-use super::policy::{SecurityPolicyConfig, SecurityPolicyProvider};
-use super::user_auth::{
-    AuthenticationResult, UserAccount, UserAuthenticator, UserCredentials, UserTokenPolicy,
-};
+use super::{SecurityAuditSink, SecurityPolicyPort, TrustStorePort};
 use crate::config::{MessageSecurityMode, SecurityPolicy};
-
-pub(crate) trait TrustStorePort: Send + Sync {
-    fn initialize(&self) -> SecurityResult<()>;
-    fn certificate_manager(&self) -> &Arc<CertificateManager>;
-    fn server_certificate(&self) -> Option<Certificate>;
-    fn validate_client_certificate(&self, certificate: &Certificate) -> ValidationResult;
-    fn trust_certificate(&self, certificate: Certificate) -> SecurityResult<()>;
-}
-
-pub(crate) trait SecurityPolicyPort: Send + Sync {
-    fn enabled_policies(&self) -> &[SecurityPolicy];
-    fn is_enabled(&self, policy: SecurityPolicy) -> bool;
-    fn get_config(&self, policy: SecurityPolicy) -> Option<&SecurityPolicyConfig>;
-    fn validate_security_mode(
-        &self,
-        policy: SecurityPolicy,
-        mode: MessageSecurityMode,
-    ) -> SecurityResult<()>;
-}
-
-pub(crate) trait IdentityProvider: Send + Sync {
-    fn authenticator(&self) -> &UserAuthenticator;
-    fn authenticate(&self, credentials: &UserCredentials) -> AuthenticationResult;
-    fn add_user(&self, account: UserAccount);
-    fn token_policies(&self) -> Vec<UserTokenPolicy>;
-}
-
-pub(crate) trait RoleMapper: Send + Sync {
-    fn map_roles(&self, roles: Vec<String>) -> Vec<String>;
-}
-
-pub(crate) trait SecurityAuditSink: Send + Sync {
-    fn on_initialized(&self, _policies: &[SecurityPolicy]) {}
-    fn on_certificate_validated(&self, _thumbprint: Option<&str>, _is_valid: bool) {}
-    fn on_authentication(&self, _token_type: &str, _success: bool) {}
-    fn on_secure_channel_created(&self, _context: &SecurityContext) {}
-    fn on_secure_channel_renewed(&self, _context: &SecurityContext) {}
-    fn on_secure_channel_closed(&self, _channel_id: u32) {}
-    fn on_secure_channel_cleanup(&self, _count: usize) {}
-}
-
-pub(crate) struct CertificateTrustProvider {
-    certificate_manager: Arc<CertificateManager>,
-}
-
-impl CertificateTrustProvider {
-    pub(crate) fn new(config: &SecurityManagerConfig) -> Self {
-        Self {
-            certificate_manager: Arc::new(CertificateManager::new(
-                config.certificate_config.clone(),
-            )),
-        }
-    }
-}
-
-impl TrustStorePort for CertificateTrustProvider {
-    fn initialize(&self) -> SecurityResult<()> {
-        self.certificate_manager.initialize()?;
-        Ok(())
-    }
-
-    fn certificate_manager(&self) -> &Arc<CertificateManager> {
-        &self.certificate_manager
-    }
-
-    fn server_certificate(&self) -> Option<Certificate> {
-        self.certificate_manager.own_certificate()
-    }
-
-    fn validate_client_certificate(&self, certificate: &Certificate) -> ValidationResult {
-        self.certificate_manager.validate_certificate(certificate)
-    }
-
-    fn trust_certificate(&self, certificate: Certificate) -> SecurityResult<()> {
-        self.certificate_manager.trust_certificate(certificate)?;
-        Ok(())
-    }
-}
-
-pub(crate) struct PolicyRuntimeProvider {
-    provider: SecurityPolicyProvider,
-    reject_deprecated_policies: bool,
-}
-
-impl PolicyRuntimeProvider {
-    pub(crate) fn new(config: &SecurityManagerConfig) -> Self {
-        let mut provider = SecurityPolicyProvider::new();
-        for policy in &config.enabled_policies {
-            provider.enable_policy(*policy);
-        }
-
-        Self {
-            provider,
-            reject_deprecated_policies: config.reject_deprecated_policies,
-        }
-    }
-}
-
-impl SecurityPolicyPort for PolicyRuntimeProvider {
-    fn enabled_policies(&self) -> &[SecurityPolicy] {
-        self.provider.enabled_policies()
-    }
-
-    fn is_enabled(&self, policy: SecurityPolicy) -> bool {
-        self.provider.is_enabled(policy)
-    }
-
-    fn get_config(&self, policy: SecurityPolicy) -> Option<&SecurityPolicyConfig> {
-        self.provider.get_config(policy)
-    }
-
-    fn validate_security_mode(
-        &self,
-        policy: SecurityPolicy,
-        mode: MessageSecurityMode,
-    ) -> SecurityResult<()> {
-        if !self.is_enabled(policy) {
-            return Err(SecurityError::PolicyNotSupported(policy));
-        }
-
-        if !self.provider.validate_mode_for_policy(policy, mode) {
-            return Err(SecurityError::Configuration(format!(
-                "Security mode {:?} not valid for policy {:?}",
-                mode, policy
-            )));
-        }
-
-        if self.reject_deprecated_policies {
-            if let Some(config) = self.get_config(policy) {
-                if config.is_deprecated() {
-                    return Err(SecurityError::Configuration(format!(
-                        "Policy {:?} is deprecated and rejected",
-                        policy
-                    )));
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub(crate) struct IdentityRuntimeProvider {
-    authenticator: UserAuthenticator,
-}
-
-impl IdentityRuntimeProvider {
-    pub(crate) fn new(
-        config: &SecurityManagerConfig,
-        certificate_manager: Arc<CertificateManager>,
-    ) -> Self {
-        Self {
-            authenticator: UserAuthenticator::with_certificate_manager(
-                config.user_auth_config.clone(),
-                certificate_manager,
-            ),
-        }
-    }
-}
-
-impl IdentityProvider for IdentityRuntimeProvider {
-    fn authenticator(&self) -> &UserAuthenticator {
-        &self.authenticator
-    }
-
-    fn authenticate(&self, credentials: &UserCredentials) -> AuthenticationResult {
-        self.authenticator.authenticate(credentials)
-    }
-
-    fn add_user(&self, account: UserAccount) {
-        self.authenticator.add_user(account);
-    }
-
-    fn token_policies(&self) -> Vec<UserTokenPolicy> {
-        self.authenticator.token_policies()
-    }
-}
-
-pub(crate) struct StaticRoleMapper;
-
-impl RoleMapper for StaticRoleMapper {
-    fn map_roles(&self, mut roles: Vec<String>) -> Vec<String> {
-        roles.sort();
-        roles.dedup();
-        roles
-    }
-}
-
-pub(crate) struct NoopSecurityAuditSink;
-
-impl SecurityAuditSink for NoopSecurityAuditSink {}
+use crate::security::certificate::Certificate;
+use crate::security::crypto::{CryptoProvider, CryptoProviderConfig};
+use crate::security::manager::{
+    SecurityContext, SecurityError, SecurityManagerConfig, SecurityResult,
+};
+use crate::security::policy::SecurityPolicyConfig;
 
 pub(crate) struct ChannelSecurityRuntime {
     crypto_config: CryptoProviderConfig,
@@ -241,6 +42,12 @@ impl ChannelSecurityRuntime {
         audit_sink: &dyn SecurityAuditSink,
     ) -> SecurityResult<SecurityContext> {
         policy_provider.validate_security_mode(policy, mode)?;
+        if policy_provider.is_deprecated(policy)
+            && policy_provider.deprecated_policy_handling()
+                == crate::security::manager::DeprecatedPolicyHandling::Warn
+        {
+            audit_sink.on_deprecated_policy_warning(policy);
+        }
 
         if self.secure_channels.len() >= self.max_secure_channels {
             return Err(SecurityError::SecureChannel(
@@ -259,7 +66,7 @@ impl ChannelSecurityRuntime {
                 audit_sink.on_certificate_validated(Some(&cert.thumbprint), validation.is_valid);
                 if !validation.is_valid {
                     return Err(SecurityError::Certificate(
-                        super::certificate::CertificateError::Invalid(format!(
+                        crate::security::certificate::CertificateError::Invalid(format!(
                             "Client certificate validation failed: {:?}",
                             validation.status
                         )),
@@ -314,6 +121,7 @@ impl ChannelSecurityRuntime {
     pub(crate) fn renew_secure_channel(
         &self,
         channel_id: u32,
+        trust_provider: &dyn TrustStorePort,
         audit_sink: &dyn SecurityAuditSink,
     ) -> SecurityResult<SecurityContext> {
         let mut context = self.secure_channels.get_mut(&channel_id).ok_or_else(|| {
@@ -329,6 +137,7 @@ impl ChannelSecurityRuntime {
 
         context.token_id = new_token_id;
         context.expires_at = now + lifetime;
+        context.server_certificate = trust_provider.server_certificate();
 
         if context.requires_signing() || context.requires_encryption() {
             let crypto = self.crypto_provider(context.policy);
@@ -479,7 +288,7 @@ impl ChannelSecurityRuntime {
         policy: SecurityPolicy,
         policy_config: &SecurityPolicyConfig,
         client_nonce: &[u8],
-    ) -> SecurityResult<Option<super::crypto::KeyMaterial>> {
+    ) -> SecurityResult<Option<crate::security::crypto::KeyMaterial>> {
         if mode == MessageSecurityMode::None {
             return Ok(None);
         }
@@ -502,22 +311,5 @@ impl ChannelSecurityRuntime {
         self.get_secure_channel(channel_id).ok_or_else(|| {
             SecurityError::SecureChannel(format!("Secure channel {} not found", channel_id))
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn static_role_mapper_sorts_and_deduplicates() {
-        let mapper = StaticRoleMapper;
-        let roles = mapper.map_roles(vec![
-            "user".to_string(),
-            "admin".to_string(),
-            "user".to_string(),
-        ]);
-
-        assert_eq!(roles, vec!["admin".to_string(), "user".to_string()]);
     }
 }

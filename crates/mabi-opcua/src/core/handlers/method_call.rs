@@ -9,8 +9,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
-use dashmap::DashMap;
-use tracing::debug;
 
 use super::discovery::{RequestHeader, ResponseHeader};
 use super::registry::{ServiceContext, ServiceHandler, ServiceResponse};
@@ -22,64 +20,6 @@ use crate::types::{NodeId, StatusCode, Variant};
 
 const CALL_REQUEST_ID: u32 = 712;
 const CALL_RESPONSE_ID: u32 = 715;
-
-// =========================================================================
-// MethodRegistry
-// =========================================================================
-
-/// Callback type for method implementations.
-///
-/// Receives input arguments and returns output arguments or an error status.
-pub type MethodCallback = Arc<dyn Fn(&[Variant]) -> Result<Vec<Variant>, StatusCode> + Send + Sync>;
-
-/// Registry of callable methods.
-///
-/// Methods are registered by their MethodNodeId. When a Call request arrives,
-/// the handler looks up the method here and invokes its callback.
-pub struct MethodRegistry {
-    callbacks: DashMap<NodeId, MethodCallback>,
-}
-
-impl MethodRegistry {
-    /// Create a new empty method registry.
-    pub fn new() -> Self {
-        Self {
-            callbacks: DashMap::new(),
-        }
-    }
-
-    /// Register a method callback.
-    pub fn register(&self, method_id: NodeId, callback: MethodCallback) {
-        debug!(method_id = %method_id, "Registered method callback");
-        self.callbacks.insert(method_id, callback);
-    }
-
-    /// Look up a method callback.
-    pub fn get(&self, method_id: &NodeId) -> Option<MethodCallback> {
-        self.callbacks.get(method_id).map(|v| v.value().clone())
-    }
-
-    /// Check if a method is registered.
-    pub fn contains(&self, method_id: &NodeId) -> bool {
-        self.callbacks.contains_key(method_id)
-    }
-
-    /// Get the number of registered methods.
-    pub fn len(&self) -> usize {
-        self.callbacks.len()
-    }
-
-    /// Check if the registry is empty.
-    pub fn is_empty(&self) -> bool {
-        self.callbacks.is_empty()
-    }
-}
-
-impl Default for MethodRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 // =========================================================================
 // Call Handler

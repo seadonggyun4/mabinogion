@@ -22,9 +22,11 @@
 //! - [`CompiledOpcUaSession`]
 //! - [`OpcUaControlSession`]
 //!
-//! Builder-oriented node creation and legacy numeric serve flows are still supported,
-//! but they are compatibility veneer. Internally, runtime entry always converges on a
-//! compiled named session.
+//! Builder-oriented node creation and legacy numeric serve flows have been retired from the
+//! public surface. Internally, runtime entry converges on compiled named sessions and the
+//! canonical config/session/control path is now the only supported architecture-facing API.
+//! Migration documentation remains available through the current release line and the remaining
+//! legacy migration breadcrumbs are scheduled for removal in the next major release.
 //!
 //! ## Architecture
 //!
@@ -54,34 +56,30 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
+//! use std::path::Path;
+//!
 //! use mabi_opcua::{
-//!     OpcUaServerConfig, OpcUaDevice,
-//!     HistoryStore, HistoryStoreConfig, SubscriptionManager, SubscriptionManagerConfig,
-//!     nodes::{AddressSpace, AddressSpaceConfig, VariableBuilder, NodeBuilder},
-//!     types::{NodeId, Variant, DataValue},
+//!     compile_session, AddressSpace, AddressSpaceConfig, OpcUaSimulatorConfig, Variant,
 //! };
 //!
-//! // Create an OPC UA device
-//! let mut device = OpcUaDevice::new("opc-server-1", "My OPC UA Server");
+//! let config = OpcUaSimulatorConfig::from_path(Path::new("simulator/opcua.yaml"))?;
+//! let compiled = compile_session(&config, "default", Some(Path::new(".")))?;
 //!
-//! // Create address space with nodes
+//! // Canonical runtime path materializes a generated node catalog into the address space.
 //! let address_space = AddressSpace::new(AddressSpaceConfig::default());
+//! compiled
+//!     .catalog
+//!     .materialize(&address_space)
+//!     .expect("catalog materialization");
 //!
-//! // Add a variable node using the address space API
-//! address_space.add_variable(
-//!     NodeId::numeric(2, 1001),
-//!     "Temperature",
-//!     "Temperature",
-//!     NodeId::numeric(0, 11), // Double data type
-//!     Variant::Double(25.0),
-//!     &NodeId::numeric(0, 85), // Objects folder
-//! ).unwrap();
+//! let namespace_summary = compiled.catalog.namespace_summary();
+//! assert!(!namespace_summary.is_empty());
+//! let _ = Variant::Null;
+//! # Ok::<(), mabi_opcua::OpcUaError>(())
+//! ```
 //!
-//! // Create subscription manager for data changes
-//! let subscriptions = SubscriptionManager::new();
-//!
-//! // Create history store for historical access
-//! let history = HistoryStore::new(HistoryStoreConfig::default());
+//! ```rust,compile_fail
+//! use mabi_opcua::compat::VariableBuilder;
 //! ```
 //!
 //! ## Module Organization
@@ -92,7 +90,7 @@
 //! - [`security`]: Security policies, certificates, encryption, and authentication
 //! - [`config`]: Server configuration
 //! - [`device`]: Device trait implementation
-//! - [`factory`]: Device factory for creating OPC UA devices
+//! - `compat-migration.md`: migration mapping for removed builder/factory flows
 
 pub mod channel;
 pub mod codec;
@@ -101,8 +99,9 @@ pub mod control;
 mod core;
 pub mod device;
 pub mod error;
-pub mod factory;
 pub mod modeling;
+#[cfg(feature = "experimental-namespace-api")]
+pub mod namespace;
 pub mod nodes;
 pub mod runtime;
 mod sdk;
@@ -114,21 +113,24 @@ pub mod types;
 
 // Re-exports for convenience
 pub use config::{
-    EndpointConfig, MessageSecurityMode, OpcUaServerConfig, SecurityPolicy, UserTokenConfig,
+    EndpointConfig, MessageSecurityMode, OpcUaServerConfig, SecurityPolicy,
+    TransportConnectionMode, TransportProtocol, UserTokenConfig,
 };
 pub use control::{
     NodeCatalogPort, NodeDescriptor, NodeTarget, NodeValueControlPort, OpcUaControlSession,
-    SessionControlPort, SessionSnapshot, SessionStatus,
+    SecurityControlPort, SecurityControlStatus, SessionControlPort, SessionSnapshot, SessionStatus,
 };
 pub use device::OpcUaDevice;
 pub use error::{OpcUaError, OpcUaResult};
-pub use factory::{OpcUaDeviceBuilder, OpcUaDeviceFactory};
 pub use modeling::{
-    compile_session, inspect_summary, load_simulator_config, schema_summary, CompanionModelRef,
-    CompiledDeviceDefinition, CompiledOpcUaSession, CompiledPointBinding, DeviceDefinition,
-    GeneratedNodeCatalog, ModelDefinition, NamespaceCompilationPlan, NodeSetSource,
-    OpcUaConfigSummary, OpcUaSchemaSummary, OpcUaSessionSummary, OpcUaSimulatorConfig,
-    PresetDefinition, SessionControlConfig, SessionDefinition,
+    compile_session, compile_session_with_report, generate_types, generate_types_with_report,
+    inspect_summary, load_simulator_config, schema_summary, CompanionModelRef,
+    CompanionPackDefinition, CompilationCacheReport, CompiledDeviceDefinition,
+    CompiledOpcUaSession, CompiledPointBinding, CompiledSecurityProfile, DeviceDefinition,
+    GeneratedNodeCatalog, GeneratedRustModule, GeneratedTypeCatalog, GeneratedTypesConfig,
+    ModelDefinition, NamespaceCompilationPlan, NodeSetSource, OpcUaConfigSummary,
+    OpcUaSchemaSummary, OpcUaSessionSummary, OpcUaSimulatorConfig, PresetDefinition,
+    SecurityProfileDefinition, SessionControlConfig, SessionDefinition, SessionRuntimeConfig,
 };
 pub use server::{OpcUaServer, OpcUaServerBuilder, ServerEvent, ServerState, ServerStats};
 
@@ -137,7 +139,6 @@ pub use types::{AccessLevel, AttributeId, DataTypeId, DataValue, NodeId, StatusC
 
 // Node re-exports
 pub use nodes::{
-    AddToAddressSpace,
     AddressSpace,
     AddressSpaceConfig,
     AnalogVariable,
@@ -146,12 +147,10 @@ pub use nodes::{
     // Batch node creation
     BatchNodeCreator,
     BatchProgress,
-    BatchVariableBuilder,
     BrowseDirection,
     BrowseResult,
     CacheStats,
     DiscreteVariable,
-    FolderBuilder,
     LocalizedText,
     MethodNode,
     Node,
@@ -162,19 +161,15 @@ pub use nodes::{
     // Prefetching
     NodePrefetcher,
     NodeStoreStats,
-    ObjectBuilder,
     ObjectNode,
     ObjectTemplate,
     PrefetchConfig,
     PrefetchStats,
-    PrefetchingAddressSpace,
     ProgressCallback,
     QualifiedName,
     Reference,
     ReferenceTypeId,
     ValueGeneratorType,
-    VariableBuilder,
-    VariableFactory,
     VariableNode,
     VariableTemplate,
 };
@@ -189,7 +184,8 @@ pub use sdk::session::{Session, SessionInfo, SessionManager, SessionManagerConfi
 pub use sdk::subscription::{
     DataChangeFilter, DataChangeTrigger, DeadbandType, MonitoredItem, MonitoredItemConfig,
     MonitoredItemNotification, MonitoringMode, Subscription, SubscriptionConfig,
-    SubscriptionManager, SubscriptionManagerConfig,
+    SubscriptionDurabilityConfig, SubscriptionDurabilityMode, SubscriptionManager,
+    SubscriptionManagerConfig,
 };
 
 // Security re-exports
@@ -197,10 +193,16 @@ pub use runtime::{descriptor, driver};
 pub use security::{
     AsymmetricAlgorithm, AuthenticationResult, Certificate, CertificateManager,
     CertificateManagerConfig, CertificateStore, CertificateValidator, CryptoProvider,
-    CryptoProviderConfig, DecryptionResult, EncryptionResult, HashAlgorithm, SecurityContext,
-    SecurityManager, SecurityManagerConfig, SecurityPolicyConfig, SecurityPolicyProvider,
-    SignatureResult, SymmetricAlgorithm, UserAuthConfig, UserAuthenticator, UserCredentials,
-    UserToken, ValidationResult,
+    CryptoProviderConfig, DecryptionResult, DeprecatedPolicyHandling, EncryptionResult,
+    HashAlgorithm, RoleMappingRule, SecurityAuditSinkConfig, SecurityAuditSinkKind,
+    SecurityContext, SecurityManager, SecurityManagerConfig, SecurityPolicyConfig,
+    SecurityPolicyProvider, SignatureResult, SymmetricAlgorithm, UserAuthConfig, UserAuthenticator,
+    UserCredentials, UserToken, ValidationResult,
+};
+#[cfg(feature = "experimental-namespace-api")]
+pub use namespace::{
+    NamespaceDiagnostics, NamespaceManagerPlugin, NamespaceOperation, NamespaceRegistration,
+    NamespaceRuntimeSnapshot, NamespaceTypeQuery,
 };
 
 /// Canonical configuration surface for architecture-level composition.
@@ -211,8 +213,6 @@ pub type Builder = OpcUaServerBuilder;
 pub type Server = OpcUaServer;
 /// Canonical device surface for architecture-level composition.
 pub type Device = OpcUaDevice;
-/// Canonical factory surface for architecture-level composition.
-pub type Factory = OpcUaDeviceFactory;
 /// Canonical stats surface for architecture-level composition.
 pub type Stats = ServerStats;
 /// Canonical error surface for architecture-level composition.
