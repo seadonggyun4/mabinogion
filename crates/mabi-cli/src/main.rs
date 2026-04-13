@@ -968,7 +968,7 @@ async fn main() -> ExitCode {
             }
         }
         Commands::Version => {
-            println!("mabi {} (Mabinogion)", env!("CARGO_PKG_VERSION"));
+            println!("mabi {} (Mabinogion)", mabi_core::RELEASE_VERSION);
             println!("Rust {}", rustc_version());
             println!();
             println!("Registered protocols:");

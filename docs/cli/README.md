@@ -368,6 +368,9 @@ The `list protocols` command displays the following supported protocols:
 
 Display version and build information.
 
+The displayed Mabinogion release version is derived from the workspace root
+release version and is kept in sync by `scripts/release-version.py`.
+
 ```bash
 mabi version
 ```

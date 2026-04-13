@@ -14,6 +14,8 @@ use parking_lot::Mutex;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 
+use mabi_core::RELEASE_VERSION;
+
 use crate::apdu::encoding::ApduEncoder;
 use crate::apdu::segmentation::{
     AssemblyResult, Segment, SegmentAssembler, SegmentTransmitter, DEFAULT_WINDOW_SIZE,
@@ -183,8 +185,8 @@ impl BACnetServer {
             vendor_name: "OTSIM".into(),
             vendor_id: config.vendor_id,
             model_name: config.model_name.clone(),
-            firmware_revision: "1.0.0".into(),
-            application_software_version: "1.0.0".into(),
+            firmware_revision: RELEASE_VERSION.into(),
+            application_software_version: RELEASE_VERSION.into(),
             description: String::new(),
             location: String::new(),
             max_apdu_length: config.max_apdu_length,

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use mabi_core::RELEASE_VERSION;
 use serde::{Deserialize, Serialize};
 
 /// Test metrics collected during performance testing.
@@ -437,7 +438,7 @@ impl TestReportBuilder {
 
         TestReport {
             metadata: ReportMetadata {
-                version: "1.0.0".to_string(),
+                version: RELEASE_VERSION.to_string(),
                 generated_at: end_time,
                 environment: self.environment,
                 host_info: HostInfo::collect(),
@@ -518,6 +519,7 @@ mod tests {
 
         assert!(report.summary.passed);
         assert_eq!(report.summary.targets_passed, 1);
+        assert_eq!(report.metadata.version, RELEASE_VERSION);
     }
 
     #[test]

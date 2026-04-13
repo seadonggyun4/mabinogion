@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+ROOT_CARGO = ROOT / "Cargo.toml"
+
+INTERNAL_DEPENDENCY_CRATES = [
+    "mabi-core",
+    "mabi-runtime",
+    "mabi-modbus",
+    "mabi-opcua",
+    "mabi-bacnet",
+    "mabi-knx",
+    "mabi-scenario",
+    "mabi-chaos",
+]
+
+WORKSPACE_CRATES = INTERNAL_DEPENDENCY_CRATES + ["mabi-cli"]
+
+README_FILES = [ROOT / "README.md"] + [
+    ROOT / "crates" / crate / "README.md" for crate in WORKSPACE_CRATES
+]
+
+BEGIN_MARKER = "# BEGIN generated-internal-release-mirror (sync via scripts/release-version.py)"
+END_MARKER = "# END generated-internal-release-mirror"
+
+SURFACE_RULES = {
+    ROOT / "crates/mabi-core/src/factory.rs": {
+        "required": ["RELEASE_VERSION"],
+        "forbidden": ['"1.0.0"'],
+    },
+    ROOT / "crates/mabi-core/src/version.rs": {
+        "required": ['pub const RELEASE_VERSION: &str = env!("CARGO_PKG_VERSION");'],
+        "forbidden": [],
+    },
+    ROOT / "crates/mabi-opcua/src/lib.rs": {
+        "required": ["pub const VERSION: &str = mabi_core::RELEASE_VERSION;"],
+        "forbidden": ['env!("CARGO_PKG_VERSION")'],
+    },
+    ROOT / "crates/mabi-opcua/src/factory.rs": {
+        "required": ["RELEASE_VERSION.to_string()", "fn version(&self) -> &str {\n        RELEASE_VERSION"],
+        "forbidden": ['env!("CARGO_PKG_VERSION")'],
+    },
+    ROOT / "crates/mabi-cli/src/main.rs": {
+        "required": ['println!("mabi {} (Mabinogion)", mabi_core::RELEASE_VERSION);'],
+        "forbidden": ['env!("CARGO_PKG_VERSION")'],
+    },
+    ROOT / "crates/mabi-modbus/src/testing/report.rs": {
+        "required": ["RELEASE_VERSION.to_string()"],
+        "forbidden": ['version: "1.0.0".to_string()'],
+    },
+    ROOT / "crates/mabi-bacnet/src/object/device.rs": {
+        "required": ["RELEASE_VERSION.into()"],
+        "forbidden": ['"1.0.0".into()'],
+    },
+    ROOT / "crates/mabi-bacnet/src/server/bacnet_server.rs": {
+        "required": ["RELEASE_VERSION.into()"],
+        "forbidden": ['"1.0.0".into()'],
+    },
+}
+
+
+def fail(message: str) -> None:
+    print(f"release-version check failed: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+
+
+def root_release_version() -> str:
+    cargo = tomllib.loads(read_text(ROOT_CARGO))
+    return cargo["workspace"]["package"]["version"]
+
+
+def expected_internal_dependency_block(version: str) -> str:
+    lines = [BEGIN_MARKER]
+    for crate in INTERNAL_DEPENDENCY_CRATES:
+        lines.append(f'{crate} = {{ version = "{version}", path = "crates/{crate}" }}')
+    lines.append(END_MARKER)
+    return "\n".join(lines)
+
+
+def sync_root_cargo(version: str) -> str:
+    text = read_text(ROOT_CARGO)
+    pattern = re.compile(
+        rf"{re.escape(BEGIN_MARKER)}.*?{re.escape(END_MARKER)}",
+        re.DOTALL,
+    )
+    replacement = expected_internal_dependency_block(version)
+    if not pattern.search(text):
+        fail("generated internal dependency mirror markers are missing from Cargo.toml")
+    return pattern.sub(replacement, text, count=1)
+
+
+def sync_readme_versions(text: str, version: str) -> str:
+    for crate in INTERNAL_DEPENDENCY_CRATES:
+        text = re.sub(
+            rf'(^\s*{re.escape(crate)}\s*=\s*")([^"]+)(".*$)',
+            rf"\g<1>{version}\3",
+            text,
+            flags=re.MULTILINE,
+        )
+    return text
+
+
+def run_sync() -> None:
+    version = root_release_version()
+    changed: list[Path] = []
+
+    cargo_text = sync_root_cargo(version)
+    if cargo_text != read_text(ROOT_CARGO):
+        write_text(ROOT_CARGO, cargo_text)
+        changed.append(ROOT_CARGO)
+
+    for path in README_FILES:
+        if not path.exists():
+            continue
+        original = read_text(path)
+        updated = sync_readme_versions(original, version)
+        if updated != original:
+            write_text(path, updated)
+            changed.append(path)
+
+    if changed:
+        for path in changed:
+            print(path.relative_to(ROOT))
+    else:
+        print("release version surfaces already in sync")
+
+
+def check_readmes(version: str) -> None:
+    for path in README_FILES:
+        if not path.exists():
+            continue
+        text = read_text(path)
+        for crate in INTERNAL_DEPENDENCY_CRATES:
+            pattern = re.compile(rf'^\s*{re.escape(crate)}\s*=\s*"([^"]+)"', re.MULTILINE)
+            match = pattern.search(text)
+            if match and match.group(1) != version:
+                fail(
+                    f"{path.relative_to(ROOT)} contains {crate} version {match.group(1)} "
+                    f"instead of {version}"
+                )
+
+
+def check_root_cargo(version: str) -> None:
+    text = read_text(ROOT_CARGO)
+    expected = expected_internal_dependency_block(version)
+    pattern = re.compile(
+        rf"{re.escape(BEGIN_MARKER)}.*?{re.escape(END_MARKER)}",
+        re.DOTALL,
+    )
+    match = pattern.search(text)
+    if not match:
+        fail("generated internal dependency mirror markers are missing from Cargo.toml")
+    if match.group(0) != expected:
+        fail("workspace internal dependency versions are out of sync with workspace.package.version")
+
+
+def check_workspace_metadata(version: str) -> None:
+    output = subprocess.check_output(
+        ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+        cwd=ROOT,
+        text=True,
+    )
+    metadata = json.loads(output)
+    versions = {}
+    for package in metadata["packages"]:
+        if package["name"] in WORKSPACE_CRATES:
+            versions[package["name"]] = package["version"]
+
+    missing = [crate for crate in WORKSPACE_CRATES if crate not in versions]
+    if missing:
+        fail(f"workspace metadata did not include expected crates: {', '.join(missing)}")
+
+    mismatched = {name: value for name, value in versions.items() if value != version}
+    if mismatched:
+        details = ", ".join(f"{name}={value}" for name, value in sorted(mismatched.items()))
+        fail(f"workspace crate versions drifted from root release version {version}: {details}")
+
+
+def check_workspace_manifests() -> None:
+    for crate in WORKSPACE_CRATES:
+        manifest = ROOT / "crates" / crate / "Cargo.toml"
+        text = read_text(manifest)
+        if "version.workspace = true" not in text:
+            fail(f"{manifest.relative_to(ROOT)} does not use version.workspace = true")
+
+
+def check_surface_files() -> None:
+    for path, rules in SURFACE_RULES.items():
+        text = read_text(path)
+        for required in rules["required"]:
+            if required not in text:
+                fail(f"{path.relative_to(ROOT)} is missing expected release-version binding: {required}")
+        for forbidden in rules["forbidden"]:
+            if forbidden in text:
+                fail(f"{path.relative_to(ROOT)} still contains forbidden version surface: {forbidden}")
+
+
+def run_check() -> None:
+    version = root_release_version()
+    check_root_cargo(version)
+    check_workspace_manifests()
+    check_workspace_metadata(version)
+    check_readmes(version)
+    check_surface_files()
+    print(f"release version surfaces are in sync for {version}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Sync and validate Mabinogion release version surfaces")
+    parser.add_argument("mode", choices=["sync", "check"])
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.mode == "sync":
+        run_sync()
+    else:
+        run_check()
+
+
+if __name__ == "__main__":
+    main()

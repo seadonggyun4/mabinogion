@@ -17,6 +17,8 @@ use parking_lot::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
+use mabi_core::RELEASE_VERSION;
+
 use super::property::{
     BACnetDate, BACnetTime, BACnetValue, EventState, PropertyError, PropertyId, Reliability,
     SegmentationSupport, StatusFlags,
@@ -90,8 +92,8 @@ impl Default for DeviceObjectConfig {
             vendor_name: "OTSIM".into(),
             vendor_id: 999,
             model_name: "Mabinogion".into(),
-            firmware_revision: "1.0.0".into(),
-            application_software_version: "1.0.0".into(),
+            firmware_revision: RELEASE_VERSION.into(),
+            application_software_version: RELEASE_VERSION.into(),
             description: String::new(),
             location: String::new(),
             max_apdu_length: 1476,
@@ -686,6 +688,13 @@ mod tests {
             number_of_apdu_retries: 3,
         };
         DeviceObject::new(config, registry)
+    }
+
+    #[test]
+    fn default_device_versions_follow_release_version() {
+        let config = DeviceObjectConfig::default();
+        assert_eq!(config.firmware_revision, RELEASE_VERSION);
+        assert_eq!(config.application_software_version, RELEASE_VERSION);
     }
 
     #[test]

@@ -221,7 +221,7 @@ pub type Error = OpcUaError;
 pub type Result<T> = OpcUaResult<T>;
 
 /// Crate version.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = mabi_core::RELEASE_VERSION;
 
 /// OPC UA specification version supported.
 pub const OPCUA_SPEC_VERSION: &str = "1.04";
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert!(!VERSION.is_empty());
+        assert_eq!(VERSION, mabi_core::RELEASE_VERSION);
     }
 
     #[test]

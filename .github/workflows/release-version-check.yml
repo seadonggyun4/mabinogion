@@ -1,0 +1,41 @@
+name: Release Version Surface
+
+on:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "README.md"
+      - "docs/**"
+      - "scripts/release-version.py"
+      - "crates/**/Cargo.toml"
+      - "crates/**/README.md"
+      - "crates/**/src/**/*.rs"
+      - "crates/**/tests/**/*.rs"
+      - ".github/workflows/release-version-check.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "README.md"
+      - "docs/**"
+      - "scripts/release-version.py"
+      - "crates/**/Cargo.toml"
+      - "crates/**/README.md"
+      - "crates/**/src/**/*.rs"
+      - "crates/**/tests/**/*.rs"
+      - ".github/workflows/release-version-check.yml"
+  workflow_dispatch:
+
+jobs:
+  release-version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - uses: Swatinem/rust-cache@v2
+      - name: Check release version surfaces
+        run: python3 scripts/release-version.py check
+      - name: Workspace regression
+        run: cargo test --workspace

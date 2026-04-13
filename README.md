@@ -67,14 +67,29 @@ All protocols, scenario engine, and chaos engineering built-in.
 
 ```toml
 [dependencies]
-mabi-core = "1.0"        # Core abstractions (required)
-mabi-modbus = "1.0"      # Modbus TCP/RTU (optional)
-mabi-opcua = "1.0"       # OPC UA (optional)
-mabi-bacnet = "1.0"      # BACnet/IP (optional)
-mabi-knx = "1.0"         # KNXnet/IP (optional)
-mabi-scenario = "1.0"    # Scenario engine (optional)
-mabi-chaos = "1.0"       # Chaos engineering (optional)
+mabi-core = "1.3.2"        # Core abstractions (required)
+mabi-modbus = "1.3.2"      # Modbus TCP/RTU (optional)
+mabi-opcua = "1.3.2"       # OPC UA (optional)
+mabi-bacnet = "1.3.2"      # BACnet/IP (optional)
+mabi-knx = "1.3.2"         # KNXnet/IP (optional)
+mabi-scenario = "1.3.2"    # Scenario engine (optional)
+mabi-chaos = "1.3.2"       # Chaos engineering (optional)
 ```
+
+### Release Versioning
+
+The Mabinogion release version is sourced from
+`[workspace.package].version` in [Cargo.toml](./Cargo.toml).
+
+After changing the root version, run:
+
+```bash
+python3 scripts/release-version.py sync
+python3 scripts/release-version.py check
+```
+
+Protocol and spec version constants remain separate from the product release
+version.
 
 ---
 

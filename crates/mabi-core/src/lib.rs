@@ -85,6 +85,7 @@ pub mod typed_point;
 pub mod types;
 pub mod utils;
 pub mod value;
+pub mod version;
 
 // =============================================================================
 // Re-exports for backwards compatibility and convenience
@@ -100,6 +101,7 @@ pub use protocol::Protocol;
 
 // Value types
 pub use value::Value;
+pub use version::{release_version, RELEASE_VERSION};
 
 // Configuration types
 pub use config::{

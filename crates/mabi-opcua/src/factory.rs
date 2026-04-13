@@ -16,6 +16,7 @@ use mabi_core::{
     tags::Tags,
     types::DataPointDef,
     value::Value,
+    RELEASE_VERSION,
 };
 
 use crate::config::OpcUaServerConfig;
@@ -234,7 +235,7 @@ impl DeviceFactory for OpcUaDeviceFactory {
     fn metadata(&self) -> FactoryMetadata {
         FactoryMetadata {
             protocol: Protocol::OpcUa,
-            version: env!("CARGO_PKG_VERSION").to_string(),
+            version: RELEASE_VERSION.to_string(),
             description: "OPC UA server simulator factory".to_string(),
             capabilities: vec![
                 "subscription".to_string(),
@@ -510,7 +511,7 @@ impl Plugin for OpcUaPlugin {
     }
 
     fn version(&self) -> &str {
-        env!("CARGO_PKG_VERSION")
+        RELEASE_VERSION
     }
 
     fn description(&self) -> &str {

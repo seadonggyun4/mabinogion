@@ -12,6 +12,7 @@ use crate::config::DeviceConfig;
 use crate::device::BoxedDevice;
 use crate::error::{Error, Result};
 use crate::protocol::Protocol;
+use crate::version::RELEASE_VERSION;
 
 /// A factory trait for creating devices.
 ///
@@ -66,7 +67,7 @@ pub trait DeviceFactory: Send + Sync {
     fn metadata(&self) -> FactoryMetadata {
         FactoryMetadata {
             protocol: self.protocol(),
-            version: "1.0.0".to_string(),
+            version: RELEASE_VERSION.to_string(),
             description: format!("{:?} device factory", self.protocol()),
             capabilities: Vec::new(),
         }
@@ -207,7 +208,7 @@ pub trait Plugin: Send + Sync {
 
     /// Get plugin version.
     fn version(&self) -> &str {
-        "1.0.0"
+        RELEASE_VERSION
     }
 
     /// Get plugin description.
@@ -431,6 +432,12 @@ mod tests {
     }
 
     #[test]
+    fn test_factory_metadata_uses_release_version() {
+        let metadata = MockFactory.metadata();
+        assert_eq!(metadata.version, RELEASE_VERSION);
+    }
+
+    #[test]
     fn test_factory_create_device() {
         let registry = FactoryRegistry::new();
         registry.register(MockFactory).unwrap();
@@ -495,6 +502,7 @@ mod tests {
 
         let info = manager.plugin_info();
         assert_eq!(info[0].name, "test-plugin");
+        assert_eq!(info[0].version, RELEASE_VERSION);
     }
 
     #[test]
