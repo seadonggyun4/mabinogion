@@ -9,7 +9,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation = "https://docs.rs/mabi-runtime"
-readme = "../README.md"
+readme = "README.md"
 keywords = ["runtime", "service", "industrial", "simulator", "protocol"]
 categories = ["simulation", "development-tools::testing"]
 
