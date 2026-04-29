@@ -225,7 +225,7 @@ peers:
       - create_delete
       - device_control_time_sync
     excluded_from_current_ci: false
-    notes: Canonical reference peer for wire-level and service-correctness smoke, now active in the Phase 3 interop matrix.
+    notes: Canonical reference peer for wire-level and service-correctness smoke, active in the current interop matrix.
   - id: bac0
     automation_lane: active_interop
     role: high_level_scenario_peer
@@ -238,7 +238,7 @@ peers:
       - discovery
       - device_control_time_sync
     excluded_from_current_ci: false
-    notes: Best fit for controller-style workflows and building-control scenarios, now active in the Phase 3 interop matrix.
+    notes: Best fit for controller-style workflows and building-control scenarios, active in the current interop matrix.
   - id: bacpypes3
     automation_lane: active_interop
     role: programmable_edge_case_peer
@@ -251,7 +251,7 @@ peers:
     secondary_capabilities:
       - property_multiple
     excluded_from_current_ci: false
-    notes: Canonical programmable BACnet peer, promoted from the Phase 2 canary into the active Phase 3 matrix.
+    notes: Canonical programmable BACnet peer, active in the current interop matrix after the initial canary.
   - id: bacnet4j
     automation_lane: active_interop
     role: jvm_interop_peer
@@ -264,7 +264,7 @@ peers:
       - bbmd_foreign_device
       - device_control_time_sync
     excluded_from_current_ci: false
-    notes: Covers JVM and enterprise-style stack semantics, now active in the Phase 3 interop matrix.
+    notes: Covers JVM and enterprise-style stack semantics, active in the current interop matrix.
   - id: yabe
     automation_lane: capture_manual
     role: manual_acceptance_and_capture_source
@@ -277,7 +277,7 @@ peers:
       - create_delete
       - schedule_calendar
     excluded_from_current_ci: true
-    notes: GUI-first tool kept as a capture and manual-acceptance lane with a seeded Phase 4 corpus in the current phase.
+    notes: GUI-first tool kept as a capture and manual-acceptance lane with a seeded corpus in the current Phase 5 baseline.
   - id: vts
     automation_lane: capture_manual
     role: manual_protocol_shell_and_negative_case_capture_source
@@ -289,4 +289,4 @@ peers:
       - segmentation
       - device_control_time_sync
     excluded_from_current_ci: true
-    notes: Packet-centric manual tool kept outside current CI automation and normalized into a seeded Phase 4 corpus lane.
+    notes: Packet-centric manual tool kept outside current CI automation and normalized into the seeded capture corpus lane.

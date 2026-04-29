@@ -34,22 +34,24 @@ This strategy fixes those decisions up front.
 - GUI tools are out of scope for automation in the current phase.
 - `bacnet-stack`, `BAC0`, `BACpypes3`, and `BACnet4J` remain the canonical
   automation peers.
-- Phase 2 activates the interop plane and the initial `BACpypes3` canary target.
-- Phase 3 promotes the full non-GUI peer set into the active interop matrix.
-- `YABE` and `VTS` are capture/manual lanes in the current phase.
-- a seeded Phase 4 capture corpus now exists under `verification/bacnet/captures/`
+- The current Phase 5 baseline has a repo-owned interop plane with all four
+  non-GUI peers active.
+- `YABE` and `VTS` are capture/manual lanes in the current Phase 5 baseline.
+- A seeded capture corpus exists under `verification/bacnet/captures/`.
+- Regression, interop, capture, and perf lanes now have separate operating
+  boundaries.
 
 ## Phase 0 Source of Truth
 
-Phase 0 is now split into two canonical artifacts:
+The original Phase 0 source of truth is split into two canonical artifacts:
 
 - [verification-baseline.md](./verification-baseline.md)
   - human-readable baseline and policy explanation
 - [verification-contract.yaml](./verification-contract.yaml)
   - machine-readable capability, profile, peer, and policy contract
 
-Later phases should consume these artifacts rather than redefining names,
-lanes, or verification boundaries.
+Current and future verification work should consume these artifacts rather than
+redefining names, lanes, or verification boundaries.
 
 ## Current Codebase Analysis
 
@@ -80,9 +82,9 @@ adapter. That is a good shape for introducing a verification plane because:
 - end-to-end server profiles can be built from `BACnetServer::new(...)`
 - runtime-driven launch remains the production truth
 
-### Current gaps
+### Current verification layers
 
-The missing pieces are mostly outside the production core:
+The verification pieces now present outside the production core are:
 
 - `crates/mabi-bacnet/tests/` now exists as the deterministic profile lane
 - `verification/bacnet/` now exists as the repo-owned interop plane
@@ -263,8 +265,8 @@ Each harness is responsible for:
 1. Record the current strengths of `mabi-bacnet` by seam in
    `verification-baseline.md`:
    `ObjectRegistry`, `ServiceRegistry`, `BACnetServer`, `runtime`.
-2. Record the current gap in `verification-baseline.md`:
-   no `verification/bacnet`, no `crates/mabi-bacnet/tests/`, no interop matrix.
+2. Record the original baseline gap in `verification-baseline.md`, then keep the
+   current-state section updated as later verification lanes are completed.
 3. Fix the policy boundaries in `verification-contract.yaml`:
    BACnet/IP only, no GUI automation, default workspace green.
 4. Freeze the canonical capability categories, profile names, peer lanes, and
@@ -422,7 +424,7 @@ This path must stay deterministic and green without:
 
 Ignored or release-only paths should cover:
 
-1. self-contained containerized interop matrix, starting with a BACpypes3 canary
+1. self-contained containerized interop matrix with the four active non-GUI peers
 2. release-only perf contracts
 
 ### Local behavior
@@ -450,7 +452,8 @@ Ignored or release-only paths should cover:
 
 ### Follow-up after this strategy
 
-- expand the active BACnet peer matrix beyond the current single-container lane
+- expand the active BACnet peer matrix beyond the current single-container
+  topology
 - add multi-container BBMD and foreign-device interop topologies
 - expand the seeded YABE/VTS capture corpus with refreshed manual artifacts
 - define future BACnet perf benchmarks without allowing them into the default

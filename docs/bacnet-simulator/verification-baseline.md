@@ -1,16 +1,18 @@
 # BACnet Verification Baseline
 
-This document defines the Phase 0 baseline for `mabi-bacnet`.
-It is the human-readable companion to
+This document records the current Phase 5 verification baseline for
+`mabi-bacnet`. It also preserves the Phase 0 vocabulary contract that later
+verification layers consume. It is the human-readable companion to
 [verification-contract.yaml](./verification-contract.yaml), which is the
 machine-readable source of truth for capability names, profile names, peer
 lanes, and policy boundaries.
 
 ## Purpose and Operating Principles
 
-Phase 0 exists to freeze the verification vocabulary before implementation
-work begins. It is not a feature phase and it does not introduce runtime
-behavior changes.
+The original Phase 0 work froze the verification vocabulary before
+implementation began. At the current Phase 5 baseline, this document also
+records which verification lanes are now present and which expansion work
+remains deliberately outside the default workspace path.
 
 The operating principles are fixed as follows:
 
@@ -34,7 +36,7 @@ plane.
 - It already supports registration, lookup, typed statistics, and descriptor-
   driven bulk population.
 - This makes it the right anchor for deterministic object fixture builders in
-  later phases.
+  later verification expansion.
 
 ### Service dispatch seam
 
@@ -86,12 +88,10 @@ At the current Phase 5 baseline:
 - GUI automation is out of scope
 - the default developer validation path is expected to remain deterministic
 
-## Current Missing Verification Layers
+## Deferred Verification Expansion
 
 The remaining gaps are outside the production core:
 
-- multi-container broadcast, BBMD, and foreign-device topologies still belong
-  to a later interop expansion phase
 - multi-container broadcast, BBMD, and foreign-device interop topologies are
   still deferred
 - there are still no BACnet threshold benchmarks or performance budgets promoted
@@ -124,9 +124,9 @@ here for humans:
 All of the Phase 1 capability IDs above now have deterministic integration
 coverage through `crates/mabi-bacnet/tests/`.
 `discovery`, `property_io`, and `property_multiple` additionally have active
-interop coverage through the Phase 3 peer harness matrix.
+interop coverage through the current active peer harness matrix.
 `discovery`, `property_io`, and `tsm_duplicate_handling` additionally have
-seeded manual capture coverage through the Phase 4 corpus lane.
+seeded manual capture coverage through the current capture corpus lane.
 
 ## Canonical Profile Naming
 
@@ -162,7 +162,8 @@ The peer role split is frozen now so later phases do not reinterpret tool scope.
 
 ## Policy Boundaries
 
-The following policy boundaries are fixed in Phase 0:
+The following policy boundaries are fixed in the current Phase 5 verification
+contract:
 
 - protocol scope: BACnet/IP only
 - default workspace lane: deterministic
@@ -175,17 +176,18 @@ The following policy boundaries are fixed in Phase 0:
 - third-party BACnet tools: verification assets only, not production
   dependencies
 
-## Phase 0 Completion Checklist
+## Documentation Consistency Checklist
 
-Phase 0 is complete only when all of the following are true:
+The current documentation set is consistent only when all of the following are
+true:
 
 - this baseline document reflects the current crate structure and verification
   state
 - [verification-contract.yaml](./verification-contract.yaml) contains the
   canonical capability, profile, peer, and policy contracts
 - [verification-strategy.md](./verification-strategy.md) treats these files as
-  the Phase 0 source of truth
+  the source of truth for the current Phase 5 operating boundary
 - [README.md](./README.md) points engineers to the baseline and strategy
   documents
-- later phases can consume names and lanes from the contract without inventing
-  replacements
+- later expansion work can consume names and lanes from the contract without
+  inventing replacements

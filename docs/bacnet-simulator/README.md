@@ -28,7 +28,7 @@ engineering plan covering:
 - GUI capture/manual lanes
 - CI and perf policy boundaries
 
-Phase 0 source-of-truth artifacts live here as well:
+Current verification source-of-truth and lane documentation live here as well:
 
 - [verification-baseline.md](./verification-baseline.md)
 - [verification-contract.yaml](./verification-contract.yaml)
