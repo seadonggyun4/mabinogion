@@ -8,7 +8,7 @@ Shared runtime contracts and service orchestration for the Mabinogion simulator 
 
 ```toml
 [dependencies]
-mabi-runtime = "1.4.0"
+mabi-runtime = "1.5.0"
 ```
 
 ## What It Provides

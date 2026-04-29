@@ -66,13 +66,13 @@ All protocols, scenario engine, and chaos engineering built-in.
 
 ```toml
 [dependencies]
-mabi-core = "1.4.0"        # Core abstractions (required)
-mabi-modbus = "1.4.0"      # Modbus TCP/RTU (optional)
-mabi-opcua = "1.4.0"       # OPC UA (optional)
-mabi-bacnet = "1.4.0"      # BACnet/IP (optional)
-mabi-knx = "1.4.0"         # KNXnet/IP (optional)
-mabi-scenario = "1.4.0"    # Scenario engine (optional)
-mabi-chaos = "1.4.0"       # Chaos engineering (optional)
+mabi-core = "1.5.0"        # Core abstractions (required)
+mabi-modbus = "1.5.0"      # Modbus TCP/RTU (optional)
+mabi-opcua = "1.5.0"       # OPC UA (optional)
+mabi-bacnet = "1.5.0"      # BACnet/IP (optional)
+mabi-knx = "1.5.0"         # KNXnet/IP (optional)
+mabi-scenario = "1.5.0"    # Scenario engine (optional)
+mabi-chaos = "1.5.0"       # Chaos engineering (optional)
 ```
 
 ---
