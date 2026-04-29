@@ -1,0 +1,49 @@
+services:
+  bacpypes3-canary:
+    build:
+      context: ../..
+      dockerfile: verification/bacnet/harness/bacpypes3/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-bacnet-interop/bacpypes3
+    entrypoint:
+      - bash
+      - /workspace/verification/bacnet/harness/bacpypes3/run.sh
+  bac0-canary:
+    build:
+      context: ../..
+      dockerfile: verification/bacnet/harness/bac0/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-bacnet-interop/bac0
+    entrypoint:
+      - bash
+      - /workspace/verification/bacnet/harness/bac0/run.sh
+  bacnet-stack-canary:
+    build:
+      context: ../..
+      dockerfile: verification/bacnet/harness/bacnet-stack/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-bacnet-interop/bacnet-stack
+    entrypoint:
+      - bash
+      - /workspace/verification/bacnet/harness/bacnet-stack/run.sh
+  bacnet4j-canary:
+    build:
+      context: ../..
+      dockerfile: verification/bacnet/harness/bacnet4j/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-bacnet-interop/bacnet4j
+    entrypoint:
+      - bash
+      - /workspace/verification/bacnet/harness/bacnet4j/run.sh

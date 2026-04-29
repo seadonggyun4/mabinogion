@@ -1,0 +1,67 @@
+version = 1
+
+[[captures]]
+id = "yabe-discovery-property-io-loopback"
+tool = "yabe"
+peer = "yabe"
+lane = "capture_manual"
+curation_state = "seeded"
+profile_ids = ["basic_ip", "property_io"]
+capability_ids = ["discovery", "property_io"]
+artifact_dir = "yabe/discovery-property-io-loopback"
+replay_kind = "operator_runbook"
+ci_executable = false
+notes = "Seeded manual capture lane for YABE-style discovery and single-property I/O workflows."
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "yabe/discovery-property-io-loopback/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "yabe/discovery-property-io-loopback/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "packet_summary"
+  path = "yabe/discovery-property-io-loopback/packet-summary.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "yabe/discovery-property-io-loopback/runbook.md"
+  format = "markdown"
+
+[[captures]]
+id = "vts-duplicate-request-tsm"
+tool = "vts"
+peer = "vts"
+lane = "capture_manual"
+curation_state = "seeded"
+profile_ids = ["tsm_resilience"]
+capability_ids = ["tsm_duplicate_handling"]
+artifact_dir = "vts/duplicate-request-tsm"
+replay_kind = "packet_script"
+ci_executable = false
+notes = "Seeded negative-case corpus for VTS-style duplicate request and cached-response analysis."
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "vts/duplicate-request-tsm/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "vts/duplicate-request-tsm/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "script"
+  path = "vts/duplicate-request-tsm/script.txt"
+  format = "text"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "vts/duplicate-request-tsm/runbook.md"
+  format = "markdown"

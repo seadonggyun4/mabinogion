@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "peer": "yabe",
+  "profile_ids": [
+    "basic_ip",
+    "property_io"
+  ],
+  "capability_ids": [
+    "discovery",
+    "property_io"
+  ],
+  "steps": [
+    {
+      "id": "discover-device",
+      "kind": "discover",
+      "request": "Who-Is",
+      "expect": "I-Am from the loopback device instance"
+    },
+    {
+      "id": "read-present-value",
+      "kind": "read_property",
+      "object": "analog-output,1",
+      "property": "present-value",
+      "expect": "numeric PresentValue payload"
+    },
+    {
+      "id": "write-present-value",
+      "kind": "write_property",
+      "object": "analog-output,1",
+      "property": "present-value",
+      "value": 42.5,
+      "expect": "SimpleAck"
+    },
+    {
+      "id": "verify-round-trip",
+      "kind": "read_property",
+      "object": "analog-output,1",
+      "property": "present-value",
+      "expect": "42.5"
+    }
+  ],
+  "expected_outcomes": {
+    "discovery_ok": true,
+    "property_read_ok": true,
+    "property_write_ok": true,
+    "round_trip_ok": true
+  }
+}

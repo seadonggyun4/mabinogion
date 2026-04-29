@@ -1,0 +1,12 @@
+version = 1
+id = "vts-duplicate-request-tsm"
+tool = "vts"
+peer = "vts"
+lane = "capture_manual"
+curation_state = "seeded"
+source_kind = "manual_protocol_shell_capture_normalized"
+profile_ids = ["tsm_resilience"]
+capability_ids = ["tsm_duplicate_handling"]
+replay_kind = "packet_script"
+ci_executable = false
+notes = "Normalized VTS seed for duplicate confirmed-request replay and cached-response verification."

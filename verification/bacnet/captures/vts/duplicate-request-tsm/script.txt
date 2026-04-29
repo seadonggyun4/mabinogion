@@ -1,0 +1,6 @@
+CONNECT 127.0.0.1:47808
+SEND CONFIRMED ReadProperty invoke_id=41 object=analog-output,1 property=present-value
+EXPECT RESPONSE invoke_id=41
+RESEND CONFIRMED ReadProperty invoke_id=41 object=analog-output,1 property=present-value
+EXPECT CACHED_RESPONSE invoke_id=41
+DISCONNECT

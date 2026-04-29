@@ -1,0 +1,12 @@
+version = 1
+id = "yabe-discovery-property-io-loopback"
+tool = "yabe"
+peer = "yabe"
+lane = "capture_manual"
+curation_state = "seeded"
+source_kind = "manual_gui_capture_normalized"
+profile_ids = ["basic_ip", "property_io"]
+capability_ids = ["discovery", "property_io"]
+replay_kind = "operator_runbook"
+ci_executable = false
+notes = "Normalized YABE seed for a loopback device discovery followed by PresentValue read/write round-trip."

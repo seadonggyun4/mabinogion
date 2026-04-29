@@ -1,0 +1,292 @@
+version: 1
+
+baseline:
+  crate: mabi-bacnet
+  protocol_scope: bacnet_ip_only
+  unit_regression_status:
+    state: green
+    last_verified_command: cargo test -p mabi-bacnet
+  integration_layer_present: true
+  interop_plane_present: true
+  capture_corpus_present: true
+  perf_contract_present: true
+  default_workspace_command: cargo test --workspace
+
+policies:
+  default_workspace_lane: deterministic
+  interop_lane: ignored
+  perf_lane: release_only_ignored
+  capture_lane: manual_only
+  default_perf_thresholds_forbidden: true
+  gui_automation: out_of_scope
+  production_dependency_policy: verification_assets_only
+
+capabilities:
+  - id: discovery
+    description: Who-Is and I-Am discovery and identity flows
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active
+    capture_coverage: seeded_manual
+    code_refs:
+      - crates/mabi-bacnet/src/service/discovery.rs
+      - crates/mabi-bacnet/src/server/bacnet_server.rs
+  - id: property_io
+    description: Single-property read and write flows
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active
+    capture_coverage: seeded_manual
+    code_refs:
+      - crates/mabi-bacnet/src/service/property.rs
+      - crates/mabi-bacnet/src/object/property.rs
+  - id: property_multiple
+    description: Batch property access across objects
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/service/property_multiple.rs
+  - id: cov
+    description: SubscribeCOV, subscription lifecycle, and notifications
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/service/cov.rs
+      - crates/mabi-bacnet/src/service/subscribe_cov.rs
+  - id: file_access
+    description: BACnet file object and atomic read/write file services
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/object/file.rs
+      - crates/mabi-bacnet/src/service/file_access.rs
+  - id: read_range_trend_log
+    description: ReadRange service and TrendLog history access
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/object/trend_log.rs
+      - crates/mabi-bacnet/src/service/read_range.rs
+  - id: schedule_calendar
+    description: Schedule and Calendar object semantics
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/object/schedule.rs
+  - id: device_control_time_sync
+    description: Device communication control, reinitialize, and time synchronization flows
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/service/device_control.rs
+      - crates/mabi-bacnet/src/object/device.rs
+  - id: create_delete
+    description: Dynamic object creation and deletion policy
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/service/create_delete.rs
+      - crates/mabi-bacnet/src/object/registry.rs
+  - id: segmentation
+    description: Segmented APDU transmit and receive behavior
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/apdu/segmentation.rs
+      - crates/mabi-bacnet/src/server/bacnet_server.rs
+  - id: bbmd_foreign_device
+    description: BBMD routing and foreign-device registration flows
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: planned
+    code_refs:
+      - crates/mabi-bacnet/src/network/bbmd.rs
+      - crates/mabi-bacnet/src/server/bacnet_server.rs
+  - id: tsm_duplicate_handling
+    description: Duplicate request detection and transaction state behavior
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: planned
+    capture_coverage: seeded_manual
+    code_refs:
+      - crates/mabi-bacnet/src/service/tsm.rs
+      - crates/mabi-bacnet/src/server/bacnet_server.rs
+
+profiles:
+  - id: basic_ip
+    lane: deterministic
+    capabilities:
+      - discovery
+    phase_introduced: phase_1
+    notes: Canonical first profile for basic BACnet/IP lifecycle and reachability.
+  - id: property_io
+    lane: deterministic
+    capabilities:
+      - property_io
+    phase_introduced: phase_1
+    notes: Covers ReadProperty and WriteProperty against the canonical server path.
+  - id: property_multiple
+    lane: deterministic
+    capabilities:
+      - property_multiple
+    phase_introduced: phase_1
+    notes: Covers batch property access semantics and error mapping.
+  - id: cov_flow
+    lane: deterministic
+    capabilities:
+      - cov
+    phase_introduced: phase_1
+    notes: Covers subscription create, notify, and cancel behavior.
+  - id: file_and_trend
+    lane: deterministic
+    capabilities:
+      - file_access
+      - read_range_trend_log
+    phase_introduced: phase_1
+    notes: Combines file access and history-style record retrieval.
+  - id: schedule_calendar
+    lane: deterministic
+    capabilities:
+      - schedule_calendar
+    phase_introduced: phase_1
+    notes: Covers schedule evaluation and calendar override behavior.
+  - id: device_control
+    lane: deterministic
+    capabilities:
+      - device_control_time_sync
+    phase_introduced: phase_1
+    notes: Covers DCC, reinitialize, and time synchronization flows.
+  - id: create_delete
+    lane: deterministic
+    capabilities:
+      - create_delete
+    phase_introduced: phase_1
+    notes: Covers dynamic object lifecycle and policy boundaries.
+  - id: segmentation
+    lane: deterministic
+    capabilities:
+      - segmentation
+    phase_introduced: phase_1
+    notes: Covers APDU segmentation and segment reassembly behavior.
+  - id: bbmd_fdr
+    lane: deterministic
+    capabilities:
+      - bbmd_foreign_device
+    phase_introduced: phase_1
+    notes: Baseline name for BBMD and foreign-device verification across later lanes.
+  - id: tsm_resilience
+    lane: deterministic
+    capabilities:
+      - tsm_duplicate_handling
+    phase_introduced: phase_1
+    notes: Covers duplicate request handling and transaction-cache behavior.
+
+peers:
+  - id: bacnet-stack
+    automation_lane: active_interop
+    role: reference_c_peer_and_protocol_oracle
+    primary_capabilities:
+      - discovery
+      - property_io
+      - property_multiple
+      - segmentation
+      - bbmd_foreign_device
+    secondary_capabilities:
+      - file_access
+      - create_delete
+      - device_control_time_sync
+    excluded_from_current_ci: false
+    notes: Canonical reference peer for wire-level and service-correctness smoke, now active in the Phase 3 interop matrix.
+  - id: bac0
+    automation_lane: active_interop
+    role: high_level_scenario_peer
+    primary_capabilities:
+      - property_io
+      - property_multiple
+      - cov
+      - schedule_calendar
+    secondary_capabilities:
+      - discovery
+      - device_control_time_sync
+    excluded_from_current_ci: false
+    notes: Best fit for controller-style workflows and building-control scenarios, now active in the Phase 3 interop matrix.
+  - id: bacpypes3
+    automation_lane: active_interop
+    role: programmable_edge_case_peer
+    primary_capabilities:
+      - discovery
+      - property_io
+      - cov
+      - bbmd_foreign_device
+      - segmentation
+    secondary_capabilities:
+      - property_multiple
+    excluded_from_current_ci: false
+    notes: Canonical programmable BACnet peer, promoted from the Phase 2 canary into the active Phase 3 matrix.
+  - id: bacnet4j
+    automation_lane: active_interop
+    role: jvm_interop_peer
+    primary_capabilities:
+      - property_io
+      - property_multiple
+      - cov
+      - schedule_calendar
+    secondary_capabilities:
+      - bbmd_foreign_device
+      - device_control_time_sync
+    excluded_from_current_ci: false
+    notes: Covers JVM and enterprise-style stack semantics, now active in the Phase 3 interop matrix.
+  - id: yabe
+    automation_lane: capture_manual
+    role: manual_acceptance_and_capture_source
+    primary_capabilities:
+      - discovery
+      - property_io
+      - cov
+    secondary_capabilities:
+      - file_access
+      - create_delete
+      - schedule_calendar
+    excluded_from_current_ci: true
+    notes: GUI-first tool kept as a capture and manual-acceptance lane with a seeded Phase 4 corpus in the current phase.
+  - id: vts
+    automation_lane: capture_manual
+    role: manual_protocol_shell_and_negative_case_capture_source
+    primary_capabilities:
+      - discovery
+      - property_io
+      - property_multiple
+    secondary_capabilities:
+      - segmentation
+      - device_control_time_sync
+    excluded_from_current_ci: true
+    notes: Packet-centric manual tool kept outside current CI automation and normalized into a seeded Phase 4 corpus lane.

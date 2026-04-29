@@ -1,0 +1,38 @@
+name: BACnet Regression
+
+permissions:
+  contents: read
+
+on:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/mabi-bacnet/**"
+      - "crates/mabi-cli/**"
+      - "verification/bacnet/**"
+      - "docs/bacnet-simulator/**"
+      - ".github/workflows/bacnet-regression.yml"
+      - ".github/workflows/bacnet-interop-nightly.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/mabi-bacnet/**"
+      - "crates/mabi-cli/**"
+      - "verification/bacnet/**"
+      - "docs/bacnet-simulator/**"
+      - ".github/workflows/bacnet-regression.yml"
+      - ".github/workflows/bacnet-interop-nightly.yml"
+  workflow_dispatch:
+
+jobs:
+  workspace-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Workspace regression
+        run: cargo test --workspace

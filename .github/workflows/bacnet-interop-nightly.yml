@@ -1,0 +1,24 @@
+name: BACnet Interop Nightly
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "30 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  bacnet-extended-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Deterministic workspace regression
+        run: cargo test --workspace
+      - name: Self-contained interop matrix
+        run: cargo test -p mabi-bacnet --test interop_matrix -- --ignored
+      - name: Release-only BACnet perf contract
+        run: cargo test -p mabi-bacnet --release --test perf_contract -- --ignored

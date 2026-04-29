@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "peer": "vts",
+  "profile_ids": [
+    "tsm_resilience"
+  ],
+  "capability_ids": [
+    "tsm_duplicate_handling"
+  ],
+  "steps": [
+    {
+      "id": "send-initial-read",
+      "kind": "confirmed_request",
+      "request": "ReadProperty",
+      "invoke_id": 41,
+      "expect": "normal response cached by the server transaction state machine"
+    },
+    {
+      "id": "resend-duplicate-read",
+      "kind": "duplicate_confirmed_request",
+      "request": "ReadProperty",
+      "invoke_id": 41,
+      "expect": "cached response for the same invoke id"
+    },
+    {
+      "id": "verify-cache-hit",
+      "kind": "cached_response_assertion",
+      "notes": "Response payload should match the original success path without creating a new transaction"
+    }
+  ],
+  "expected_outcomes": {
+    "duplicate_detected": true,
+    "cached_response_returned": true,
+    "new_transaction_created": false
+  }
+}

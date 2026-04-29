@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "tool": "yabe",
+  "packets": [
+    {
+      "direction": "client_to_server",
+      "service": "Who-Is",
+      "purpose": "discovery handshake start"
+    },
+    {
+      "direction": "server_to_client",
+      "service": "I-Am",
+      "purpose": "device identity confirmation"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "baseline PresentValue read"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "WriteProperty",
+      "purpose": "set PresentValue to 42.5"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "round-trip verification"
+    }
+  ]
+}

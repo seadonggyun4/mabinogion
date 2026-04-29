@@ -5,12 +5,35 @@ The `mabi-bacnet` crate provides a BACnet/IP server implementation for simulatin
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Verification Strategy](#verification-strategy)
 - [Supported Object Types](#supported-object-types)
 - [Supported Services](#supported-services)
 - [Network Layer](#network-layer)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [API Reference](#api-reference)
+
+## Verification Strategy
+
+The simulator architecture is now paired with a dedicated BACnet verification
+strategy that defines how external BACnet open-source peers are integrated into
+the repository as verification assets instead of production dependencies.
+
+See [verification-strategy.md](./verification-strategy.md) for the canonical
+engineering plan covering:
+
+- deterministic BACnet integration profiles
+- self-contained interop matrix design
+- active non-GUI peer selection
+- GUI capture/manual lanes
+- CI and perf policy boundaries
+
+Phase 0 source-of-truth artifacts live here as well:
+
+- [verification-baseline.md](./verification-baseline.md)
+- [verification-contract.yaml](./verification-contract.yaml)
+- [../../verification/bacnet/README.md](../../verification/bacnet/README.md)
+- [../../verification/bacnet/captures/README.md](../../verification/bacnet/captures/README.md)
 
 ## Architecture
 

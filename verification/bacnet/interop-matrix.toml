@@ -1,0 +1,25 @@
+version = 1
+
+[[targets]]
+name = "bacpypes3-canary"
+compose_service = "bacpypes3-canary"
+timeout_seconds = 300
+tier = "nightly"
+
+[[targets]]
+name = "bac0-canary"
+compose_service = "bac0-canary"
+timeout_seconds = 300
+tier = "nightly"
+
+[[targets]]
+name = "bacnet-stack-canary"
+compose_service = "bacnet-stack-canary"
+timeout_seconds = 420
+tier = "nightly"
+
+[[targets]]
+name = "bacnet4j-canary"
+compose_service = "bacnet4j-canary"
+timeout_seconds = 420
+tier = "nightly"
