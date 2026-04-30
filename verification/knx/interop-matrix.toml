@@ -1,0 +1,75 @@
+version = 1
+
+[[targets]]
+name = "xknx-canary"
+compose_service = "xknx-canary"
+peer = "xknx"
+timeout_seconds = 300
+tier = "nightly"
+profiles = ["xknx_canary"]
+capabilities = [
+  "discovery",
+  "description",
+  "tunneling_connect",
+  "connection_state",
+  "group_value_read_write",
+]
+
+[[targets]]
+name = "calimero-tools"
+compose_service = "calimero-tools"
+peer = "calimero_tools"
+timeout_seconds = 600
+tier = "nightly"
+profiles = ["device_management", "group_io"]
+capabilities = [
+  "discovery",
+  "description",
+  "tunneling_connect",
+  "group_value_read_write",
+  "busmonitor",
+]
+
+[[targets]]
+name = "knxd"
+compose_service = "knxd"
+peer = "knxd"
+timeout_seconds = 600
+tier = "nightly"
+profiles = ["tunnel_resilience", "routing_busmonitor"]
+capabilities = [
+  "tunneling_connect",
+  "connection_state",
+  "group_value_read_write",
+  "routing_multicast",
+  "sequence_ack_retry",
+  "heartbeat_timeout",
+]
+
+[[targets]]
+name = "knxjs"
+compose_service = "knxjs"
+peer = "knxjs"
+timeout_seconds = 600
+tier = "nightly"
+profiles = ["group_io", "dpt_matrix", "routing_busmonitor"]
+capabilities = [
+  "discovery",
+  "tunneling_connect",
+  "group_value_read_write",
+  "dpt_codec",
+  "routing_multicast",
+]
+
+[[targets]]
+name = "openknx-thelsing"
+compose_service = "openknx-thelsing"
+peer = "openknx_thelsing"
+timeout_seconds = 300
+tier = "manual"
+profiles = ["secure_future", "group_io", "dpt_matrix"]
+capabilities = [
+  "group_value_read_write",
+  "dpt_codec",
+  "secure_future",
+]

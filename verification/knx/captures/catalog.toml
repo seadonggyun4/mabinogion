@@ -1,0 +1,133 @@
+version = 1
+
+[[captures]]
+id = "xknx-group-io-transcript"
+source = "Phase 2/3 XKNX shared transcript seed"
+source_tool = "xknx"
+license_note = "Curated transcript metadata only; no XKNX source or generated binary artifact is vendored."
+protocol_area = "tunnelling_group_io"
+profile_ids = ["xknx_canary", "group_io"]
+capability_ids = ["discovery", "tunneling_connect", "connection_state", "group_value_read_write"]
+artifact_dir = "xknx/group-io-transcript"
+expected_behavior = "Search and description succeed, tunnelling state succeeds, and group write/read returns value 42."
+ci_executable = false
+curation_state = "seeded"
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "xknx/group-io-transcript/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "xknx/group-io-transcript/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "transcript"
+  path = "xknx/group-io-transcript/transcript.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "xknx/group-io-transcript/runbook.md"
+  format = "markdown"
+
+[[captures]]
+id = "calimero-monitor-proccomm"
+source = "Calimero Tools monitor and process communication seed"
+source_tool = "calimero_tools"
+license_note = "Curated packet summary only; Calimero artifacts remain external verification tooling."
+protocol_area = "monitor_proccomm"
+profile_ids = ["device_management", "group_io", "routing_busmonitor"]
+capability_ids = ["discovery", "description", "group_value_read_write", "busmonitor", "device_management_property"]
+artifact_dir = "calimero/monitor-proccomm"
+expected_behavior = "Discovery, description, process communication, and monitor-style cEMI service mapping are stable."
+ci_executable = false
+curation_state = "seeded"
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "calimero/monitor-proccomm/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "calimero/monitor-proccomm/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "packet_summary"
+  path = "calimero/monitor-proccomm/packet-summary.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "calimero/monitor-proccomm/runbook.md"
+  format = "markdown"
+
+[[captures]]
+id = "knxd-gateway-edge-trace"
+source = "knxd gateway and reconnect trace seed"
+source_tool = "knxd"
+license_note = "Curated trace summary only; Debian knxd packages are not vendored."
+protocol_area = "gateway_resilience"
+profile_ids = ["tunnel_resilience", "heartbeat_timeout", "routing_busmonitor"]
+capability_ids = ["tunneling_connect", "connection_state", "sequence_ack_retry", "heartbeat_timeout", "routing_multicast"]
+artifact_dir = "knxd/gateway-edge-trace"
+expected_behavior = "Bad channels, stale channels, duplicate/out-of-order/fatal sequence, and unsupported routing are classified predictably."
+ci_executable = false
+curation_state = "seeded"
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "knxd/gateway-edge-trace/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "knxd/gateway-edge-trace/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "trace_summary"
+  path = "knxd/gateway-edge-trace/trace-summary.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "knxd/gateway-edge-trace/runbook.md"
+  format = "markdown"
+
+[[captures]]
+id = "openknx-thelsing-device-model"
+source = "OpenKNX/thelsing device-model reference seed"
+source_tool = "openknx_thelsing"
+license_note = "Metadata-only reference; no OpenKNX firmware source, generated ETS database, or GPL code is vendored."
+protocol_area = "device_model_reference"
+profile_ids = ["secure_future", "group_io", "dpt_matrix"]
+capability_ids = ["dpt_codec", "group_value_read_write", "secure_future"]
+artifact_dir = "openknx/thelsing-device-model"
+expected_behavior = "DPT/group model metadata shapes future device tests while KNX Secure remains a future marker."
+ci_executable = false
+curation_state = "seeded"
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "openknx/thelsing-device-model/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "openknx/thelsing-device-model/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "model_reference"
+  path = "openknx/thelsing-device-model/model-reference.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "openknx/thelsing-device-model/runbook.md"
+  format = "markdown"

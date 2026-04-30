@@ -1,0 +1,165 @@
+version = 1
+
+[[fixtures]]
+id = "malformed-bad-header-size"
+category = "malformed"
+replay_kind = "knx_frame_decode"
+input_hex = "05 10 02 01 00 06"
+expected_error_kind = "InvalidHeader"
+expected_message_contains = "header size"
+profile_ids = ["basic_discovery"]
+capability_ids = ["discovery"]
+
+[[fixtures]]
+id = "malformed-body-length-mismatch"
+category = "malformed"
+replay_kind = "knx_frame_decode"
+input_hex = "06 10 02 01 00 0E 08 01"
+expected_error_kind = "FrameLengthMismatch"
+expected_message_contains = "Frame length mismatch"
+profile_ids = ["basic_discovery"]
+capability_ids = ["discovery"]
+
+[[fixtures]]
+id = "malformed-unknown-service"
+category = "malformed"
+replay_kind = "knx_frame_decode"
+input_hex = "06 10 99 99 00 06"
+expected_error_kind = "UnknownServiceType"
+expected_message_contains = "Unknown service type"
+profile_ids = ["basic_discovery"]
+capability_ids = ["discovery"]
+
+[[fixtures]]
+id = "hpai-invalid-protocol-code"
+category = "hpai"
+replay_kind = "hpai_decode"
+input_hex = "08 7F 7F 00 00 01 0E 57"
+expected_error_kind = "InvalidHpai"
+expected_message_contains = "Unknown protocol code"
+profile_ids = ["basic_discovery"]
+capability_ids = ["discovery"]
+
+[[fixtures]]
+id = "hpai-invalid-endpoint-length"
+category = "hpai"
+replay_kind = "hpai_decode"
+input_hex = "07 01 7F 00 00 01 0E 57"
+expected_error_kind = "InvalidHpai"
+expected_message_contains = "Invalid HPAI length"
+profile_ids = ["basic_discovery"]
+capability_ids = ["description"]
+
+[[fixtures]]
+id = "tunnel-stale-channel-state"
+category = "tunnel"
+replay_kind = "connection_state_response"
+channel_id = 127
+status = 33
+expected_error_kind = "KnxConnectionId"
+expected_message_contains = "0x21"
+profile_ids = ["tunnel_lifecycle", "heartbeat_timeout"]
+capability_ids = ["connection_state", "heartbeat_timeout"]
+
+[[fixtures]]
+id = "tunnel-bad-channel-error"
+category = "tunnel"
+replay_kind = "typed_error"
+channel_id = 255
+expected_error_kind = "InvalidChannel"
+expected_message_contains = "Invalid channel ID"
+profile_ids = ["tunnel_lifecycle"]
+capability_ids = ["tunneling_connect"]
+
+[[fixtures]]
+id = "sequence-duplicate"
+category = "sequence"
+replay_kind = "sequence_validation"
+sequence_case = "duplicate"
+expected_error_kind = "Duplicate"
+expected_message_contains = "duplicate"
+profile_ids = ["tunnel_resilience"]
+capability_ids = ["sequence_ack_retry"]
+
+[[fixtures]]
+id = "sequence-out-of-order"
+category = "sequence"
+replay_kind = "sequence_validation"
+sequence_case = "out_of_order"
+expected_error_kind = "OutOfOrder"
+expected_message_contains = "out-of-order"
+profile_ids = ["tunnel_resilience"]
+capability_ids = ["sequence_ack_retry"]
+
+[[fixtures]]
+id = "sequence-wraparound"
+category = "sequence"
+replay_kind = "sequence_validation"
+sequence_case = "wraparound"
+expected_error_kind = "Wraparound"
+expected_message_contains = "wraparound"
+profile_ids = ["tunnel_resilience"]
+capability_ids = ["sequence_ack_retry"]
+
+[[fixtures]]
+id = "sequence-fatal-desync"
+category = "sequence"
+replay_kind = "sequence_validation"
+sequence_case = "fatal_desync"
+expected_error_kind = "FatalDesync"
+expected_message_contains = "fatal"
+profile_ids = ["tunnel_resilience"]
+capability_ids = ["sequence_ack_retry"]
+
+[[fixtures]]
+id = "service-routing-unsupported"
+category = "service"
+replay_kind = "service_support"
+service_type = "RoutingIndication"
+expected_error_kind = "UnsupportedFeature"
+expected_message_contains = "unsupported"
+profile_ids = ["routing_busmonitor"]
+capability_ids = ["routing_multicast"]
+
+[[fixtures]]
+id = "service-device-management-unsupported"
+category = "service"
+replay_kind = "service_support"
+service_type = "DeviceConfigurationRequest"
+expected_error_kind = "UnsupportedFeature"
+expected_message_contains = "unsupported"
+profile_ids = ["device_management"]
+capability_ids = ["device_management_property"]
+
+[[fixtures]]
+id = "dpt-invalid-payload-length"
+category = "dpt"
+replay_kind = "dpt_decode"
+dpt = "9.001"
+input_hex = "01"
+expected_error_kind = "DptDecoding"
+expected_message_contains = "Expected at least 2 bytes"
+profile_ids = ["dpt_matrix"]
+capability_ids = ["dpt_codec"]
+
+[[fixtures]]
+id = "dpt-invalid-enum-fallback"
+category = "dpt"
+replay_kind = "dpt_decode_fallback_value"
+dpt = "20.102"
+input_hex = "FF"
+expected_error_kind = "FallbackValue"
+expected_message_contains = "U8"
+profile_ids = ["dpt_matrix"]
+capability_ids = ["dpt_codec"]
+
+[[fixtures]]
+id = "dpt-main-type-fallback-codec"
+category = "dpt"
+replay_kind = "dpt_main_type_fallback"
+dpt = "9.999"
+input_hex = "0C 1A"
+expected_error_kind = "FallbackCodec"
+expected_message_contains = "Temperature"
+profile_ids = ["dpt_matrix"]
+capability_ids = ["dpt_codec"]

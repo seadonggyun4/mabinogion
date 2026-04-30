@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "peer": "openknx_thelsing",
+  "protocol_area": "device_model_reference",
+  "profile_ids": ["secure_future", "group_io", "dpt_matrix"],
+  "capability_ids": ["dpt_codec", "group_value_read_write", "secure_future"],
+  "steps": [
+    {
+      "id": "model-groups",
+      "kind": "device_model",
+      "request": "reference group object model",
+      "expect": "DPT 1.001 switch and DPT 9.001 temperature group definitions"
+    },
+    {
+      "id": "dpt-shaping",
+      "kind": "dpt_reference",
+      "request": "representative OpenKNX-style datapoints",
+      "expect": "DPT matrix fixture shaping metadata"
+    },
+    {
+      "id": "secure-marker",
+      "kind": "secure_future",
+      "request": "KNX Secure marker",
+      "expect": "tracked future only"
+    }
+  ],
+  "expected_outcomes": {
+    "device_model_reference_ok": true,
+    "dpt_fixture_shape_ok": true,
+    "secure_future_only": true
+  }
+}

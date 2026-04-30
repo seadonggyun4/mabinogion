@@ -1,0 +1,360 @@
+version: 1
+
+baseline:
+  crate: mabi-knx
+  protocol_scope: knxnet_ip_only
+  unit_regression_status:
+    state: green
+    passing_tests: 336
+    last_verified_command: cargo test -p mabi-knx
+  integration_layer_present: true
+  interop_plane_present: true
+  capture_corpus_present: true
+  perf_contract_present: false
+  default_workspace_command: cargo test --workspace
+
+policies:
+  default_workspace_lane: deterministic
+  interop_lane: ignored
+  interop_execution_model: repo_owned_container_matrix
+  perf_lane: release_only_ignored
+  capture_lane: artifact_only
+  default_perf_thresholds_forbidden: true
+  gui_automation: out_of_scope
+  physical_hardware_required: false
+  production_dependency_policy: verification_assets_only
+  secure_capability_policy: tracked_future_only
+
+capabilities:
+  - id: discovery
+    description: KNXnet/IP SearchRequest and SearchResponse reachability
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/frame/service.rs
+      - crates/mabi-knx/src/frame/dib.rs
+  - id: description
+    description: DescriptionRequest, DescriptionResponse, and supported-service DIBs
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/frame/dib.rs
+  - id: tunneling_connect
+    description: ConnectRequest, ConnectResponse, tunnel endpoint allocation, and Disconnect flow
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/tunnel/connection.rs
+      - crates/mabi-knx/src/tunnel/fsm.rs
+  - id: connection_state
+    description: ConnectionState request/response, heartbeat polling, and timeout cleanup
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/tunnel/connection.rs
+      - crates/mabi-knx/src/heartbeat.rs
+  - id: group_value_read_write
+    description: GroupValueRead, GroupValueResponse, and GroupValueWrite through cEMI tunneling
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/cemi.rs
+      - crates/mabi-knx/src/group.rs
+  - id: dpt_codec
+    description: DPT encode/decode parity across representative KNX datapoint types
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/dpt/registry.rs
+      - crates/mabi-knx/src/dpt/types.rs
+      - crates/mabi-knx/src/dpt/value.rs
+  - id: routing_multicast
+    description: KNXnet/IP RoutingIndication and multicast behavior
+    implemented_in_core: false
+    unit_coverage: service_type_only
+    integration_coverage: planned
+    interop_coverage: unsupported_recorded
+    capture_coverage: negative_seeded
+    code_refs:
+      - crates/mabi-knx/src/config.rs
+      - crates/mabi-knx/src/frame/service.rs
+  - id: busmonitor
+    description: Bus monitor cEMI frame handling and passive capture behavior
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: planned
+    interop_coverage: active_matrix
+    capture_coverage: seeded
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/cemi.rs
+      - crates/mabi-knx/src/tunnel/connection.rs
+  - id: device_management_property
+    description: Device management connection type and cEMI property read/write semantics
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: planned
+    interop_coverage: planned
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/cemi.rs
+      - crates/mabi-knx/src/tunnel/connection.rs
+  - id: sequence_ack_retry
+    description: Sequence duplicate/out-of-order detection, ACK timeout, and retry boundaries
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/tunnel/sequence.rs
+      - crates/mabi-knx/src/tunnel/ack_waiter.rs
+      - crates/mabi-knx/src/filter/retry.rs
+  - id: heartbeat_timeout
+    description: Connection heartbeat behavior, state polling, timeout cleanup, and fault scheduling
+    implemented_in_core: true
+    unit_coverage: strong
+    integration_coverage: deterministic
+    interop_coverage: active_matrix
+    capture_coverage: seeded_negative
+    code_refs:
+      - crates/mabi-knx/src/server.rs
+      - crates/mabi-knx/src/heartbeat.rs
+      - crates/mabi-knx/src/tunnel/connection.rs
+  - id: secure_future
+    description: KNX IP Secure and KNX Data Secure tracking placeholder
+    implemented_in_core: false
+    unit_coverage: none
+    integration_coverage: future
+    interop_coverage: optional_manual
+    capture_coverage: future
+    code_refs: []
+
+profiles:
+  - id: basic_discovery
+    lane: deterministic
+    capabilities:
+      - discovery
+      - description
+    phase_introduced: phase_1
+    notes: First integration profile for SearchRequest and DescriptionRequest reachability.
+  - id: tunnel_lifecycle
+    lane: deterministic
+    capabilities:
+      - tunneling_connect
+      - connection_state
+    phase_introduced: phase_1
+    notes: Covers Connect, ConnectionState, Disconnect, and clean channel removal.
+  - id: group_io
+    lane: deterministic
+    capabilities:
+      - group_value_read_write
+    phase_introduced: phase_1
+    notes: Covers group read/write round trips through the tunneling path.
+  - id: xknx_canary
+    lane: interop
+    capabilities:
+      - discovery
+      - tunneling_connect
+      - group_value_read_write
+    phase_introduced: phase_2
+    notes: Covers the first repo-owned XKNX container canary against the loopback SUT.
+  - id: dpt_matrix
+    lane: deterministic
+    capabilities:
+      - dpt_codec
+      - group_value_read_write
+    phase_introduced: phase_1
+    notes: Covers representative DPT values through encoded group communication.
+  - id: routing_busmonitor
+    lane: interop
+    capabilities:
+      - routing_multicast
+      - busmonitor
+    phase_introduced: phase_3
+    notes: Covers multicast routing and monitor-style capture with external peers.
+  - id: device_management
+    lane: interop
+    capabilities:
+      - device_management_property
+      - description
+    phase_introduced: phase_3
+    notes: Covers property-style management behavior with Calimero and related peers.
+  - id: tunnel_resilience
+    lane: deterministic
+    capabilities:
+      - sequence_ack_retry
+    phase_introduced: phase_1
+    notes: Covers duplicate, out-of-order, ACK, retry, and fatal desync behavior.
+  - id: heartbeat_timeout
+    lane: deterministic
+    capabilities:
+      - connection_state
+      - heartbeat_timeout
+    phase_introduced: phase_1
+    notes: Covers state polling, unknown-channel status, and timeout cleanup behavior.
+  - id: runtime_smoke
+    lane: deterministic
+    capabilities:
+      - tunneling_connect
+      - connection_state
+      - group_value_read_write
+    phase_introduced: phase_1
+    notes: Covers canonical mabi-runtime launch, device registration, snapshot metadata, and clean stop.
+  - id: secure_future
+    lane: future
+    capabilities:
+      - secure_future
+    phase_introduced: future
+    notes: Tracks KNX Secure work without adding current acceptance gates.
+
+peers:
+  - id: xknx
+    automation_lane: canary_interop
+    role: python_async_canary_peer
+    primary_capabilities:
+      - discovery
+      - description
+      - tunneling_connect
+      - group_value_read_write
+    secondary_capabilities:
+      - dpt_codec
+      - connection_state
+    phase_target: phase_2_and_phase_3
+    notes: First repo-owned interop canary and continuing active Python ecosystem peer.
+  - id: calimero_tools
+    automation_lane: active_interop
+    role: jvm_reference_oracle
+    primary_capabilities:
+      - discovery
+      - description
+      - group_value_read_write
+      - device_management_property
+      - busmonitor
+    secondary_capabilities:
+      - routing_multicast
+      - dpt_codec
+    phase_target: phase_3
+    notes: Reference CLI/tooling peer for JVM ecosystem and protocol oracle behavior.
+  - id: knxd
+    automation_lane: active_interop
+    role: gateway_router_realism_peer
+    primary_capabilities:
+      - tunneling_connect
+      - routing_multicast
+      - sequence_ack_retry
+      - heartbeat_timeout
+    secondary_capabilities:
+      - connection_state
+      - group_value_read_write
+    phase_target: phase_3
+    notes: Gateway-style peer for routing, reconnect, and daemon behavior.
+  - id: knxjs
+    automation_lane: active_interop
+    role: lightweight_node_alternate_stack
+    primary_capabilities:
+      - group_value_read_write
+      - dpt_codec
+    secondary_capabilities:
+      - discovery
+      - tunneling_connect
+    phase_target: phase_3
+    notes: Lightweight alternate stack for DPT and group telegram parity.
+  - id: openknx_thelsing
+    automation_lane: corpus_optional_interop
+    role: device_stack_and_ets_oriented_corpus_source
+    primary_capabilities:
+      - dpt_codec
+      - group_value_read_write
+      - secure_future
+    secondary_capabilities:
+      - routing_multicast
+      - busmonitor
+    phase_target: phase_3_and_phase_4
+    notes: Optional Linux/device-stack smoke plus device-model and corpus source.
+
+interop_targets:
+  - id: xknx-canary
+    peer: xknx
+    tier: nightly
+    profiles:
+      - xknx_canary
+    capabilities:
+      - discovery
+      - description
+      - tunneling_connect
+      - connection_state
+      - group_value_read_write
+  - id: calimero-tools
+    peer: calimero_tools
+    tier: nightly
+    profiles:
+      - group_io
+      - routing_busmonitor
+    capabilities:
+      - discovery
+      - description
+      - tunneling_connect
+      - group_value_read_write
+      - busmonitor
+  - id: knxd
+    peer: knxd
+    tier: nightly
+    profiles:
+      - tunnel_resilience
+      - routing_busmonitor
+    capabilities:
+      - tunneling_connect
+      - connection_state
+      - group_value_read_write
+      - routing_multicast
+      - sequence_ack_retry
+      - heartbeat_timeout
+  - id: knxjs
+    peer: knxjs
+    tier: nightly
+    profiles:
+      - group_io
+      - dpt_matrix
+      - routing_busmonitor
+    capabilities:
+      - discovery
+      - tunneling_connect
+      - group_value_read_write
+      - dpt_codec
+      - routing_multicast
+  - id: openknx-thelsing
+    peer: openknx_thelsing
+    tier: manual
+    profiles:
+      - secure_future
+      - group_io
+      - dpt_matrix
+    capabilities:
+      - group_value_read_write
+      - dpt_codec
+      - secure_future

@@ -872,25 +872,41 @@ impl CemiFrame {
             return Err(KnxError::frame_too_short(npdu_len, buf.len()));
         }
 
-        // First NPDU byte: [TPCI(2 bits) | APCI(6 bits)]
-        // For standard data frames (TPCI=00), APCI bits map to:
-        //   0x00 = GroupValueRead, 0x40 = GroupValueResponse, 0x80 = GroupValueWrite
-        // Convert wire byte to internal 10-bit APCI format by using byte value directly
+        // Support both the historical compact test encoding used by this crate
+        // and the two-octet TPCI/APCI layout emitted by external stacks such as
+        // XKNX. The latter uses a first byte with only TPCI/APCI high bits and a
+        // second byte carrying the APCI service plus compact payload bits.
         let apci_byte1 = buf.get_u8();
-        let apci_raw = apci_byte1 as u16; // maps directly to internal APCI format
-        let apci = Apci::decode(apci_raw);
-
-        let frame_data = if npdu_len <= 1 {
-            // Small data embedded in low 6 bits of first byte
-            let small = apci_byte1 & 0x3F;
-            if small != 0 {
-                vec![small]
+        let (apci, frame_data) = if npdu_len >= 2 && (apci_byte1 & 0xFC) == 0 {
+            let apci_byte2 = buf.get_u8();
+            let apci_raw = (((apci_byte1 & 0x03) as u16) << 8) | apci_byte2 as u16;
+            let apci = Apci::decode(apci_raw);
+            let remaining_len = npdu_len - 2;
+            let frame_data = if remaining_len == 0 {
+                let small = apci_byte2 & 0x3F;
+                if small != 0 {
+                    vec![small]
+                } else {
+                    Vec::new()
+                }
             } else {
-                Vec::new()
-            }
+                buf[..remaining_len].to_vec()
+            };
+            (apci, frame_data)
         } else {
-            // Remaining npdu_len-1 bytes are data
-            buf[..npdu_len - 1].to_vec()
+            // Compact legacy layout: first NPDU byte maps directly to APCI.
+            let apci = Apci::decode(apci_byte1 as u16);
+            let frame_data = if npdu_len <= 1 {
+                let small = apci_byte1 & 0x3F;
+                if small != 0 {
+                    vec![small]
+                } else {
+                    Vec::new()
+                }
+            } else {
+                buf[..npdu_len - 1].to_vec()
+            };
+            (apci, frame_data)
         };
 
         Ok(Self {
@@ -972,6 +988,29 @@ mod tests {
         assert_eq!(decoded.source.to_string(), "1.2.3");
         assert_eq!(decoded.destination_group().unwrap().to_string(), "1/2/100");
         assert_eq!(decoded.data, vec![0x55]);
+    }
+
+    #[test]
+    fn test_cemi_decode_external_two_octet_apci() {
+        let decoded = CemiFrame::decode(&[
+            0x11, // L_Data.req
+            0x00, // additional info length
+            0xBC, // control 1
+            0xE0, // control 2, group destination
+            0x11, 0x65, // source 1.1.101
+            0x08, 0x02, // destination 1/0/2
+            0x03, // TPCI/APCI plus one payload octet
+            0x00, // TPCI + APCI high bits
+            0x80, // GroupValueWrite
+            0x80, // DPT5 payload
+        ])
+        .unwrap();
+
+        assert_eq!(decoded.message_code, MessageCode::LDataReq);
+        assert!(matches!(decoded.apci, Apci::GroupValueWrite));
+        assert_eq!(decoded.source.to_string(), "1.1.101");
+        assert_eq!(decoded.destination_group().unwrap().to_string(), "1/0/2");
+        assert_eq!(decoded.data, vec![0x80]);
     }
 
     #[test]

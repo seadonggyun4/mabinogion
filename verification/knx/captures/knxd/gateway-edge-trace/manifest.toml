@@ -1,0 +1,12 @@
+version = 1
+id = "knxd-gateway-edge-trace"
+source = "knxd gateway and reconnect trace seed"
+source_tool = "knxd"
+license_note = "Curated trace summary only; Debian knxd packages are not vendored."
+protocol_area = "gateway_resilience"
+profile_ids = ["tunnel_resilience", "heartbeat_timeout", "routing_busmonitor"]
+capability_ids = ["tunneling_connect", "connection_state", "sequence_ack_retry", "heartbeat_timeout", "routing_multicast"]
+expected_behavior = "Bad channels, stale channels, duplicate/out-of-order/fatal sequence, and unsupported routing are classified predictably."
+ci_executable = false
+curation_state = "seeded"
+notes = "Captures knxd-style gateway edge behavior as a static trace summary; live daemon execution stays in ignored interop."

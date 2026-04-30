@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "peer": "xknx",
+  "protocol_area": "tunnelling_group_io",
+  "profile_ids": ["xknx_canary", "group_io"],
+  "capability_ids": ["discovery", "tunneling_connect", "connection_state", "group_value_read_write"],
+  "steps": [
+    {
+      "id": "discover",
+      "kind": "knxnet_ip_search",
+      "request": "SearchRequest",
+      "expect": "SearchResponse from loopback SUT"
+    },
+    {
+      "id": "description",
+      "kind": "knxnet_ip_description",
+      "request": "DescriptionRequest",
+      "expect": "DescriptionResponse with Core and Tunnelling service families"
+    },
+    {
+      "id": "direct-tunnel-state",
+      "kind": "tunnel_lifecycle",
+      "request": "ConnectRequest + ConnectionStateRequest + DisconnectRequest",
+      "expect": "NoError state and clean disconnect"
+    },
+    {
+      "id": "group-round-trip",
+      "kind": "group_value_round_trip",
+      "group_address": "1/0/1",
+      "value": 42,
+      "expect": "GroupValueRead returns 42"
+    }
+  ],
+  "expected_outcomes": {
+    "discovery_ok": true,
+    "tunnel_connect_ok": true,
+    "group_write_ok": true,
+    "group_read_ok": true,
+    "round_trip_value": 42
+  }
+}

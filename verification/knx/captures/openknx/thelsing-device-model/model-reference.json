@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tool": "openknx_thelsing",
+  "model_kind": "metadata_only",
+  "group_objects": [
+    {"name": "LightSwitch", "address": "1/0/1", "dpt": "1.001", "capability": "group_value_read_write"},
+    {"name": "RoomTemperature", "address": "1/0/3", "dpt": "9.001", "capability": "dpt_codec"},
+    {"name": "HvacMode", "address": "1/0/8", "dpt": "20.102", "capability": "dpt_codec"}
+  ],
+  "secure": {
+    "tracked": true,
+    "implemented": false,
+    "capability": "secure_future"
+  }
+}

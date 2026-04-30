@@ -1,0 +1,12 @@
+version = 1
+id = "openknx-thelsing-device-model"
+source = "OpenKNX/thelsing device-model reference seed"
+source_tool = "openknx_thelsing"
+license_note = "Metadata-only reference; no OpenKNX firmware source, generated ETS database, or GPL code is vendored."
+protocol_area = "device_model_reference"
+profile_ids = ["secure_future", "group_io", "dpt_matrix"]
+capability_ids = ["dpt_codec", "group_value_read_write", "secure_future"]
+expected_behavior = "DPT/group model metadata shapes future device tests while KNX Secure remains a future marker."
+ci_executable = false
+curation_state = "seeded"
+notes = "Manual corpus seed for device-model shaping; production crate must not depend on OpenKNX sources."

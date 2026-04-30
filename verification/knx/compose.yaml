@@ -1,0 +1,65 @@
+services:
+  xknx-canary:
+    build:
+      context: ../..
+      dockerfile: verification/knx/harness/xknx/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-knx-interop/xknx
+    entrypoint:
+      - bash
+      - /workspace/verification/knx/harness/xknx/run.sh
+
+  calimero-tools:
+    build:
+      context: ../..
+      dockerfile: verification/knx/harness/calimero-tools/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-knx-interop/calimero-tools
+    entrypoint:
+      - bash
+      - /workspace/verification/knx/harness/calimero-tools/run.sh
+
+  knxd:
+    build:
+      context: ../..
+      dockerfile: verification/knx/harness/knxd/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-knx-interop/knxd
+    entrypoint:
+      - bash
+      - /workspace/verification/knx/harness/knxd/run.sh
+
+  knxjs:
+    build:
+      context: ../..
+      dockerfile: verification/knx/harness/knxjs/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-knx-interop/knxjs
+    entrypoint:
+      - bash
+      - /workspace/verification/knx/harness/knxjs/run.sh
+
+  openknx-thelsing:
+    build:
+      context: ../..
+      dockerfile: verification/knx/harness/openknx-thelsing/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-knx-interop/openknx-thelsing
+    entrypoint:
+      - bash
+      - /workspace/verification/knx/harness/openknx-thelsing/run.sh

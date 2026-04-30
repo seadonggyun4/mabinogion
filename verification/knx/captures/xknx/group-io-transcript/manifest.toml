@@ -1,0 +1,12 @@
+version = 1
+id = "xknx-group-io-transcript"
+source = "Phase 2/3 XKNX shared transcript seed"
+source_tool = "xknx"
+license_note = "Curated transcript metadata only; no XKNX source or generated binary artifact is vendored."
+protocol_area = "tunnelling_group_io"
+profile_ids = ["xknx_canary", "group_io"]
+capability_ids = ["discovery", "tunneling_connect", "connection_state", "group_value_read_write"]
+expected_behavior = "Search and description succeed, tunnelling state succeeds, and group write/read returns value 42."
+ci_executable = false
+curation_state = "seeded"
+notes = "Seeded from the shared Phase 3 transcript schema so replay tests can validate the shape without launching Python."

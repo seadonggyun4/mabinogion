@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tool": "calimero_tools",
+  "packets": [
+    {"direction": "client_to_sut", "service": "SearchRequest", "purpose": "Discover loopback SUT"},
+    {"direction": "sut_to_client", "service": "SearchResponse", "purpose": "Return control endpoint and service families"},
+    {"direction": "client_to_sut", "service": "DescriptionRequest", "purpose": "Request device description"},
+    {"direction": "sut_to_client", "service": "DescriptionResponse", "purpose": "Return DeviceInfo and SupportedServiceFamilies DIBs"},
+    {"direction": "client_to_sut", "service": "TunnellingRequest", "purpose": "Process communication GroupValueWrite"},
+    {"direction": "monitor", "service": "L_Busmon.ind", "purpose": "Passive cEMI monitor classification"}
+  ]
+}

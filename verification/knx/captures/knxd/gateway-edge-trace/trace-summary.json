@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tool": "knxd",
+  "events": [
+    {"id": "connect", "classification": "tunnel_connected", "expected_status": "0x00"},
+    {"id": "stale-channel", "classification": "connection_state_error", "expected_status": "0x21"},
+    {"id": "duplicate-sequence", "classification": "duplicate_sequence", "expected_action": "ack_only"},
+    {"id": "out-of-order-sequence", "classification": "out_of_order_sequence", "expected_action": "ack_and_warn"},
+    {"id": "fatal-desync", "classification": "fatal_sequence_desync", "expected_action": "disconnect"},
+    {"id": "routing-unsupported", "classification": "unsupported_feature", "expected_action": "record_without_default_lane_failure"}
+  ]
+}

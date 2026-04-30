@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "target": "xknx-canary",
+  "peer": "xknx",
+  "sut_addr": "127.0.0.1:3671",
+  "capabilities": [
+    {"id": "discovery", "status": "passed", "detail": "SearchResponse received"},
+    {"id": "description", "status": "passed", "detail": "DescriptionResponse received"},
+    {"id": "tunneling_connect", "status": "passed", "detail": "Connect/state/disconnect succeeded"},
+    {"id": "connection_state", "status": "passed", "detail": "ConnectionState returned success"},
+    {"id": "group_value_read_write", "status": "passed", "detail": "GroupValueWrite/Read round trip"}
+  ],
+  "steps": [
+    {"id": "tool_version", "status": "passed", "detail": "3.15.0"},
+    {"id": "search_request", "status": "passed", "detail": "SearchResponse"},
+    {"id": "description_request", "status": "passed", "detail": "DescriptionResponse"},
+    {"id": "direct_tunnel", "status": "passed", "detail": "NoError"},
+    {"id": "group_round_trip", "status": "passed", "detail": "1/0/1=42"}
+  ],
+  "failure_category": null,
+  "errors": [],
+  "artifacts": {
+    "group_address": "1/0/1",
+    "requested_write_value": 42,
+    "round_trip_value": 42,
+    "xknx_version": "3.15.0"
+  }
+}

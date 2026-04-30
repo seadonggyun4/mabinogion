@@ -12,6 +12,7 @@ A KNXnet/IP protocol simulator implementing the KNX IP communication standard fo
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
 - [Integration](#integration)
+- [Verification Strategy](#verification-strategy)
 - [Error Handling](#error-handling)
 
 ---
@@ -19,6 +20,19 @@ A KNXnet/IP protocol simulator implementing the KNX IP communication standard fo
 ## Overview
 
 The `mabi-knx` crate provides a KNXnet/IP server simulator that implements the tunneling protocol for building automation testing. It supports group communication, multiple datapoint types, and integrates with the Mabinogion framework for scenario-based testing and chaos engineering.
+
+### Verification Strategy
+
+For the verification architecture that brings KNX up to the same operating
+model as the stabilized OPC UA and BACnet simulators, see
+[KNX Verification Strategy](./verification-strategy.md).
+
+The current source-of-truth artifacts are:
+
+- [KNX Verification Baseline](./verification-baseline.md)
+- [KNX Verification Contract](./verification-contract.yaml)
+- [KNX Self-Contained Interop Plane](../../verification/knx/README.md)
+- [KNX Capture Corpus](../../verification/knx/captures/README.md)
 
 ### Module Structure
 

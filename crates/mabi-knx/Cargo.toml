@@ -33,3 +33,5 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+serde_yaml = { workspace = true }
+toml = { workspace = true }

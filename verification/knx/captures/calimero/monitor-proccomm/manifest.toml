@@ -1,0 +1,12 @@
+version = 1
+id = "calimero-monitor-proccomm"
+source = "Calimero Tools monitor and process communication seed"
+source_tool = "calimero_tools"
+license_note = "Curated packet summary only; Calimero artifacts remain external verification tooling."
+protocol_area = "monitor_proccomm"
+profile_ids = ["device_management", "group_io", "routing_busmonitor"]
+capability_ids = ["discovery", "description", "group_value_read_write", "busmonitor", "device_management_property"]
+expected_behavior = "Discovery, description, process communication, and monitor-style cEMI service mapping are stable."
+ci_executable = false
+curation_state = "seeded"
+notes = "Represents Calimero-style Discover, Description, ProcComm, and NetworkMonitor evidence without requiring JVM execution in default tests."

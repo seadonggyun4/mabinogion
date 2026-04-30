@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "peer": "calimero_tools",
+  "protocol_area": "monitor_proccomm",
+  "profile_ids": ["device_management", "group_io", "routing_busmonitor"],
+  "capability_ids": ["discovery", "description", "group_value_read_write", "busmonitor", "device_management_property"],
+  "steps": [
+    {
+      "id": "discover",
+      "kind": "knxnet_ip_service",
+      "request": "SearchRequest",
+      "expect": "SearchResponse"
+    },
+    {
+      "id": "describe",
+      "kind": "knxnet_ip_service",
+      "request": "DescriptionRequest",
+      "expect": "DescriptionResponse"
+    },
+    {
+      "id": "proccomm-write",
+      "kind": "cemi_group_write",
+      "request": "L_Data.req GroupValueWrite 1/0/1=42",
+      "expect": "TunnellingAck and table update"
+    },
+    {
+      "id": "network-monitor",
+      "kind": "cemi_monitor",
+      "request": "L_Busmon.ind summary",
+      "expect": "Bus monitor cEMI service classified"
+    }
+  ],
+  "expected_outcomes": {
+    "service_mapping_ok": true,
+    "proccomm_round_trip_ok": true,
+    "busmonitor_capture_ok": true
+  }
+}

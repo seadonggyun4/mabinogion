@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "peer": "knxd",
+  "protocol_area": "gateway_resilience",
+  "profile_ids": ["tunnel_resilience", "heartbeat_timeout", "routing_busmonitor"],
+  "capability_ids": ["tunneling_connect", "connection_state", "sequence_ack_retry", "heartbeat_timeout", "routing_multicast"],
+  "steps": [
+    {
+      "id": "connect",
+      "kind": "tunnel_lifecycle",
+      "request": "ConnectRequest",
+      "expect": "ConnectResponse NoError"
+    },
+    {
+      "id": "stale-channel",
+      "kind": "connection_state",
+      "request": "ConnectionStateRequest for removed channel",
+      "expect": "0x21 KNX connection-id error"
+    },
+    {
+      "id": "duplicate-sequence",
+      "kind": "sequence",
+      "request": "repeat sequence 0",
+      "expect": "ACK without duplicate state mutation"
+    },
+    {
+      "id": "fatal-desync",
+      "kind": "sequence",
+      "request": "sequence 5 when expected 0",
+      "expect": "FatalDesync and reconnect required"
+    },
+    {
+      "id": "routing-unsupported",
+      "kind": "routing",
+      "request": "RoutingIndication in single-container SUT topology",
+      "expect": "unsupported_feature classification"
+    }
+  ],
+  "expected_outcomes": {
+    "stale_channel_error": "0x21",
+    "duplicate_sequence_ack": true,
+    "fatal_desync_recorded": true,
+    "routing_unsupported_recorded": true
+  }
+}
