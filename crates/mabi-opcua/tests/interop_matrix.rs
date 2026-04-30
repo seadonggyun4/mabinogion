@@ -34,7 +34,12 @@ fn manifest_path() -> PathBuf {
 }
 
 fn repo_root(manifest_dir: &Path) -> PathBuf {
-    manifest_dir.parent().unwrap().parent().unwrap().to_path_buf()
+    manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn docker_readiness() -> Result<(), String> {
@@ -42,10 +47,7 @@ fn docker_readiness() -> Result<(), String> {
     match docker_version {
         Ok(output) if output.status.success() => {}
         Ok(output) => {
-            return Err(format!(
-                "docker CLI unavailable (status {})",
-                output.status
-            ));
+            return Err(format!("docker CLI unavailable (status {})", output.status));
         }
         Err(error) => return Err(format!("docker CLI unavailable: {error}")),
     }

@@ -42,10 +42,7 @@ fn property_fixture_envs(
 ) -> Vec<(&'static str, String)> {
     vec![
         ("MABI_BACNET_SUT_ADDR", sut_addr.to_string()),
-        (
-            "MABI_BACNET_DEVICE_INSTANCE",
-            device_instance.to_string(),
-        ),
+        ("MABI_BACNET_DEVICE_INSTANCE", device_instance.to_string()),
         (
             "MABI_BACNET_OBJECT_ID",
             format!("analog-output,{object_instance}"),
@@ -55,15 +52,9 @@ fn property_fixture_envs(
             "analog-output".to_string(),
         ),
         ("MABI_BACNET_OBJECT_TYPE_CAMEL", "analogOutput".to_string()),
-        (
-            "MABI_BACNET_OBJECT_INSTANCE",
-            object_instance.to_string(),
-        ),
+        ("MABI_BACNET_OBJECT_INSTANCE", object_instance.to_string()),
         ("MABI_BACNET_PROPERTY_ID", "present-value".to_string()),
-        (
-            "MABI_BACNET_PROPERTY_ID_CAMEL",
-            "presentValue".to_string(),
-        ),
+        ("MABI_BACNET_PROPERTY_ID_CAMEL", "presentValue".to_string()),
         (
             "MABI_BACNET_RPM_PROPERTIES_HYPHEN",
             "present-value,object-name".to_string(),
@@ -76,10 +67,7 @@ fn property_fixture_envs(
             "MABI_BACNET_EXPECTED_OBJECT_NAME",
             format!("AO_{object_instance}"),
         ),
-        (
-            "MABI_BACNET_WRITE_VALUE",
-            INTEROP_WRITE_VALUE.to_string(),
-        ),
+        ("MABI_BACNET_WRITE_VALUE", INTEROP_WRITE_VALUE.to_string()),
         (
             "MABI_BACNET_TRANSCRIPT_PATH",
             transcript_path.display().to_string(),
@@ -99,11 +87,7 @@ fn transcript_debug_hint(transcript_path: &Path) -> String {
     }
 }
 
-fn assert_process_success(
-    peer_name: &str,
-    transcript_path: &Path,
-    output: &std::process::Output,
-) {
+fn assert_process_success(peer_name: &str, transcript_path: &Path, output: &std::process::Output) {
     if output.status.success() {
         return;
     }
@@ -120,7 +104,10 @@ fn assert_process_success(
 fn assert_interop_policies() {
     let verification = contract();
     assert_eq!(verification.policies.interop_lane, "ignored");
-    assert_eq!(verification.policies.default_workspace_lane, "deterministic");
+    assert_eq!(
+        verification.policies.default_workspace_lane,
+        "deterministic"
+    );
 }
 
 #[tokio::test]

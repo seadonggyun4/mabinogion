@@ -91,8 +91,8 @@ pub async fn run_python_peer(
     envs: &[(&str, String)],
     timeout_budget: Duration,
 ) -> Output {
-    let python = std::env::var("MABI_BACNET_INTEROP_PYTHON")
-        .unwrap_or_else(|_| "python3".to_string());
+    let python =
+        std::env::var("MABI_BACNET_INTEROP_PYTHON").unwrap_or_else(|_| "python3".to_string());
 
     let mut command = Command::new(&python);
     command.arg(script);

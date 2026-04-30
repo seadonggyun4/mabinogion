@@ -28,7 +28,11 @@ impl BacnetServerHarness {
             }
         };
 
-        Self { server, handle, addr }
+        Self {
+            server,
+            handle,
+            addr,
+        }
     }
 
     pub fn addr(&self) -> std::net::SocketAddr {
@@ -49,4 +53,3 @@ impl BacnetServerHarness {
         }
     }
 }
-

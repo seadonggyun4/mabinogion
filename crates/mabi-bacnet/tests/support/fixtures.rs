@@ -6,8 +6,8 @@ use mabi_bacnet::object::property::{BACnetDate, BACnetTime};
 use mabi_bacnet::object::BACnetObject;
 use mabi_bacnet::prelude::{
     AnalogInput, AnalogOutput, BACnetValue, Calendar, CalendarEntry, DateRange, FileObject,
-    LogDatum, ObjectId, ObjectRegistry, Schedule, ServerConfig, SpecialEvent,
-    SpecialEventPeriod, TimeValue, TrendLog,
+    LogDatum, ObjectId, ObjectRegistry, Schedule, ServerConfig, SpecialEvent, SpecialEventPeriod,
+    TimeValue, TrendLog,
 };
 
 pub struct PropertyFixture {

@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use mabi_bacnet::object::property::{BACnetDate, BACnetTime};
 use mabi_bacnet::prelude::{
-    ConfirmedService, CommunicationControlState, ObjectType, PropertyId, ReinitializedState,
-    UnconfirmedService, BACnetServer,
+    BACnetServer, CommunicationControlState, ConfirmedService, ObjectType, PropertyId,
+    ReinitializedState, UnconfirmedService,
 };
 
 use support::assertions::{
@@ -97,7 +97,9 @@ async fn create_delete_profile_creates_network_visible_objects() {
         .expect("CreateObject should send");
     let create_ack = client.recv_packet(Duration::from_secs(2)).await;
     match &create_ack.apdu {
-        Some(support::client::ApduFrame::ComplexAck { invoke_id, .. }) => assert_eq!(*invoke_id, 13),
+        Some(support::client::ApduFrame::ComplexAck { invoke_id, .. }) => {
+            assert_eq!(*invoke_id, 13)
+        }
         other => panic!("expected create-object complex ack, got {other:?}"),
     }
 
@@ -217,11 +219,7 @@ async fn device_control_profile_mutates_and_resets_device_state() {
         .await
         .expect("ReinitializeDevice should send");
     let reinit_ack = client.recv_packet(Duration::from_secs(2)).await;
-    expect_simple_ack(
-        &reinit_ack,
-        17,
-        ConfirmedService::ReinitializeDevice as u8,
-    );
+    expect_simple_ack(&reinit_ack, 17, ConfirmedService::ReinitializeDevice as u8);
     assert_eq!(
         device.communication_control(),
         CommunicationControlState::Enabled

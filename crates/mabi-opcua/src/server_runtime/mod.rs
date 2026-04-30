@@ -684,8 +684,9 @@ fn build_transport_config(
 
 fn build_internal_managers(
     catalog: Option<&GeneratedNodeCatalog>,
-    #[cfg(feature = "experimental-namespace-api")]
-    namespace_managers: &[Arc<dyn NamespaceManagerPlugin>],
+    #[cfg(feature = "experimental-namespace-api")] namespace_managers: &[Arc<
+        dyn NamespaceManagerPlugin,
+    >],
 ) -> Vec<Arc<dyn NodeManager>> {
     let mut managers: Vec<Arc<dyn NodeManager>> = Vec::new();
 

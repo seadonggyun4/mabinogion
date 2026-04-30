@@ -1037,7 +1037,8 @@ impl AddressSpaceRuntime {
     }
 
     fn manager_for_namespace(&self, namespace_index: u16) -> Option<Arc<dyn NodeManager>> {
-        self.namespace_registry.resolve_manager_handle(namespace_index)
+        self.namespace_registry
+            .resolve_manager_handle(namespace_index)
     }
 
     fn paginate_descriptions(

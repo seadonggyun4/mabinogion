@@ -5,12 +5,13 @@ use std::time::Duration;
 use mabi_bacnet::network::bvlc::BvlcHeader;
 use mabi_bacnet::network::BvlcResultCode;
 use mabi_bacnet::prelude::{
-    BbmdConfig, BvlcFunction, BvlcMessage, ConfirmedService, ObjectType, PropertyId, TsmConfig,
-    BACnetServer,
+    BACnetServer, BbmdConfig, BvlcFunction, BvlcMessage, ConfirmedService, ObjectType, PropertyId,
+    TsmConfig,
 };
 
 use support::assertions::{
-    assert_capability_integration_coverage, assert_profile_contract, decode_atomic_read_stream_ack_data,
+    assert_capability_integration_coverage, assert_profile_contract,
+    decode_atomic_read_stream_ack_data,
 };
 use support::client::{
     encode_atomic_read_file_stream_request, encode_read_property_request, encode_who_is_all,
@@ -46,7 +47,10 @@ async fn segmentation_profile_reassembles_segmented_complex_acks() {
         .collect_segmented_response(first_packet, Duration::from_secs(2))
         .await;
     assert_eq!(segmented.invoke_id, 31);
-    assert_eq!(segmented.service_choice, ConfirmedService::AtomicReadFile as u8);
+    assert_eq!(
+        segmented.service_choice,
+        ConfirmedService::AtomicReadFile as u8
+    );
     assert!(
         segmented.segment_count > 1,
         "response should be segmented under a low max APDU length"
@@ -63,8 +67,11 @@ async fn bbmd_fdr_profile_registers_foreign_devices_without_docker() {
     assert_profile_contract("bbmd_fdr", &["bbmd_foreign_device"]);
     assert_capability_integration_coverage("bbmd_foreign_device", "deterministic");
 
-    let server = BACnetServer::new(loopback_server_config(4402), segmentation_fixture().registry)
-        .with_bbmd_config(BbmdConfig::enabled());
+    let server = BACnetServer::new(
+        loopback_server_config(4402),
+        segmentation_fixture().registry,
+    )
+    .with_bbmd_config(BbmdConfig::enabled());
     let harness = BacnetServerHarness::start(server).await;
     let client = LoopbackClient::bind().await;
 
@@ -80,7 +87,10 @@ async fn bbmd_fdr_profile_registers_foreign_devices_without_docker() {
         .expect("foreign-device registration should send");
     let result_packet = client.recv_packet(Duration::from_secs(2)).await;
     assert_eq!(result_packet.bvlc.header.function, BvlcFunction::Result);
-    assert_eq!(result_packet.bvlc.result_code, Some(BvlcResultCode::Success));
+    assert_eq!(
+        result_packet.bvlc.result_code,
+        Some(BvlcResultCode::Success)
+    );
     let foreign_addr = match client.local_addr() {
         std::net::SocketAddr::V4(addr) => addr,
         other => panic!("expected IPv4 client address, got {other}"),

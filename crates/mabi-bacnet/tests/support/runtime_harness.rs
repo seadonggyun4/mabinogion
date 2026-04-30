@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use mabi_runtime::{ProtocolDriverRegistry, ProtocolLaunchSpec, RuntimeExtensions, RuntimeSession, RuntimeSessionSpec};
+use mabi_runtime::{
+    ProtocolDriverRegistry, ProtocolLaunchSpec, RuntimeExtensions, RuntimeSession,
+    RuntimeSessionSpec,
+};
 
 use mabi_bacnet::runtime;
 
@@ -33,4 +36,3 @@ pub async fn start_runtime_session(device_instance: u32) -> RuntimeSession {
         .expect("runtime session should start");
     session
 }
-

@@ -3,21 +3,19 @@ mod support;
 use std::time::Duration;
 
 use mabi_bacnet::prelude::{
-    BACnetValue, ConfirmedService, PropertyId, ReadRangeRequest, BACnetServer,
+    BACnetServer, BACnetValue, ConfirmedService, PropertyId, ReadRangeRequest,
 };
 
 use support::assertions::{
-    assert_capability_integration_coverage, assert_profile_contract,
-    decode_atomic_read_stream_ack, decode_atomic_write_stream_ack, decode_read_property_ack,
-    decode_read_range_ack,
+    assert_capability_integration_coverage, assert_profile_contract, decode_atomic_read_stream_ack,
+    decode_atomic_write_stream_ack, decode_read_property_ack, decode_read_range_ack,
 };
 use support::client::{
     encode_atomic_read_file_stream_request, encode_atomic_write_file_stream_request,
     encode_read_property_request, encode_read_range_by_position_request, LoopbackClient,
 };
 use support::fixtures::{
-    file_and_trend_fixture, loopback_server_config, make_date, make_time,
-    schedule_calendar_fixture,
+    file_and_trend_fixture, loopback_server_config, make_date, make_time, schedule_calendar_fixture,
 };
 use support::server_harness::BacnetServerHarness;
 

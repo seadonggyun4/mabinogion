@@ -38,9 +38,15 @@ async fn open62541_profile_smoke_contract() {
         None,
         100,
     );
-    assert!(browse.references.iter().any(|reference| reference.node_id == folder));
+    assert!(browse
+        .references
+        .iter()
+        .any(|reference| reference.node_id == folder));
     assert_eq!(
-        server.read_value(&value).value().and_then(|value| value.as_f64()),
+        server
+            .read_value(&value)
+            .value()
+            .and_then(|value| value.as_f64()),
         Some(21.5)
     );
 
@@ -67,7 +73,10 @@ async fn milo_profile_smoke_contract() {
 
     server.start().await.unwrap();
     let value = server.read_value(&NodeId::string(2, "Interop.Milo.Value"));
-    assert_eq!(value.value().and_then(|value| value.as_str()), Some("ready"));
+    assert_eq!(
+        value.value().and_then(|value| value.as_str()),
+        Some("ready")
+    );
     server.stop().await.unwrap();
 }
 

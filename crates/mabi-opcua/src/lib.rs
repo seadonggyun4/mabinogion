@@ -189,6 +189,11 @@ pub use sdk::subscription::{
 };
 
 // Security re-exports
+#[cfg(feature = "experimental-namespace-api")]
+pub use namespace::{
+    NamespaceDiagnostics, NamespaceManagerPlugin, NamespaceOperation, NamespaceRegistration,
+    NamespaceRuntimeSnapshot, NamespaceTypeQuery,
+};
 pub use runtime::{descriptor, driver};
 pub use security::{
     AsymmetricAlgorithm, AuthenticationResult, Certificate, CertificateManager,
@@ -198,11 +203,6 @@ pub use security::{
     SecurityContext, SecurityManager, SecurityManagerConfig, SecurityPolicyConfig,
     SecurityPolicyProvider, SignatureResult, SymmetricAlgorithm, UserAuthConfig, UserAuthenticator,
     UserCredentials, UserToken, ValidationResult,
-};
-#[cfg(feature = "experimental-namespace-api")]
-pub use namespace::{
-    NamespaceDiagnostics, NamespaceManagerPlugin, NamespaceOperation, NamespaceRegistration,
-    NamespaceRuntimeSnapshot, NamespaceTypeQuery,
 };
 
 /// Canonical configuration surface for architecture-level composition.

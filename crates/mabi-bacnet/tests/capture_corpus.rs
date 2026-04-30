@@ -172,8 +172,14 @@ fn capture_catalog_matches_phase_4_policy_contract() {
         }
     }
 
-    assert!(saw_yabe, "catalog should contain at least one YABE seed capture");
-    assert!(saw_vts, "catalog should contain at least one VTS seed capture");
+    assert!(
+        saw_yabe,
+        "catalog should contain at least one YABE seed capture"
+    );
+    assert!(
+        saw_vts,
+        "catalog should contain at least one VTS seed capture"
+    );
 }
 
 #[test]
@@ -196,7 +202,9 @@ fn capture_artifacts_are_rooted_and_replayable() {
         for artifact in &capture.artifacts {
             let artifact_path = resolve_capture_path(&artifact.path)
                 .canonicalize()
-                .unwrap_or_else(|_| panic!("artifact {} missing for {}", artifact.path, capture.id));
+                .unwrap_or_else(|_| {
+                    panic!("artifact {} missing for {}", artifact.path, capture.id)
+                });
             assert!(
                 artifact_path.starts_with(&root),
                 "artifact {} for {} escapes capture root",

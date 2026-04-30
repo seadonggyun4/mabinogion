@@ -5,9 +5,9 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use mabi_opcua::{
-    AddressSpace, AddressSpaceConfig, AttributeId, BrowseDirection, DataValue, NamespaceDiagnostics,
-    NamespaceManagerPlugin, NamespaceOperation, NamespaceRegistration, NamespaceRuntimeSnapshot,
-    NodeId, OpcUaServer, Variant,
+    AddressSpace, AddressSpaceConfig, AttributeId, BrowseDirection, DataValue,
+    NamespaceDiagnostics, NamespaceManagerPlugin, NamespaceOperation, NamespaceRegistration,
+    NamespaceRuntimeSnapshot, NodeId, OpcUaServer, Variant,
 };
 
 #[derive(Default)]
@@ -124,7 +124,10 @@ fn experimental_namespace_manager_materializes_and_falls_back_to_canonical_runti
         Some(42.0)
     );
     assert_eq!(
-        address_space.read_value(&value).value().and_then(|value| value.as_f64()),
+        address_space
+            .read_value(&value)
+            .value()
+            .and_then(|value| value.as_f64()),
         Some(12.5)
     );
 
@@ -206,7 +209,8 @@ impl NamespaceManagerPlugin for ArcDemoNamespaceManager {
         registration: &NamespaceRegistration,
         snapshot: &NamespaceRuntimeSnapshot,
     ) {
-        self.0.on_runtime_start(address_space, registration, snapshot);
+        self.0
+            .on_runtime_start(address_space, registration, snapshot);
     }
 
     fn diagnostics_snapshot(

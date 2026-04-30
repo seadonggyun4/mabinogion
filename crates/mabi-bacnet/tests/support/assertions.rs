@@ -53,13 +53,22 @@ pub struct ReadRangeAckSummary {
 
 pub fn assert_profile_contract(id: &str, capabilities: &[&str]) {
     let profile = contract::profile(id);
-    assert_eq!(profile.lane, "deterministic", "profile {id} should stay deterministic");
+    assert_eq!(
+        profile.lane, "deterministic",
+        "profile {id} should stay deterministic"
+    );
     assert_eq!(
         profile.phase_introduced, "phase_1",
         "profile {id} should remain a phase_1 profile"
     );
-    let expected: Vec<String> = capabilities.iter().map(|capability| capability.to_string()).collect();
-    assert_eq!(profile.capabilities, expected, "profile {id} capabilities drifted");
+    let expected: Vec<String> = capabilities
+        .iter()
+        .map(|capability| capability.to_string())
+        .collect();
+    assert_eq!(
+        profile.capabilities, expected,
+        "profile {id} capabilities drifted"
+    );
 }
 
 pub fn assert_capability_integration_coverage(id: &str, expected: &str) {
@@ -122,10 +131,18 @@ pub fn assert_active_peer_transcript(
         );
     }
     if expectations.require_read {
-        assert!(transcript.read_ok, "{} read should succeed", expectations.peer);
+        assert!(
+            transcript.read_ok,
+            "{} read should succeed",
+            expectations.peer
+        );
     }
     if expectations.require_write {
-        assert!(transcript.write_ok, "{} write should succeed", expectations.peer);
+        assert!(
+            transcript.write_ok,
+            "{} write should succeed",
+            expectations.peer
+        );
     }
     if expectations.require_property_multiple {
         assert!(
@@ -173,7 +190,10 @@ pub fn assert_bacpypes3_canary_transcript(
 
 pub fn expect_i_am(packet: &ReceivedPacket, expected_device_instance: u32) {
     match &packet.apdu {
-        Some(ApduFrame::UnconfirmedRequest { service_choice, data }) => {
+        Some(ApduFrame::UnconfirmedRequest {
+            service_choice,
+            data,
+        }) => {
             assert_eq!(*service_choice, 0, "expected I-Am service");
             let iam = IAmResponse::decode(data).expect("I-Am payload should decode");
             assert_eq!(
@@ -192,7 +212,10 @@ pub fn expect_simple_ack(packet: &ReceivedPacket, invoke_id: u8, service_choice:
             service_choice: got_service,
         }) => {
             assert_eq!(*got_invoke_id, invoke_id, "unexpected invoke id");
-            assert_eq!(*got_service, service_choice, "unexpected simple ack service");
+            assert_eq!(
+                *got_service, service_choice,
+                "unexpected simple ack service"
+            );
         }
         other => panic!("expected simple ack, got {other:?}"),
     }
@@ -228,13 +251,21 @@ pub fn decode_read_property_ack(packet: &ReceivedPacket) -> ReadPropertyAck {
     let mut decoder = ApduDecoder::new(service_data);
 
     let (tag0, is_ctx0, _) = decoder.decode_tag_info().expect("object tag should decode");
-    assert!(is_ctx0 && tag0 == 0, "expected object identifier context tag");
+    assert!(
+        is_ctx0 && tag0 == 0,
+        "expected object identifier context tag"
+    );
     let object_id = decoder
         .decode_object_identifier()
         .expect("object id should decode");
 
-    let (tag1, is_ctx1, len1) = decoder.decode_tag_info().expect("property tag should decode");
-    assert!(is_ctx1 && tag1 == 1, "expected property identifier context tag");
+    let (tag1, is_ctx1, len1) = decoder
+        .decode_tag_info()
+        .expect("property tag should decode");
+    assert!(
+        is_ctx1 && tag1 == 1,
+        "expected property identifier context tag"
+    );
     let property_raw = decoder
         .decode_unsigned(len1)
         .expect("property id should decode");
@@ -244,13 +275,23 @@ pub fn decode_read_property_ack(packet: &ReceivedPacket) -> ReadPropertyAck {
     if !decoder.is_empty() && !decoder.is_opening_tag(3) {
         let (tag2, is_ctx2, len2) = decoder.decode_tag_info().expect("array tag should decode");
         assert!(is_ctx2 && tag2 == 2, "expected array index context tag");
-        array_index = Some(decoder.decode_unsigned(len2).expect("array index should decode"));
+        array_index = Some(
+            decoder
+                .decode_unsigned(len2)
+                .expect("array index should decode"),
+        );
     }
 
-    assert!(decoder.is_opening_tag(3), "expected property value opening tag");
+    assert!(
+        decoder.is_opening_tag(3),
+        "expected property value opening tag"
+    );
     decoder.read_u8().expect("opening tag should be consumed");
     let value = decode_value(&mut decoder);
-    assert!(decoder.is_closing_tag(3), "expected property value closing tag");
+    assert!(
+        decoder.is_closing_tag(3),
+        "expected property value closing tag"
+    );
 
     ReadPropertyAck {
         object_id,
@@ -271,18 +312,27 @@ pub fn decode_property_multiple_ack(packet: &ReceivedPacket) -> Vec<PropertyMult
 
     while !decoder.is_empty() {
         let (tag0, is_ctx0, _) = decoder.decode_tag_info().expect("object tag should decode");
-        assert!(is_ctx0 && tag0 == 0, "expected object identifier context tag");
+        assert!(
+            is_ctx0 && tag0 == 0,
+            "expected object identifier context tag"
+        );
         let object_id = decoder
             .decode_object_identifier()
             .expect("object id should decode");
 
-        assert!(decoder.is_opening_tag(1), "expected property list opening tag");
-        decoder.read_u8().expect("property list opening tag should consume");
+        assert!(
+            decoder.is_opening_tag(1),
+            "expected property list opening tag"
+        );
+        decoder
+            .read_u8()
+            .expect("property list opening tag should consume");
 
         let mut items = Vec::new();
         while !decoder.is_closing_tag(1) {
-            let (prop_tag, is_ctx, prop_len) =
-                decoder.decode_tag_info().expect("property item tag should decode");
+            let (prop_tag, is_ctx, prop_len) = decoder
+                .decode_tag_info()
+                .expect("property item tag should decode");
             assert!(is_ctx && prop_tag == 2, "expected property identifier tag");
             let property_id = PropertyId::from_u32(
                 decoder
@@ -293,8 +343,9 @@ pub fn decode_property_multiple_ack(packet: &ReceivedPacket) -> Vec<PropertyMult
 
             let mut array_index = None;
             if !decoder.is_empty() && !decoder.is_opening_tag(4) && !decoder.is_opening_tag(5) {
-                let (tag3, is_ctx3, len3) =
-                    decoder.decode_tag_info().expect("array index tag should decode");
+                let (tag3, is_ctx3, len3) = decoder
+                    .decode_tag_info()
+                    .expect("array index tag should decode");
                 assert!(is_ctx3 && tag3 == 3, "expected array index tag");
                 array_index = Some(decoder.decode_unsigned(len3).expect("array index decode"));
             }
@@ -326,7 +377,9 @@ pub fn decode_property_multiple_ack(packet: &ReceivedPacket) -> Vec<PropertyMult
             }
         }
 
-        decoder.read_u8().expect("property list closing tag should consume");
+        decoder
+            .read_u8()
+            .expect("property list closing tag should consume");
         results.push(PropertyMultipleObjectResult { object_id, items });
     }
 
@@ -342,7 +395,9 @@ pub fn decode_atomic_write_stream_ack(packet: &ReceivedPacket) -> i32 {
     let mut decoder = ApduDecoder::new(data);
     let (tag, is_context, len) = decoder.decode_tag_info().expect("ack tag should decode");
     assert!(is_context && tag == 0, "expected stream write context tag");
-    decoder.decode_signed(len).expect("write start position should decode")
+    decoder
+        .decode_signed(len)
+        .expect("write start position should decode")
 }
 
 pub fn decode_atomic_read_stream_ack(packet: &ReceivedPacket) -> AtomicReadFileStreamAck {
@@ -356,20 +411,32 @@ pub fn decode_atomic_read_stream_ack(packet: &ReceivedPacket) -> AtomicReadFileS
 
 pub fn decode_atomic_read_stream_ack_data(data: &[u8]) -> AtomicReadFileStreamAck {
     let mut decoder = ApduDecoder::new(data);
-    let (bool_tag, is_context, bool_len) = decoder.decode_tag_info().expect("EOF tag should decode");
+    let (bool_tag, is_context, bool_len) =
+        decoder.decode_tag_info().expect("EOF tag should decode");
     assert!(!is_context && bool_tag == 1, "expected application boolean");
     let eof = bool_len != 0;
 
     assert!(decoder.is_opening_tag(0), "expected stream opening tag");
-    decoder.read_u8().expect("stream opening tag should consume");
+    decoder
+        .read_u8()
+        .expect("stream opening tag should consume");
 
-    let (tag, is_context, len) = decoder.decode_tag_info().expect("start position should decode");
-    assert!(!is_context && tag == 3, "expected signed integer start position");
+    let (tag, is_context, len) = decoder
+        .decode_tag_info()
+        .expect("start position should decode");
+    assert!(
+        !is_context && tag == 3,
+        "expected signed integer start position"
+    );
     let start_position = decoder.decode_signed(len).expect("start position decode");
 
-    let (octet_tag, octet_ctx, octet_len) =
-        decoder.decode_tag_info().expect("file data tag should decode");
-    assert!(!octet_ctx && octet_tag == 6, "expected octet string file payload");
+    let (octet_tag, octet_ctx, octet_len) = decoder
+        .decode_tag_info()
+        .expect("file data tag should decode");
+    assert!(
+        !octet_ctx && octet_tag == 6,
+        "expected octet string file payload"
+    );
     let data = decoder
         .read_bytes(octet_len)
         .expect("file payload should decode")
@@ -398,7 +465,9 @@ pub fn decode_read_range_ack(packet: &ReceivedPacket) -> ReadRangeAckSummary {
         .decode_object_identifier()
         .expect("object id should decode");
 
-    let (tag1, is_ctx1, len1) = decoder.decode_tag_info().expect("property tag should decode");
+    let (tag1, is_ctx1, len1) = decoder
+        .decode_tag_info()
+        .expect("property tag should decode");
     assert!(is_ctx1 && tag1 == 1, "expected property id context tag");
     let property_id = PropertyId::from_u32(
         decoder
@@ -418,7 +487,9 @@ pub fn decode_read_range_ack(packet: &ReceivedPacket) -> ReadRangeAckSummary {
 
     let (tag4, is_ctx4, len4) = decoder.decode_tag_info().expect("item count should decode");
     assert!(is_ctx4 && tag4 == 4, "expected item count context tag");
-    let item_count = decoder.decode_unsigned(len4).expect("item count should decode");
+    let item_count = decoder
+        .decode_unsigned(len4)
+        .expect("item count should decode");
 
     assert!(decoder.is_opening_tag(5), "expected item data opening tag");
 
@@ -454,16 +525,10 @@ pub fn decode_value(decoder: &mut ApduDecoder<'_>) -> BACnetValue {
                 .to_vec(),
         ),
         7 => BACnetValue::CharacterString(
-            decoder
-                .decode_character_string(len)
-                .expect("string decode"),
+            decoder.decode_character_string(len).expect("string decode"),
         ),
         8 => BACnetValue::BitString(decoder.decode_bit_string(len).expect("bit string decode")),
-        9 => BACnetValue::Enumerated(
-            decoder
-                .decode_unsigned(len)
-                .expect("enumerated decode"),
-        ),
+        9 => BACnetValue::Enumerated(decoder.decode_unsigned(len).expect("enumerated decode")),
         10 => {
             let bytes = decoder.read_bytes(len).expect("date decode");
             BACnetValue::Date(BACnetDate {
@@ -502,6 +567,12 @@ fn decode_enumerated(decoder: &mut ApduDecoder<'_>) -> u32 {
 }
 
 pub fn assert_error_code(error: &ErrorAck, expected_class: ErrorClass, expected_code: ErrorCode) {
-    assert_eq!(error.error_class, expected_class as u32, "unexpected error class");
-    assert_eq!(error.error_code, expected_code as u32, "unexpected error code");
+    assert_eq!(
+        error.error_class, expected_class as u32,
+        "unexpected error class"
+    );
+    assert_eq!(
+        error.error_code, expected_code as u32,
+        "unexpected error code"
+    );
 }

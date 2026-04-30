@@ -7,7 +7,10 @@ fn perf_lane_policy_is_release_only_ignored() {
     let verification = contract();
 
     assert!(verification.baseline.perf_contract_present);
-    assert_eq!(verification.policies.default_workspace_lane, "deterministic");
+    assert_eq!(
+        verification.policies.default_workspace_lane,
+        "deterministic"
+    );
     assert_eq!(verification.policies.perf_lane, "release_only_ignored");
     assert!(
         verification.policies.default_perf_thresholds_forbidden,

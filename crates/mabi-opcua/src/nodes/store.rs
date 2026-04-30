@@ -718,7 +718,8 @@ impl AddressSpace {
         starting_node: &NodeId,
         elements: &[RelativePathElement],
     ) -> BrowsePathResult {
-        self.runtime.resolve_browse_path(self, starting_node, elements)
+        self.runtime
+            .resolve_browse_path(self, starting_node, elements)
     }
 
     // =========================================================================

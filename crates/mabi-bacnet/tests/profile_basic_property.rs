@@ -2,11 +2,11 @@ mod support;
 
 use std::time::Duration;
 
-use mabi_bacnet::prelude::{
-    BACnetValue, ConfirmedService, ErrorClass, ErrorCode, ObjectId, ObjectType, PropertyId,
-    UnconfirmedService, BACnetServer,
-};
 use mabi_bacnet::object::BACnetObject;
+use mabi_bacnet::prelude::{
+    BACnetServer, BACnetValue, ConfirmedService, ErrorClass, ErrorCode, ObjectId, ObjectType,
+    PropertyId, UnconfirmedService,
+};
 
 use support::assertions::{
     assert_capability_integration_coverage, assert_error_code, assert_profile_contract,
@@ -14,9 +14,8 @@ use support::assertions::{
     expect_simple_ack,
 };
 use support::client::{
-    encode_read_property_multiple_request, encode_read_property_request,
-    encode_who_is_all, encode_write_property_multiple_request, encode_write_property_request,
-    LoopbackClient,
+    encode_read_property_multiple_request, encode_read_property_request, encode_who_is_all,
+    encode_write_property_multiple_request, encode_write_property_request, LoopbackClient,
 };
 use support::fixtures::{loopback_server_config, property_fixture};
 use support::server_harness::BacnetServerHarness;

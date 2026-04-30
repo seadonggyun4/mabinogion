@@ -6,8 +6,8 @@ use tokio::time::timeout;
 
 use mabi_bacnet::object::property::{BACnetDate, BACnetTime};
 use mabi_bacnet::prelude::{
-    ApduDecoder, ApduEncoder, ApduType, BACnetValue, BvlcMessage, ConfirmedService, Npdu,
-    ObjectId, ObjectType, PropertyId, UnconfirmedService,
+    ApduDecoder, ApduEncoder, ApduType, BACnetValue, BvlcMessage, ConfirmedService, Npdu, ObjectId,
+    ObjectType, PropertyId, UnconfirmedService,
 };
 
 #[derive(Debug)]
@@ -93,7 +93,10 @@ impl LoopbackClient {
         dest: SocketAddr,
         message: BvlcMessage,
     ) -> std::io::Result<()> {
-        self.socket.send_to(&message.encode(), dest).await.map(|_| ())
+        self.socket
+            .send_to(&message.encode(), dest)
+            .await
+            .map(|_| ())
     }
 
     pub async fn send_confirmed_request(
@@ -163,7 +166,9 @@ impl LoopbackClient {
         let mut next_packet = Some(first);
 
         loop {
-            let packet = next_packet.take().expect("segmented packet should be present");
+            let packet = next_packet
+                .take()
+                .expect("segmented packet should be present");
             match packet.apdu {
                 Some(ApduFrame::SegmentedComplexAck {
                     invoke_id: packet_invoke_id,
@@ -306,11 +311,7 @@ pub fn encode_time_sync_request(date: BACnetDate, time: BACnetTime) -> Vec<u8> {
     encoder.into_bytes()
 }
 
-pub fn encode_atomic_write_file_stream_request(
-    instance: u32,
-    start: i32,
-    data: &[u8],
-) -> Vec<u8> {
+pub fn encode_atomic_write_file_stream_request(instance: u32, start: i32, data: &[u8]) -> Vec<u8> {
     let mut encoder = ApduEncoder::new();
     encoder.encode_object_identifier(ObjectId::new(ObjectType::File, instance));
     encoder.encode_opening_tag(0);
@@ -320,11 +321,7 @@ pub fn encode_atomic_write_file_stream_request(
     encoder.into_bytes()
 }
 
-pub fn encode_atomic_read_file_stream_request(
-    instance: u32,
-    start: i32,
-    count: u32,
-) -> Vec<u8> {
+pub fn encode_atomic_read_file_stream_request(instance: u32, start: i32, count: u32) -> Vec<u8> {
     let mut encoder = ApduEncoder::new();
     encoder.encode_object_identifier(ObjectId::new(ObjectType::File, instance));
     encoder.encode_opening_tag(0);
@@ -381,11 +378,15 @@ fn parse_apdu(bytes: &[u8]) -> Result<ApduFrame, String> {
 
     match apdu_type {
         ApduType::UnconfirmedRequest => Ok(ApduFrame::UnconfirmedRequest {
-            service_choice: *bytes.get(1).ok_or_else(|| "missing unconfirmed service".to_string())?,
+            service_choice: *bytes
+                .get(1)
+                .ok_or_else(|| "missing unconfirmed service".to_string())?,
             data: bytes.get(2..).unwrap_or_default().to_vec(),
         }),
         ApduType::SimpleAck => Ok(ApduFrame::SimpleAck {
-            invoke_id: *bytes.get(1).ok_or_else(|| "missing simple ack invoke id".to_string())?,
+            invoke_id: *bytes
+                .get(1)
+                .ok_or_else(|| "missing simple ack invoke id".to_string())?,
             service_choice: *bytes
                 .get(2)
                 .ok_or_else(|| "missing simple ack service".to_string())?,
@@ -393,11 +394,15 @@ fn parse_apdu(bytes: &[u8]) -> Result<ApduFrame, String> {
         ApduType::ComplexAck => {
             if (bytes[0] & 0x08) != 0 {
                 Ok(ApduFrame::SegmentedComplexAck {
-                    invoke_id: *bytes.get(1).ok_or_else(|| "missing segmented invoke id".to_string())?,
+                    invoke_id: *bytes
+                        .get(1)
+                        .ok_or_else(|| "missing segmented invoke id".to_string())?,
                     sequence_number: *bytes
                         .get(2)
                         .ok_or_else(|| "missing sequence number".to_string())?,
-                    window_size: *bytes.get(3).ok_or_else(|| "missing window size".to_string())?,
+                    window_size: *bytes
+                        .get(3)
+                        .ok_or_else(|| "missing window size".to_string())?,
                     service_choice: *bytes
                         .get(4)
                         .ok_or_else(|| "missing segmented service choice".to_string())?,
@@ -406,7 +411,9 @@ fn parse_apdu(bytes: &[u8]) -> Result<ApduFrame, String> {
                 })
             } else {
                 Ok(ApduFrame::ComplexAck {
-                    invoke_id: *bytes.get(1).ok_or_else(|| "missing complex ack invoke id".to_string())?,
+                    invoke_id: *bytes
+                        .get(1)
+                        .ok_or_else(|| "missing complex ack invoke id".to_string())?,
                     service_choice: *bytes
                         .get(2)
                         .ok_or_else(|| "missing complex ack service".to_string())?,
@@ -419,22 +426,36 @@ fn parse_apdu(bytes: &[u8]) -> Result<ApduFrame, String> {
             let error_class = decode_enumerated(&mut decoder)?;
             let error_code = decode_enumerated(&mut decoder)?;
             Ok(ApduFrame::Error {
-                invoke_id: *bytes.get(1).ok_or_else(|| "missing error invoke id".to_string())?,
-                service_choice: *bytes.get(2).ok_or_else(|| "missing error service".to_string())?,
+                invoke_id: *bytes
+                    .get(1)
+                    .ok_or_else(|| "missing error invoke id".to_string())?,
+                service_choice: *bytes
+                    .get(2)
+                    .ok_or_else(|| "missing error service".to_string())?,
                 error_class,
                 error_code,
             })
         }
         ApduType::Reject => Ok(ApduFrame::Reject {
-            invoke_id: *bytes.get(1).ok_or_else(|| "missing reject invoke id".to_string())?,
-            reason: *bytes.get(2).ok_or_else(|| "missing reject reason".to_string())?,
+            invoke_id: *bytes
+                .get(1)
+                .ok_or_else(|| "missing reject invoke id".to_string())?,
+            reason: *bytes
+                .get(2)
+                .ok_or_else(|| "missing reject reason".to_string())?,
         }),
         ApduType::Abort => Ok(ApduFrame::Abort {
-            invoke_id: *bytes.get(1).ok_or_else(|| "missing abort invoke id".to_string())?,
-            reason: *bytes.get(2).ok_or_else(|| "missing abort reason".to_string())?,
+            invoke_id: *bytes
+                .get(1)
+                .ok_or_else(|| "missing abort invoke id".to_string())?,
+            reason: *bytes
+                .get(2)
+                .ok_or_else(|| "missing abort reason".to_string())?,
         }),
         ApduType::SegmentAck => Ok(ApduFrame::SegmentAck {
-            invoke_id: *bytes.get(1).ok_or_else(|| "missing segment ack invoke id".to_string())?,
+            invoke_id: *bytes
+                .get(1)
+                .ok_or_else(|| "missing segment ack invoke id".to_string())?,
             sequence_number: *bytes
                 .get(2)
                 .ok_or_else(|| "missing segment ack sequence".to_string())?,
@@ -442,7 +463,9 @@ fn parse_apdu(bytes: &[u8]) -> Result<ApduFrame, String> {
                 .get(3)
                 .ok_or_else(|| "missing segment ack window".to_string())?,
         }),
-        ApduType::ConfirmedRequest => Err("confirmed request parsing is not used in loopback client".into()),
+        ApduType::ConfirmedRequest => {
+            Err("confirmed request parsing is not used in loopback client".into())
+        }
     }
 }
 
@@ -453,5 +476,7 @@ fn decode_enumerated(decoder: &mut ApduDecoder<'_>) -> Result<u32, String> {
     if is_context || tag != 9 {
         return Err("expected application enumerated".into());
     }
-    decoder.decode_unsigned(len).map_err(|error| error.to_string())
+    decoder
+        .decode_unsigned(len)
+        .map_err(|error| error.to_string())
 }
