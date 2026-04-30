@@ -1147,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-bacnet"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1168,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-chaos"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-cli"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-core"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-knx"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-modbus"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1319,7 +1319,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-opcua"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1356,7 +1356,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-runtime"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1371,7 +1371,7 @@ dependencies = [
 
 [[package]]
 name = "mabi-scenario"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "async-trait",
  "chrono",

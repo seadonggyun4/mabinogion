@@ -3,8 +3,8 @@
 //! This module re-exports commonly used types for CLI development.
 
 pub use crate::commands::{
-    BacnetCommand, KnxCommand, ListCommand, ModbusCommand, OpcuaCommand, ProtocolCommand,
-    RunCommand, ValidateCommand,
+    BacnetCommand, DoctorCommand, DoctorProtocol, KnxCommand, ListCommand, ModbusCommand,
+    OpcuaCommand, ProtocolCommand, RunCommand, ValidateCommand,
 };
 pub use crate::context::{CliContext, CliContextBuilder};
 pub use crate::error::{CliError, CliResult, CliResultExt};

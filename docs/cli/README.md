@@ -8,13 +8,14 @@ This document provides a comprehensive reference for the `mabi` command-line int
 - [Installation](#installation)
 - [Global Options](#global-options)
 - [Commands](#commands)
-  - [run](#run)
-  - [modbus](#modbus)
-  - [opcua](#opcua)
-  - [bacnet](#bacnet)
-  - [knx](#knx)
+  - [doctor](#doctor)
+  - [scenario run](#scenario-run)
+  - [serve modbus](#serve-modbus)
+  - [serve opcua](#serve-opcua)
+  - [serve bacnet](#serve-bacnet)
+  - [serve knx](#serve-knx)
   - [validate](#validate)
-  - [list](#list)
+  - [inspect](#inspect)
   - [version](#version)
 - [Output Formats](#output-formats)
 - [Exit Codes](#exit-codes)
@@ -27,10 +28,17 @@ The `mabi` CLI is built using Rust with the `clap` crate for argument parsing an
 ## Installation
 
 ```bash
-cargo install --path crates/mabi-cli
+cargo install mabi-cli
+mabi doctor
 ```
 
-Or build from source:
+`cargo install mabi-cli` installs the self-contained CLI and all Rust protocol
+simulators: Modbus, OPC UA, BACnet/IP, KNXnet/IP, scenario workflows, chaos
+workflows, and the shared runtime. Docker, Python, Java, Node, knxd, and other
+interop peers are optional source-tree verification assets and are not required
+for installed CLI smoke checks.
+
+For source development:
 
 ```bash
 cargo build --release --package mabi-cli
@@ -52,7 +60,7 @@ All commands accept the following global options:
 
 ### Verbosity Levels
 
-The verbosity system operates at two layers: **log level** (tracing output) and **command output** (protocol server startup diagnostics). All protocol commands (`modbus`, `opcua`, `bacnet`, `knx`) respond to verbosity flags as follows:
+The verbosity system operates at two layers: **log level** (tracing output) and **command output** (protocol server startup diagnostics). All protocol serve commands (`serve modbus`, `serve opcua`, `serve bacnet`, `serve knx`) respond to verbosity flags as follows:
 
 | Level | Flag | Log Level | Command Output Behavior |
 |-------|------|-----------|------------------------|
@@ -66,12 +74,35 @@ When `--quiet` is active, the server starts and awaits shutdown without producin
 
 ## Commands
 
-### run
+### doctor
+
+Verify the installed binary and built-in protocol runtimes without external
+tools.
+
+```bash
+mabi doctor [--protocol all|modbus|opcua|bacnet|knx]
+```
+
+`doctor` starts each selected protocol on loopback ephemeral ports through the
+same shared `RuntimeSession` path used by `serve`, checks readiness and
+snapshots, then stops the service cleanly. Optional interop tooling is reported
+as skipped/informational and never required for success.
+
+#### Examples
+
+```bash
+mabi doctor
+mabi --format json doctor --protocol modbus
+```
+
+---
+
+### scenario run
 
 Execute a simulation scenario from a YAML configuration file.
 
 ```bash
-mabi run <SCENARIO> [OPTIONS]
+mabi scenario run <SCENARIO> [OPTIONS]
 ```
 
 #### Arguments
@@ -92,23 +123,23 @@ mabi run <SCENARIO> [OPTIONS]
 
 ```bash
 # Run a scenario with default settings
-mabi run scenario.yaml
+mabi scenario run scenario.yaml
 
 # Run at double speed for 10 minutes
-mabi run scenario.yaml --time-scale 2.0 --duration 10m
+mabi scenario run scenario.yaml --time-scale 2.0 --duration 10m
 
 # Validate scenario syntax only
-mabi run scenario.yaml --dry-run
+mabi scenario run scenario.yaml --dry-run
 ```
 
 ---
 
-### modbus
+### serve modbus
 
 Start a standalone Modbus TCP or RTU simulator.
 
 ```bash
-mabi modbus [OPTIONS]
+mabi serve modbus [OPTIONS]
 ```
 
 #### Options
@@ -136,68 +167,50 @@ Multiple `--tag` options can be provided to add multiple tags to all devices.
 
 ```bash
 # Start Modbus TCP server on default port
-mabi modbus
+mabi serve modbus
 
 # Start with 100 devices, 1000 points each
-mabi modbus --port 5020 --devices 100 --points 1000
+mabi serve modbus --port 5020 --devices 100 --points 1000
 
 # Start with tags on all devices
-mabi modbus --port 5020 --devices 10 --tag location=building-a --tag floor=3 --tag hvac
+mabi serve modbus --port 5020 --devices 10 --tag location=building-a --tag floor=3 --tag hvac
 
 # Start Modbus RTU on serial port
-mabi modbus --rtu --serial /dev/ttyUSB0
+mabi serve modbus --rtu --serial /dev/ttyUSB0
 ```
 
 ---
 
-### opcua
+### serve opcua
 
-Start an OPC UA server simulator.
+Start an OPC UA server simulator from a canonical simulator config.
 
 ```bash
-mabi opcua [OPTIONS]
+mabi serve opcua --config <FILE> --session <NAME> [OPTIONS]
 ```
 
 #### Options
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--port` | `-p` | u16 | 4840 | TCP port to bind (1–65535) |
-| `--endpoint` | | string | / | Endpoint path |
-| `--nodes` | `-n` | usize | 1000 | Number of nodes to create (≥ 1) |
-| `--security` | | enum | `None` | Security mode (case-insensitive): `None`, `Sign`, `SignAndEncrypt` |
-| `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
-
-#### Node Creation Behavior
-
-Nodes are created in namespace 2 with numeric identifiers starting at `i=1000`. The actual node count is capped at **100** regardless of the `--nodes` value (i.e., `ns=2;i=1000` through `ns=2;i=1099`).
-
-Even-indexed nodes (`i=1000, 1002, 1004, ...`) are **writable** (AccessLevel: ReadWrite). Odd-indexed nodes (`i=1001, 1003, 1005, ...`) are **read-only** (AccessLevel: CurrentRead). All nodes are of type `Double`.
+| `--config` | `-c` | path | required | OPC UA simulator config |
+| `--session` | | string | required | Named session from the config |
+| `--name` | | string | none | Optional runtime service name override |
 
 #### Examples
 
 ```bash
-# Start OPC UA server with defaults
-mabi opcua
-
-# Start with 100 nodes on port 4841
-mabi opcua --port 4841 --nodes 100
-
-# Start with signing security
-mabi opcua --security Sign --nodes 100
-
-# Start with device tags
-mabi opcua --port 4840 --nodes 500 --tag location=building-a --tag scada --tag critical
+mabi serve opcua --config opcua.yaml --session default
 ```
 
 ---
 
-### bacnet
+### serve bacnet
 
 Start a BACnet/IP simulator.
 
 ```bash
-mabi bacnet [OPTIONS]
+mabi serve bacnet [OPTIONS]
 ```
 
 #### Options
@@ -214,27 +227,27 @@ mabi bacnet [OPTIONS]
 
 ```bash
 # Start BACnet server with defaults
-mabi bacnet
+mabi serve bacnet
 
 # Start with custom instance and objects
 # → AI_0..AI_249, AO_0..AO_249, BI_0..BI_249, BO_0..BO_249
-mabi bacnet --instance 5000 --objects 1000
+mabi serve bacnet --instance 5000 --objects 1000
 
 # Enable BBMD
-mabi bacnet --bbmd --objects 500
+mabi serve bacnet --bbmd --objects 500
 
 # Start with device tags
-mabi bacnet --instance 1234 --objects 200 --tag location=building-b --tag floor=2 --tag hvac
+mabi serve bacnet --instance 1234 --objects 200 --tag location=building-b --tag floor=2 --tag hvac
 ```
 
 ---
 
-### knx
+### serve knx
 
 Start a KNXnet/IP simulator.
 
 ```bash
-mabi knx [OPTIONS]
+mabi serve knx [OPTIONS]
 ```
 
 #### Options
@@ -250,13 +263,13 @@ mabi knx [OPTIONS]
 
 ```bash
 # Start KNX server with defaults
-mabi knx
+mabi serve knx
 
 # Start with custom address and groups
-mabi knx --address 1.2.3 --groups 500
+mabi serve knx --address 1.2.3 --groups 500
 
 # Start with device tags
-mabi knx --address 1.1.1 --groups 200 --tag location=building-c --tag lighting --tag smart-home
+mabi serve knx --address 1.1.1 --groups 200 --tag location=building-c --tag lighting --tag smart-home
 ```
 
 ---
@@ -266,7 +279,7 @@ mabi knx --address 1.1.1 --groups 200 --tag location=building-c --tag lighting -
 Validate configuration and scenario files.
 
 ```bash
-mabi validate <FILES>... [OPTIONS]
+mabi validate config <FILES>... [OPTIONS]
 ```
 
 #### Arguments
@@ -298,61 +311,37 @@ The command performs the following validations:
 
 ```bash
 # Validate a single file
-mabi validate scenario.yaml
+mabi validate config scenario.yaml
 
 # Validate with detailed output
-mabi validate scenario.yaml --detailed
+mabi validate config scenario.yaml --detailed
 
 # Validate multiple files with strict mode
-mabi validate *.yaml --strict
+mabi validate config *.yaml --strict
 ```
 
 ---
 
-### list
+### inspect
 
-List available resources.
+Inspect runtime and schema surfaces.
 
 ```bash
-mabi list <RESOURCE> [OPTIONS]
+mabi inspect <COMMAND> [OPTIONS]
 ```
-
-#### Arguments
-
-| Argument | Aliases | Description |
-|----------|---------|-------------|
-| `devices` | `device`, `d` | List simulated devices |
-| `protocols` | `protocol`, `p` | List supported protocols |
-| `points` | | List data points |
-| `scenarios` | `scenario`, `s` | List scenario files |
-
-#### Options
-
-| Option | Short | Type | Default | Description |
-|--------|-------|------|---------|-------------|
-| `--protocol` | | string | none | Filter by protocol |
-| `--filter` | `-f` | string | none | Filter by pattern (substring match) |
-| `--limit` | `-l` | usize | none | Maximum items to display |
 
 #### Examples
 
 ```bash
-# List all devices
-mabi list devices
-
-# List devices filtered by protocol
-mabi list devices --protocol modbus --limit 10
-
-# List supported protocols
-mabi list protocols
-
-# List scenarios in JSON format
-mabi list scenarios --format json
+mabi inspect protocols
+mabi inspect modbus-schema
+mabi inspect opcua-schema
+mabi inspect status
 ```
 
 #### Protocol Information
 
-The `list protocols` command displays the following supported protocols:
+The `inspect protocols` command displays the following supported protocols:
 
 | Protocol | Default Port | Features |
 |----------|--------------|----------|
@@ -404,7 +393,7 @@ When a non-table format is selected, protocol commands emit a serializable struc
 
 #### Modbus JSON Output
 
-`mabi modbus --port 5020 --devices 3 --points 100 --format json` produces:
+`mabi serve modbus --port 5020 --devices 3 --points 100 --format json` produces:
 
 ```json
 {
@@ -449,7 +438,8 @@ The `device_list` array enumerates every simulated unit with per-register-type p
 
 #### OPC UA JSON Output
 
-`mabi opcua --format json --nodes 5` produces:
+`mabi --format json serve opcua --config opcua.yaml --session default` produces a
+runtime service snapshot for the selected canonical session:
 
 ```json
 {
@@ -478,7 +468,7 @@ When the `table` format renders a large number of rows (e.g., devices or objects
 
 The pagination thresholds (max visible: 20, head: 10, tail: 5) are configurable at the call site, allowing protocol-specific tuning. This truncation is purely presentational; the underlying server instantiates all requested devices regardless of display limits. For complete enumeration, use `--format json` or `--format yaml`.
 
-Example with 25 devices (`mabi modbus --devices 25 --points 100`):
+Example with 25 devices (`mabi serve modbus --devices 25 --points 100`):
 
 ```
 ┌─────────┬──────────────┬────────────┬───────┬──────────┬────────┐
@@ -497,14 +487,16 @@ Example with 25 devices (`mabi modbus --devices 25 --points 100`):
 
 ## Unified Device Tagging System
 
-All protocol commands (`modbus`, `opcua`, `bacnet`, `knx`) support a unified tagging system via the `--tag` option. This enables consistent metadata annotation across heterogeneous protocol simulators, facilitating unified monitoring, filtering, and operational management.
+Canonical simulator configs and runtime metadata support a unified tagging
+model across protocols. Direct `--tag` flags are not part of the installed
+1.6 CLI serve surface.
 
 ### Tag Syntax
 
 Tags are specified using the `--tag` option, which can be repeated multiple times:
 
 ```bash
-mabi <protocol> --tag key=value --tag label
+mabi serve <protocol> --config <file> --session <name>
 ```
 
 | Format | Example | Semantics |
@@ -518,16 +510,15 @@ The tagging system is protocol-agnostic, enabling unified operational patterns a
 
 ```bash
 # Deploy building automation simulation with consistent organizational tags
-mabi modbus --port 5020 --devices 10 \
+mabi serve modbus --port 5020 --devices 10 \
     --tag location=building-a --tag floor=3 --tag system=hvac &
 
-mabi opcua --port 4840 --nodes 500 \
-    --tag location=building-a --tag floor=3 --tag system=scada &
+mabi serve opcua --config opcua.yaml --session default &
 
-mabi bacnet --port 47808 --objects 200 \
+mabi serve bacnet --port 47808 --objects 200 \
     --tag location=building-a --tag floor=3 --tag system=bms &
 
-mabi knx --port 3671 --groups 100 \
+mabi serve knx --port 3671 --groups 100 \
     --tag location=building-a --tag floor=3 --tag system=lighting &
 ```
 

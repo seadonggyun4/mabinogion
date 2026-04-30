@@ -23,7 +23,7 @@
 
 **Mabinogion** is an industrial protocol simulator server written in Rust. It creates virtual devices that speak real industrial protocols, allowing you to develop and test client software without physical hardware.
 
-For the 1.6.0 release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substantially stabilized with deterministic regression lanes and optional external/interop lanes where applicable.
+For the 1.6.x release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substantially stabilized with deterministic regression lanes and optional external/interop lanes where applicable.
 
 ### Why Use It?
 
@@ -46,7 +46,7 @@ Your protocol clients are forged here too.
 
 ```bash
 # Start a Modbus server with 10 virtual devices
-mabi modbus --port 5020 --devices 10
+mabi serve modbus --port 5020 --devices 10
 
 # Connect with any Modbus client
 mbpoll -a 1 -r 1 -c 10 -p 5020 127.0.0.1
@@ -60,21 +60,28 @@ mbpoll -a 1 -r 1 -c 10 -p 5020 127.0.0.1
 
 ```bash
 cargo install mabi-cli
+mabi doctor
 ```
 
-All protocols, scenario engine, and chaos engineering built-in.
+`cargo install mabi-cli` installs the self-contained CLI and all Rust protocol
+simulators. Run `mabi doctor` after installation to verify the local binary.
+
+Included in the installed CLI: Modbus, OPC UA, BACnet/IP, KNXnet/IP, scenario
+workflows, chaos workflows, and the shared runtime. Optional source-tree
+interop matrices still require Docker or peer tooling only when explicitly run
+from the repository.
 
 ### For Library Developers (Optional)
 
 ```toml
 [dependencies]
-mabi-core = "1.6.0"        # Core abstractions (required)
-mabi-modbus = "1.6.0"      # Modbus TCP/RTU (optional)
-mabi-opcua = "1.6.0"       # OPC UA (optional)
-mabi-bacnet = "1.6.0"      # BACnet/IP (optional)
-mabi-knx = "1.6.0"         # KNXnet/IP (optional)
-mabi-scenario = "1.6.0"    # Scenario engine (optional)
-mabi-chaos = "1.6.0"       # Chaos engineering (optional)
+mabi-core = "1.6.1"        # Core abstractions (required)
+mabi-modbus = "1.6.1"      # Modbus TCP/RTU (optional)
+mabi-opcua = "1.6.1"       # OPC UA (optional)
+mabi-bacnet = "1.6.1"      # BACnet/IP (optional)
+mabi-knx = "1.6.1"         # KNXnet/IP (optional)
+mabi-scenario = "1.6.1"    # Scenario engine (optional)
+mabi-chaos = "1.6.1"       # Chaos engineering (optional)
 ```
 
 ---
@@ -82,11 +89,11 @@ mabi-chaos = "1.6.0"       # Chaos engineering (optional)
 ## Quick Start
 
 ```bash
-mabi modbus --port 502 --devices 10 --points 100
-mabi opcua --port 4840 --nodes 1000
-mabi bacnet --port 47808 --instance 1234
-mabi knx --port 3671 --address 1.1.1
-mabi run scenario.yaml --time-scale 2.0 --duration 10m
+mabi serve modbus --port 502 --devices 10 --points 100
+mabi serve opcua --config opcua.yaml --session default
+mabi serve bacnet --port 47808 --instance 1234
+mabi serve knx --port 3671 --address 1.1.1
+mabi scenario run scenario.yaml --time-scale 2.0 --duration 10m
 ```
 
 ---
@@ -170,7 +177,9 @@ cargo test --test e2e_protocol_tests  # E2E tests
 cargo bench                      # Benchmarks
 ```
 
-**Requirements**: Rust 1.75+, Tokio async runtime
+**Requirements**: Rust 1.75+ for `cargo install`. No Docker, Python, Java, or
+Node runtime is required for the installed CLI's built-in `mabi doctor` smoke
+checks.
 
 ---
 

@@ -173,19 +173,19 @@ Tags are supported across all four industrial protocols via the unified CLI inte
 
 | Protocol | CLI Command | Tag Application |
 |----------|-------------|-----------------|
-| Modbus TCP/RTU | `mabi modbus --tag key=value` | Applied to all unit IDs in the simulator |
-| OPC UA | `mabi opcua --tag key=value` | Applied to server-level metadata |
-| BACnet/IP | `mabi bacnet --tag key=value` | Applied to device object metadata |
-| KNXnet/IP | `mabi knx --tag key=value` | Applied to server-level metadata |
+| Modbus TCP/RTU | `mabi serve modbus --tag key=value` | Applied to all unit IDs in the simulator |
+| OPC UA | `mabi serve opcua --config <file> --session <name>` | Applied through canonical config/session metadata |
+| BACnet/IP | `mabi serve bacnet --tag key=value` | Applied to device object metadata |
+| KNXnet/IP | `mabi serve knx --tag key=value` | Applied to server-level metadata |
 
 #### Cross-Protocol Tagging Example
 
 ```bash
 # Deploy a unified building automation simulation with consistent tagging
-mabi modbus --port 5020 --devices 10 --tag location=building-a --tag system=hvac &
-mabi opcua --port 4840 --nodes 500 --tag location=building-a --tag system=scada &
-mabi bacnet --port 47808 --objects 200 --tag location=building-a --tag system=bms &
-mabi knx --port 3671 --groups 100 --tag location=building-a --tag system=lighting &
+mabi serve modbus --port 5020 --devices 10 --tag location=building-a --tag system=hvac &
+mabi serve opcua --config opcua.yaml --session default &
+mabi serve bacnet --port 47808 --objects 200 --tag location=building-a --tag system=bms &
+mabi serve knx --port 3671 --groups 100 --tag location=building-a --tag system=lighting &
 ```
 
 This enables unified monitoring and filtering:
@@ -201,17 +201,17 @@ sum(mabi_requests_total{location="building-a"}) by (protocol)
 
 ```bash
 # Production environment
-mabi modbus --tag env=prod --tag critical
+mabi serve modbus --tag env=prod --tag critical
 
 # Development/testing
-mabi modbus --tag env=dev --tag ephemeral
+mabi serve modbus --tag env=dev --tag ephemeral
 ```
 
 #### 2. ISA-95 Equipment Hierarchy
 
 ```bash
 # Enterprise > Site > Area > Cell > Unit
-mabi bacnet --tag enterprise=acme \
+mabi serve bacnet --tag enterprise=acme \
             --tag site=plant-01 \
             --tag area=packaging \
             --tag cell=line-3 \
@@ -222,7 +222,7 @@ mabi bacnet --tag enterprise=acme \
 
 ```bash
 # Cross-cutting functional categories
-mabi opcua --tag function=temperature-control \
+mabi serve opcua --config opcua.yaml --session default \
            --tag subsystem=chiller \
            --tag monitored \
            --tag critical

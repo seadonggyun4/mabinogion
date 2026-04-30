@@ -179,8 +179,40 @@ enum Commands {
     /// Deterministic code generation from canonical simulator configs
     Generate(GenerateCommandArgs),
 
+    /// Verify the installed CLI and built-in protocol runtimes
+    Doctor(DoctorArgs),
+
     /// Show version information
     Version,
+}
+
+#[derive(Args)]
+struct DoctorArgs {
+    /// Protocol smoke target to run
+    #[arg(long, value_enum, default_value = "all")]
+    protocol: DoctorProtocolArg,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, Default)]
+enum DoctorProtocolArg {
+    #[default]
+    All,
+    Modbus,
+    Opcua,
+    Bacnet,
+    Knx,
+}
+
+impl From<DoctorProtocolArg> for DoctorProtocol {
+    fn from(arg: DoctorProtocolArg) -> Self {
+        match arg {
+            DoctorProtocolArg::All => Self::All,
+            DoctorProtocolArg::Modbus => Self::Modbus,
+            DoctorProtocolArg::Opcua => Self::Opcua,
+            DoctorProtocolArg::Bacnet => Self::Bacnet,
+            DoctorProtocolArg::Knx => Self::Knx,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -966,6 +998,10 @@ async fn main() -> ExitCode {
                     generate_opcua_types_command(&mut ctx, args).await
                 }
             }
+        }
+        Commands::Doctor(args) => {
+            let cmd = DoctorCommand::new(args.protocol.into(), readiness_timeout);
+            runner.run(&cmd).await
         }
         Commands::Version => {
             println!("mabi {} (Mabinogion)", mabi_core::RELEASE_VERSION);

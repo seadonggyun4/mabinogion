@@ -4,13 +4,13 @@ Shared runtime contracts and service orchestration for the Mabinogion simulator 
 
 `mabi-runtime` provides the common runtime traits, session handles, control surfaces, and service wiring used by the protocol crates in this workspace.
 
-For the 1.6.0 release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substantially stabilized with deterministic regression lanes and optional external/interop lanes where applicable.
+For the 1.6.x release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substantially stabilized with deterministic regression lanes and optional external/interop lanes where applicable.
 
 ## Installation
 
 ```toml
 [dependencies]
-mabi-runtime = "1.6.0"
+mabi-runtime = "1.6.1"
 ```
 
 ## What It Provides
@@ -21,4 +21,4 @@ mabi-runtime = "1.6.0"
 
 ## Versioning
 
-The crate follows the workspace release version. For this release line, the published version is `1.6.0`.
+The crate follows the workspace release version. For this release line, the published version is `1.6.1`.
