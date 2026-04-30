@@ -23,6 +23,8 @@
 
 **Mabinogion** is an industrial protocol simulator server written in Rust. It creates virtual devices that speak real industrial protocols, allowing you to develop and test client software without physical hardware.
 
+For the 1.6.0 release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substantially stabilized with deterministic regression lanes and optional external/interop lanes where applicable.
+
 ### Why Use It?
 
 - **No Hardware Required**: Simulate PLCs, sensors, and building automation systems
@@ -66,13 +68,13 @@ All protocols, scenario engine, and chaos engineering built-in.
 
 ```toml
 [dependencies]
-mabi-core = "1.5.0"        # Core abstractions (required)
-mabi-modbus = "1.5.0"      # Modbus TCP/RTU (optional)
-mabi-opcua = "1.5.0"       # OPC UA (optional)
-mabi-bacnet = "1.5.0"      # BACnet/IP (optional)
-mabi-knx = "1.5.0"         # KNXnet/IP (optional)
-mabi-scenario = "1.5.0"    # Scenario engine (optional)
-mabi-chaos = "1.5.0"       # Chaos engineering (optional)
+mabi-core = "1.6.0"        # Core abstractions (required)
+mabi-modbus = "1.6.0"      # Modbus TCP/RTU (optional)
+mabi-opcua = "1.6.0"       # OPC UA (optional)
+mabi-bacnet = "1.6.0"      # BACnet/IP (optional)
+mabi-knx = "1.6.0"         # KNXnet/IP (optional)
+mabi-scenario = "1.6.0"    # Scenario engine (optional)
+mabi-chaos = "1.6.0"       # Chaos engineering (optional)
 ```
 
 ---
