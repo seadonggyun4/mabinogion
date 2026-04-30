@@ -135,7 +135,10 @@ async fn https_server_requires_certificate_paths_on_start() {
     .unwrap();
 
     let error = server.start().await.unwrap_err();
+    #[cfg(feature = "https")]
     assert!(error.to_string().contains("certificate_path"));
+    #[cfg(not(feature = "https"))]
+    assert!(error.to_string().contains("`https` feature"));
 }
 
 #[tokio::test]

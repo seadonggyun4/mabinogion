@@ -24,6 +24,20 @@ perf_contract_policy = "release-only-ignored"
 default = []
 # Enable full OPC UA server implementation (requires opcua crate)
 full = []
+# Enable OPC UA Binary over HTTPS. This pulls a TLS crypto provider and may
+# require platform C toolchains, so the installed CLI keeps it opt-in.
+https = [
+    "dep:rustls",
+    "dep:tokio-rustls",
+    "dep:rustls-pemfile",
+    "rustls/logging",
+    "rustls/ring",
+    "rustls/std",
+    "rustls/tls12",
+    "tokio-rustls/logging",
+    "tokio-rustls/ring",
+    "tokio-rustls/tls12",
+]
 # Experimental in-process namespace manager plugin surface.
 experimental-namespace-api = []
 
@@ -66,9 +80,9 @@ bytes = { workspace = true }
 num-traits = { workspace = true }
 num-derive = { workspace = true }
 lru = "0.12"
-rustls = "0.23"
-tokio-rustls = "0.26"
-rustls-pemfile = "2.2"
+rustls = { version = "0.23", default-features = false, optional = true }
+tokio-rustls = { version = "0.26", default-features = false, optional = true }
+rustls-pemfile = { version = "2.2", optional = true }
 
 # Metrics
 prometheus = { workspace = true }

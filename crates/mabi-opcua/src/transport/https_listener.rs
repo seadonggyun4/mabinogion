@@ -1,24 +1,37 @@
+#[cfg(feature = "https")]
 use std::collections::BTreeMap;
+#[cfg(feature = "https")]
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+#[cfg(feature = "https")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+#[cfg(feature = "https")]
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+#[cfg(feature = "https")]
 use tokio::net::TcpListener;
+#[cfg(feature = "https")]
 use tokio::sync::{broadcast, Semaphore};
+#[cfg(feature = "https")]
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+#[cfg(feature = "https")]
 use tokio_rustls::rustls::ServerConfig as RustlsServerConfig;
+#[cfg(feature = "https")]
 use tokio_rustls::TlsAcceptor;
+#[cfg(feature = "https")]
 use tracing::{error, info, warn};
 
+#[cfg(feature = "https")]
 use crate::channel::secure_channel::SecureChannel;
 use crate::error::{OpcUaError, OpcUaResult};
 use crate::transport::adapter::ConnectionInitiationMode;
 use crate::transport::runtime::TransportRuntime;
 
+#[cfg(feature = "https")]
 const MAX_HTTP_HEADER_BYTES: usize = 64 * 1024;
+#[cfg(feature = "https")]
 const MAX_HTTP_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
@@ -46,6 +59,7 @@ impl Default for HttpsTransportConfig {
     }
 }
 
+#[cfg(feature = "https")]
 pub struct OpcUaHttpsListener {
     config: HttpsTransportConfig,
     runtime: Arc<TransportRuntime>,
@@ -53,6 +67,12 @@ pub struct OpcUaHttpsListener {
     shutdown_tx: broadcast::Sender<()>,
 }
 
+#[cfg(not(feature = "https"))]
+pub struct OpcUaHttpsListener {
+    runtime: Arc<TransportRuntime>,
+}
+
+#[cfg(feature = "https")]
 impl OpcUaHttpsListener {
     pub(crate) fn new(config: HttpsTransportConfig, runtime: Arc<TransportRuntime>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -146,20 +166,50 @@ impl OpcUaHttpsListener {
 
 impl HttpsTransportConfig {
     pub(crate) fn validate(&self) -> OpcUaResult<()> {
-        if self.certificate_path.is_none() {
+        #[cfg(not(feature = "https"))]
+        {
             return Err(OpcUaError::Config(
-                "HTTPS transport requires certificate_path".to_string(),
+                "HTTPS transport requires the mabi-opcua `https` feature".to_string(),
             ));
         }
-        if self.private_key_path.is_none() {
-            return Err(OpcUaError::Config(
-                "HTTPS transport requires private_key_path".to_string(),
-            ));
+
+        #[cfg(feature = "https")]
+        {
+            if self.certificate_path.is_none() {
+                return Err(OpcUaError::Config(
+                    "HTTPS transport requires certificate_path".to_string(),
+                ));
+            }
+            if self.private_key_path.is_none() {
+                return Err(OpcUaError::Config(
+                    "HTTPS transport requires private_key_path".to_string(),
+                ));
+            }
+            Ok(())
         }
-        Ok(())
     }
 }
 
+#[cfg(not(feature = "https"))]
+impl OpcUaHttpsListener {
+    pub(crate) fn new(_config: HttpsTransportConfig, runtime: Arc<TransportRuntime>) -> Self {
+        Self { runtime }
+    }
+
+    pub fn metrics(&self) -> &Arc<crate::transport::metrics::TransportMetrics> {
+        self.runtime.metrics()
+    }
+
+    pub fn shutdown(&self) {}
+
+    pub async fn run(&self) -> OpcUaResult<()> {
+        Err(OpcUaError::Config(
+            "HTTPS transport requires the mabi-opcua `https` feature".to_string(),
+        ))
+    }
+}
+
+#[cfg(feature = "https")]
 struct HttpRequest {
     method: String,
     path: String,
@@ -168,6 +218,7 @@ struct HttpRequest {
     keep_alive: bool,
 }
 
+#[cfg(feature = "https")]
 async fn handle_https_connection<S>(
     mut stream: S,
     runtime: Arc<TransportRuntime>,
@@ -304,6 +355,7 @@ where
     Ok(())
 }
 
+#[cfg(feature = "https")]
 async fn read_http_request<S>(
     stream: &mut S,
     buffer: &mut Vec<u8>,
@@ -412,6 +464,7 @@ where
     }
 }
 
+#[cfg(feature = "https")]
 async fn write_http_response<S>(
     stream: &mut S,
     status: u16,
@@ -443,10 +496,12 @@ where
     Ok(())
 }
 
+#[cfg(feature = "https")]
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
+#[cfg(feature = "https")]
 fn build_tls_acceptor(config: &HttpsTransportConfig) -> OpcUaResult<TlsAcceptor> {
     let certificate_path = config.certificate_path.as_ref().ok_or_else(|| {
         OpcUaError::Config("HTTPS transport requires certificate_path".to_string())
@@ -466,6 +521,7 @@ fn build_tls_acceptor(config: &HttpsTransportConfig) -> OpcUaResult<TlsAcceptor>
     Ok(TlsAcceptor::from(Arc::new(server_config)))
 }
 
+#[cfg(feature = "https")]
 fn load_certificates(path: &PathBuf) -> OpcUaResult<Vec<CertificateDer<'static>>> {
     let bytes = std::fs::read(path).map_err(|error| {
         OpcUaError::Security(format!(
@@ -497,6 +553,7 @@ fn load_certificates(path: &PathBuf) -> OpcUaResult<Vec<CertificateDer<'static>>
     }
 }
 
+#[cfg(feature = "https")]
 fn load_private_key(path: &PathBuf) -> OpcUaResult<PrivateKeyDer<'static>> {
     let bytes = std::fs::read(path).map_err(|error| {
         OpcUaError::Security(format!(
@@ -523,7 +580,7 @@ fn load_private_key(path: &PathBuf) -> OpcUaResult<PrivateKeyDer<'static>> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "https"))]
 mod tests {
     use super::*;
 

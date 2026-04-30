@@ -72,17 +72,22 @@ workflows, chaos workflows, and the shared runtime. Optional source-tree
 interop matrices still require Docker or peer tooling only when explicitly run
 from the repository.
 
+The default installed CLI keeps OPC UA on the lightweight UA-TCP path. OPC UA
+Binary over HTTPS remains available from source with
+`cargo install mabi-cli --features opcua-https`, which may require the platform
+TLS/C toolchain expected by Rust TLS providers.
+
 ### For Library Developers (Optional)
 
 ```toml
 [dependencies]
-mabi-core = "1.6.1"        # Core abstractions (required)
-mabi-modbus = "1.6.1"      # Modbus TCP/RTU (optional)
-mabi-opcua = "1.6.1"       # OPC UA (optional)
-mabi-bacnet = "1.6.1"      # BACnet/IP (optional)
-mabi-knx = "1.6.1"         # KNXnet/IP (optional)
-mabi-scenario = "1.6.1"    # Scenario engine (optional)
-mabi-chaos = "1.6.1"       # Chaos engineering (optional)
+mabi-core = "1.6.2"        # Core abstractions (required)
+mabi-modbus = "1.6.2"      # Modbus TCP/RTU (optional)
+mabi-opcua = "1.6.2"       # OPC UA (optional)
+mabi-bacnet = "1.6.2"      # BACnet/IP (optional)
+mabi-knx = "1.6.2"         # KNXnet/IP (optional)
+mabi-scenario = "1.6.2"    # Scenario engine (optional)
+mabi-chaos = "1.6.2"       # Chaos engineering (optional)
 ```
 
 ### Release Versioning

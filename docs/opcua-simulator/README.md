@@ -18,7 +18,8 @@ The preferred surface is now session-centric and file-backed:
 Canonical transports now support:
 
 - `opc.tcp://...` as the default runtime path
-- `https://...` as a protocol-aware canonical transport option
+- `https://...` as a protocol-aware canonical transport option when built with
+  `mabi-opcua/https` or the CLI `opcua-https` feature
 - `opc.tcp` Reverse Connect through named transport `connection_mode: reverse_connect`
 - HTTPS Reverse Connect remains deferred to a later transport phase
 

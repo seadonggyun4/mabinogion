@@ -13,6 +13,12 @@ readme = "README.md"
 keywords = ["cli", "industrial", "protocol", "simulator", "modbus"]
 categories = ["command-line-utilities", "simulation"]
 
+[features]
+default = []
+# Opt in to OPC UA Binary over HTTPS. The default installed CLI keeps this
+# disabled so `cargo install mabi-cli` remains lightweight on Windows.
+opcua-https = ["mabi-opcua/https"]
+
 [[bin]]
 name = "mabi"
 path = "src/main.rs"

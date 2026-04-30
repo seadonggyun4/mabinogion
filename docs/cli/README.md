@@ -38,6 +38,11 @@ workflows, and the shared runtime. Docker, Python, Java, Node, knxd, and other
 interop peers are optional source-tree verification assets and are not required
 for installed CLI smoke checks.
 
+The default installed CLI keeps OPC UA on the lightweight UA-TCP path. OPC UA
+Binary over HTTPS remains available from source with
+`cargo install mabi-cli --features opcua-https`, which may require the platform
+TLS/C toolchain expected by Rust TLS providers.
+
 For source development:
 
 ```bash

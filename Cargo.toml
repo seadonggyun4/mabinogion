@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.6.1"
+version = "1.6.2"
 edition = "2021"
 rust-version = "1.75"
 authors = ["Seo Dong Gyun <seadonggyun@gmail.com>"]
@@ -27,14 +27,14 @@ categories = ["simulation", "network-programming", "development-tools::testing"]
 [workspace.dependencies]
 # Internal crates
 # BEGIN generated-internal-release-mirror (sync via scripts/release-version.py)
-mabi-core = { version = "1.6.1", path = "crates/mabi-core" }
-mabi-runtime = { version = "1.6.1", path = "crates/mabi-runtime" }
-mabi-modbus = { version = "1.6.1", path = "crates/mabi-modbus" }
-mabi-opcua = { version = "1.6.1", path = "crates/mabi-opcua" }
-mabi-bacnet = { version = "1.6.1", path = "crates/mabi-bacnet" }
-mabi-knx = { version = "1.6.1", path = "crates/mabi-knx" }
-mabi-scenario = { version = "1.6.1", path = "crates/mabi-scenario" }
-mabi-chaos = { version = "1.6.1", path = "crates/mabi-chaos" }
+mabi-core = { version = "1.6.2", path = "crates/mabi-core" }
+mabi-runtime = { version = "1.6.2", path = "crates/mabi-runtime" }
+mabi-modbus = { version = "1.6.2", path = "crates/mabi-modbus" }
+mabi-opcua = { version = "1.6.2", path = "crates/mabi-opcua" }
+mabi-bacnet = { version = "1.6.2", path = "crates/mabi-bacnet" }
+mabi-knx = { version = "1.6.2", path = "crates/mabi-knx" }
+mabi-scenario = { version = "1.6.2", path = "crates/mabi-scenario" }
+mabi-chaos = { version = "1.6.2", path = "crates/mabi-chaos" }
 # END generated-internal-release-mirror
 
 # Async runtime
