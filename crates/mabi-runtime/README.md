@@ -10,7 +10,7 @@ For the 1.6.x release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substan
 
 ```toml
 [dependencies]
-mabi-runtime = "1.6.2"
+mabi-runtime = "1.6.3"
 ```
 
 ## What It Provides
