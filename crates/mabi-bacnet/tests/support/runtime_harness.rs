@@ -10,6 +10,13 @@ use mabi_runtime::{
 use mabi_bacnet::runtime;
 
 pub async fn start_runtime_session(device_instance: u32) -> RuntimeSession {
+    start_runtime_session_with_objects(device_instance, 8).await
+}
+
+pub async fn start_runtime_session_with_objects(
+    device_instance: u32,
+    objects: usize,
+) -> RuntimeSession {
     let mut registry = ProtocolDriverRegistry::new();
     registry.register(runtime::driver());
 
@@ -20,7 +27,7 @@ pub async fn start_runtime_session(device_instance: u32) -> RuntimeSession {
             config: json!({
                 "bind_addr": "127.0.0.1:0",
                 "device_instance": device_instance,
-                "objects": 8,
+                "objects": objects,
                 "bbmd_enabled": false
             }),
         }],

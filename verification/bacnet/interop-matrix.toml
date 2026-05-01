@@ -7,8 +7,20 @@ timeout_seconds = 300
 tier = "nightly"
 
 [[targets]]
+name = "bacpypes3-yabe-sequence"
+compose_service = "bacpypes3-yabe-sequence"
+timeout_seconds = 300
+tier = "nightly"
+
+[[targets]]
 name = "bac0-canary"
 compose_service = "bac0-canary"
+timeout_seconds = 300
+tier = "nightly"
+
+[[targets]]
+name = "bac0-yabe-readmultiple"
+compose_service = "bac0-yabe-readmultiple"
 timeout_seconds = 300
 tier = "nightly"
 

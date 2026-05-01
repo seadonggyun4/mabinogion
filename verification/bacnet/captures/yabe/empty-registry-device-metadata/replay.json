@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "peer": "yabe",
+  "profile_ids": [
+    "basic_ip"
+  ],
+  "capability_ids": [
+    "discovery",
+    "property_io"
+  ],
+  "capture_metadata": {
+    "tool_version": "placeholder: record exact YABE build when refreshing this capture",
+    "os": "placeholder: record maintainer OS when refreshing this capture",
+    "bind_address": "127.0.0.1:ephemeral-or-47808",
+    "device_instance": 4104,
+    "observed_object_tree": [
+      "device,4104"
+    ],
+    "failed_property": null,
+    "notes": "The empty-registry server should look sparse, not broken."
+  },
+  "steps": [
+    {
+      "id": "discover-device",
+      "kind": "discover",
+      "request": "Who-Is",
+      "expect": "I-Am from the configured loopback device instance"
+    },
+    {
+      "id": "select-discovered-device",
+      "kind": "manual_observation",
+      "object": "device,4104",
+      "expect": "YABE can select the discovered Device object"
+    },
+    {
+      "id": "read-device-object-name",
+      "kind": "read_property",
+      "object": "device,4104",
+      "property": "Object_Name",
+      "expect": "non-empty configured Device Object_Name"
+    },
+    {
+      "id": "read-device-object-list-full",
+      "kind": "read_property",
+      "object": "device,4104",
+      "property": "Object_List",
+      "expect": "full Object_List contains at least device,4104"
+    },
+    {
+      "id": "read-device-object-list-count",
+      "kind": "read_property",
+      "object": "device,4104",
+      "property": "Object_List",
+      "array_index": 0,
+      "expect": "Object_List index 0 returns object count"
+    },
+    {
+      "id": "read-device-object-list-first-element",
+      "kind": "read_property",
+      "object": "device,4104",
+      "property": "Object_List",
+      "array_index": 1,
+      "expect": "Object_List index 1 returns device,4104 for the empty-registry case"
+    },
+    {
+      "id": "read-returned-object-name",
+      "kind": "read_property",
+      "object": "device,4104",
+      "property": "Object_Name",
+      "expect": "returned object exposes Object_Name"
+    },
+    {
+      "id": "read-returned-object-type",
+      "kind": "read_property",
+      "object": "device,4104",
+      "property": "Object_Type",
+      "expect": "returned object exposes Object_Type"
+    }
+  ],
+  "expected_outcomes": {
+    "discovery_ok": true,
+    "device_name_readable": true,
+    "object_list_full_readable": true,
+    "object_list_index_0_count_readable": true,
+    "object_list_index_1_device_readable": true,
+    "only_mandatory_device_object_expected": true,
+    "gui_automation_required": false
+  }
+}

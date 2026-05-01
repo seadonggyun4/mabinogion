@@ -733,7 +733,7 @@ impl BacnetCommand {
         Self {
             bind_addr: "0.0.0.0:47808".parse().unwrap(),
             device_instance: 1234,
-            objects: 100,
+            objects: 0,
             bbmd_enabled: false,
             tags: Tags::new(),
             server: Arc::new(Mutex::new(None)),
@@ -817,11 +817,19 @@ impl Command for BacnetCommand {
 
         // Verbose: show extra details
         if is_verbose {
-            let per_type = self.objects / 4;
-            ctx.vprintln(format!(
-                "  Objects per Type: {} (AI: {}, AO: {}, BI: {}, BO: {})",
-                per_type, per_type, per_type, per_type, per_type
-            ));
+            let per_type = if self.objects > 0 {
+                std::cmp::max(1, self.objects / 4)
+            } else {
+                0
+            };
+            if per_type == 0 {
+                ctx.vprintln("  Demo Objects: disabled (Device object only)");
+            } else {
+                ctx.vprintln(format!(
+                    "  Objects per Type: {} (AI: {}, AO: {}, BI: {}, BO: {})",
+                    per_type, per_type, per_type, per_type, per_type
+                ));
+            }
             ctx.vprintln(format!("  Device Name: Mabinogion BACnet Simulator"));
         }
 
@@ -837,29 +845,38 @@ impl Command for BacnetCommand {
 
         self.start_server(ctx).await?;
 
-        let per_type = self.objects / 4;
+        let per_type = if self.objects > 0 {
+            std::cmp::max(1, self.objects / 4)
+        } else {
+            0
+        };
 
         if !is_quiet {
             match format {
                 OutputFormat::Table => {
                     let colors_enabled = ctx.colors_enabled();
+                    let demo_status = if per_type == 0 {
+                        "Not created"
+                    } else {
+                        "Active"
+                    };
                     let table = TableBuilder::new(colors_enabled)
                         .header(["Object Type", "Count", "Status"])
                         .status_row(["Device", "1", "Online"], StatusType::Success)
                         .status_row(
-                            ["Analog Input", &per_type.to_string(), "Active"],
+                            ["Analog Input", &per_type.to_string(), demo_status],
                             StatusType::Success,
                         )
                         .status_row(
-                            ["Analog Output", &per_type.to_string(), "Active"],
+                            ["Analog Output", &per_type.to_string(), demo_status],
                             StatusType::Success,
                         )
                         .status_row(
-                            ["Binary Input", &per_type.to_string(), "Active"],
+                            ["Binary Input", &per_type.to_string(), demo_status],
                             StatusType::Success,
                         )
                         .status_row(
-                            ["Binary Output", &per_type.to_string(), "Active"],
+                            ["Binary Output", &per_type.to_string(), demo_status],
                             StatusType::Success,
                         );
                     table.print();
@@ -896,22 +913,38 @@ impl Command for BacnetCommand {
                             ObjectTypeInfo {
                                 object_type: "Analog Input".into(),
                                 count: per_type,
-                                status: "Active".into(),
+                                status: if per_type == 0 {
+                                    "Not created".into()
+                                } else {
+                                    "Active".into()
+                                },
                             },
                             ObjectTypeInfo {
                                 object_type: "Analog Output".into(),
                                 count: per_type,
-                                status: "Active".into(),
+                                status: if per_type == 0 {
+                                    "Not created".into()
+                                } else {
+                                    "Active".into()
+                                },
                             },
                             ObjectTypeInfo {
                                 object_type: "Binary Input".into(),
                                 count: per_type,
-                                status: "Active".into(),
+                                status: if per_type == 0 {
+                                    "Not created".into()
+                                } else {
+                                    "Active".into()
+                                },
                             },
                             ObjectTypeInfo {
                                 object_type: "Binary Output".into(),
                                 count: per_type,
-                                status: "Active".into(),
+                                status: if per_type == 0 {
+                                    "Not created".into()
+                                } else {
+                                    "Active".into()
+                                },
                             },
                         ],
                         status: "Online".into(),
@@ -953,12 +986,13 @@ impl ProtocolCommand for BacnetCommand {
             .with_bind_addr(self.bind_addr)
             .with_device_name("Mabinogion BACnet Simulator");
 
-        // Create object registry with sample objects
         let registry = ObjectRegistry::new();
 
-        let descriptors = default_object_descriptors();
-        let objects_per_type = self.objects / descriptors.len();
-        registry.populate_standard_objects(&descriptors, objects_per_type);
+        if self.objects > 0 {
+            let descriptors = default_object_descriptors();
+            let objects_per_type = std::cmp::max(1, self.objects / descriptors.len());
+            registry.populate_standard_objects(&descriptors, objects_per_type);
+        }
 
         let server = Arc::new(BACnetServer::new(config, registry));
 

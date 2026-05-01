@@ -212,6 +212,18 @@ pub fn encode_read_property_request(object_id: ObjectId, property_id: PropertyId
     encoder.into_bytes()
 }
 
+pub fn encode_read_property_request_with_array_index(
+    object_id: ObjectId,
+    property_id: PropertyId,
+    array_index: u32,
+) -> Vec<u8> {
+    let mut encoder = ApduEncoder::new();
+    encoder.encode_context_object_identifier(0, object_id);
+    encoder.encode_context_enumerated(1, property_id as u32);
+    encoder.encode_context_unsigned(2, array_index);
+    encoder.into_bytes()
+}
+
 pub fn encode_write_property_request(
     object_id: ObjectId,
     property_id: PropertyId,

@@ -11,6 +11,18 @@ services:
     entrypoint:
       - bash
       - /workspace/verification/bacnet/harness/bacpypes3/run.sh
+  bacpypes3-yabe-sequence:
+    build:
+      context: ../..
+      dockerfile: verification/bacnet/harness/bacpypes3/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-bacnet-interop/bacpypes3-yabe
+    entrypoint:
+      - bash
+      - /workspace/verification/bacnet/harness/bacpypes3/run-yabe-sequence.sh
   bac0-canary:
     build:
       context: ../..
@@ -23,6 +35,18 @@ services:
     entrypoint:
       - bash
       - /workspace/verification/bacnet/harness/bac0/run.sh
+  bac0-yabe-readmultiple:
+    build:
+      context: ../..
+      dockerfile: verification/bacnet/harness/bac0/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      CARGO_TARGET_DIR: /tmp/mabi-bacnet-interop/bac0-yabe
+    entrypoint:
+      - bash
+      - /workspace/verification/bacnet/harness/bac0/run-yabe-readmultiple.sh
   bacnet-stack-canary:
     build:
       context: ../..

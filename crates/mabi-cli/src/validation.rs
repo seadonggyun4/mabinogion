@@ -21,7 +21,7 @@ pub fn parse_port(s: &str) -> Result<u16, String> {
 
 /// Validates that a count value is at least 1.
 ///
-/// Zero-count resources (devices, objects, nodes, groups) produce a server
+/// Zero-count resources (devices, nodes, groups) produce a server
 /// with nothing to simulate, which is almost certainly a user mistake.
 pub fn parse_nonzero_count(s: &str) -> Result<usize, String> {
     let n: usize = s
@@ -31,6 +31,15 @@ pub fn parse_nonzero_count(s: &str) -> Result<usize, String> {
         return Err("value must be at least 1".to_string());
     }
     Ok(n)
+}
+
+/// Validates that a count value is zero or greater.
+///
+/// BACnet uses this for demo/sample object counts: zero means the server
+/// exposes only the mandatory Device object and does not create sample points.
+pub fn parse_zero_or_more_count(s: &str) -> Result<usize, String> {
+    s.parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))
 }
 
 /// Tag entry parsed from CLI argument.
@@ -101,6 +110,18 @@ mod tests {
     fn test_parse_nonzero_count_invalid() {
         assert!(parse_nonzero_count("abc").is_err());
         assert!(parse_nonzero_count("-1").is_err());
+    }
+
+    #[test]
+    fn test_parse_zero_or_more_count_valid() {
+        assert_eq!(parse_zero_or_more_count("0").unwrap(), 0);
+        assert_eq!(parse_zero_or_more_count("100").unwrap(), 100);
+    }
+
+    #[test]
+    fn test_parse_zero_or_more_count_invalid() {
+        assert!(parse_zero_or_more_count("abc").is_err());
+        assert!(parse_zero_or_more_count("-1").is_err());
     }
 
     #[test]

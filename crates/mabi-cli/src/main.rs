@@ -10,7 +10,7 @@ use mabi_cli::commands::{
 };
 use mabi_cli::prelude::*;
 use mabi_cli::runtime_registry::{protocol_catalog, workspace_protocol_registry};
-use mabi_cli::validation::{parse_nonzero_count, parse_port};
+use mabi_cli::validation::{parse_nonzero_count, parse_port, parse_zero_or_more_count};
 use mabi_modbus::{
     BehaviorSetPort, CompiledModbusSession, FaultPresetPort, ModbusConfigSummary,
     ModbusControlSession, ModbusSimulatorConfig, PointCatalogPort, PointCatalogQuery, PointTarget,
@@ -333,8 +333,8 @@ struct BacnetServeArgs {
     #[arg(short, long, default_value = "1234")]
     instance: u32,
 
-    /// Number of objects to create
-    #[arg(short, long, default_value = "100", value_parser = parse_nonzero_count)]
+    /// Number of opt-in demo/sample objects to create
+    #[arg(short, long, default_value = "0", value_parser = parse_zero_or_more_count)]
     objects: usize,
 
     /// Enable BBMD functionality
@@ -2644,10 +2644,11 @@ fn rustc_version() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        into_launch_spec, ModbusServeArgs, OpcuaServeArgs, SecurityModeArg, ServeArgs,
-        ServeProtocolCommand,
+        into_launch_spec, BacnetServeArgs, Cli, Commands, ModbusServeArgs, OpcuaServeArgs,
+        SecurityModeArg, ServeArgs, ServeProtocolCommand,
     };
     use crate::CliContext;
+    use clap::Parser;
 
     #[tokio::test]
     async fn serve_request_maps_to_runtime_request() {
@@ -2672,6 +2673,74 @@ mod tests {
         assert_eq!(request.config["transport"]["bind_addr"], "127.0.0.1:1502");
         assert_eq!(request.config["devices"], 2);
         assert_eq!(request.config["points_per_device"], 32);
+    }
+
+    #[tokio::test]
+    async fn bacnet_serve_defaults_to_empty_registry() {
+        let ctx = CliContext::builder().build().unwrap();
+        let (request, _) = into_launch_spec(
+            &ctx,
+            None,
+            ServeProtocolCommand::Bacnet(BacnetServeArgs {
+                serve: ServeArgs::default(),
+                port: 47808,
+                bind: "127.0.0.1".into(),
+                instance: 1234,
+                objects: 0,
+                bbmd: false,
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(request.protocol, "bacnet");
+        assert_eq!(request.config["bind_addr"], "127.0.0.1:47808");
+        assert_eq!(request.config["device_instance"], 1234);
+        assert_eq!(request.config["objects"], 0);
+        assert_eq!(request.config["bbmd_enabled"], false);
+    }
+
+    #[tokio::test]
+    async fn bacnet_serve_preserves_opt_in_demo_object_count() {
+        let ctx = CliContext::builder().build().unwrap();
+        let (request, _) = into_launch_spec(
+            &ctx,
+            None,
+            ServeProtocolCommand::Bacnet(BacnetServeArgs {
+                serve: ServeArgs::default(),
+                port: 47808,
+                bind: "127.0.0.1".into(),
+                instance: 1234,
+                objects: 100,
+                bbmd: false,
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(request.config["objects"], 100);
+    }
+
+    #[test]
+    fn bacnet_serve_accepts_zero_demo_objects_from_cli() {
+        let cli = Cli::try_parse_from([
+            "mabi",
+            "serve",
+            "bacnet",
+            "--bind",
+            "127.0.0.1",
+            "--objects",
+            "0",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Serve(args) => match args.protocol {
+                ServeProtocolCommand::Bacnet(args) => assert_eq!(args.objects, 0),
+                _ => panic!("expected BACnet serve command"),
+            },
+            _ => panic!("expected serve command"),
+        }
     }
 
     #[tokio::test]

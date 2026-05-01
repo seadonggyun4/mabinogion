@@ -224,25 +224,25 @@ mabi serve bacnet [OPTIONS]
 |--------|-------|------|---------|-------------|
 | `--port` | `-p` | u16 | 47808 | UDP port to bind (1–65535) |
 | `--instance` | `-i` | u32 | 1234 | BACnet device instance number |
-| `--objects` | `-o` | usize | 100 | Number of BACnet objects (≥ 1). 4개 타입(AI, AO, BI, BO)에 균등 분배, 인스턴스 0부터 시작 |
+| `--objects` | `-o` | usize | 0 | Number of opt-in BACnet demo/sample objects. `0` keeps the registry empty except for the mandatory Device object |
 | `--bbmd` | | flag | false | Enable BBMD functionality |
-| `--tag` | | string | none | Device tags (repeatable, format: `key=value` or `label`) |
 
 #### Examples
 
 ```bash
-# Start BACnet server with defaults
+# Start BACnet server with defaults.
+# BACnet explorers should see only the mandatory Device object and metadata.
 mabi serve bacnet
 
-# Start with custom instance and objects
+# Start with custom instance and opt-in demo/sample objects
 # → AI_0..AI_249, AO_0..AO_249, BI_0..BI_249, BO_0..BO_249
 mabi serve bacnet --instance 5000 --objects 1000
 
 # Enable BBMD
 mabi serve bacnet --bbmd --objects 500
 
-# Start with device tags
-mabi serve bacnet --instance 1234 --objects 200 --tag location=building-b --tag floor=2 --tag hvac
+# Start with a smaller demo object set
+mabi serve bacnet --instance 1234 --objects 200
 ```
 
 ---
@@ -561,7 +561,8 @@ All protocol commands enforce argument constraints at parse time via clap `value
 | Constraint | Affected Options | Rationale |
 |------------|-----------------|-----------|
 | Port ∈ [1, 65535] | `--port` (all protocols) | Port 0 triggers OS ephemeral port assignment, yielding a non-deterministic bind address that external clients cannot connect to. This is incompatible with the simulator's role as a known-address test endpoint. |
-| Count ≥ 1 | `--devices`, `--points`, `--nodes`, `--objects`, `--groups` | A zero-count resource produces a server with no simulatable entities. This invariant violation is caught at the CLI boundary rather than propagated to protocol-layer initialization. |
+| Count ≥ 1 | `--devices`, `--points`, `--nodes`, `--groups` | A zero-count resource produces a server with no simulatable entities. This invariant violation is caught at the CLI boundary rather than propagated to protocol-layer initialization. |
+| Count ≥ 0 | BACnet `--objects` | BACnet always exposes the mandatory Device object. `--objects 0` means no demo/sample points are injected; positive values opt into sample analog/binary objects. |
 | Tag format | `--tag` | Must be non-empty; key-value format requires non-empty key (e.g., `=value` is rejected). |
 
 ### Extensibility

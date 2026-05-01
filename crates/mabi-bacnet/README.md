@@ -45,11 +45,11 @@ Your protocol clients are forged here too.
 ## Quick Example
 
 ```bash
-# Start a Modbus server with 10 virtual devices
-mabi modbus --port 5020 --devices 10
+# Start a BACnet/IP server with the mandatory Device object only
+mabi serve bacnet --port 47808 --instance 1234
 
-# Connect with any Modbus client
-mbpoll -a 1 -r 1 -c 10 -p 5020 127.0.0.1
+# Add opt-in demo objects for explorer tools such as YABE
+mabi serve bacnet --port 47808 --instance 1234 --objects 100
 ```
 
 ---
@@ -82,12 +82,17 @@ mabi-chaos = "1.6.2"       # Chaos engineering (optional)
 ## Quick Start
 
 ```bash
-mabi modbus --port 502 --devices 10 --points 100
-mabi opcua --port 4840 --nodes 1000
-mabi bacnet --port 47808 --instance 1234
-mabi knx --port 3671 --address 1.1.1
-mabi run scenario.yaml --time-scale 2.0 --duration 10m
+mabi serve modbus --port 502 --devices 10 --points 100
+mabi serve opcua --config opcua.yaml --session default
+mabi serve bacnet --port 47808 --instance 1234
+mabi serve bacnet --port 47808 --instance 1234 --objects 100  # opt-in demo objects
+mabi serve knx --port 3671 --address 1.1.1
+mabi scenario run scenario.yaml --time-scale 2.0 --duration 10m
 ```
+
+BACnet starts with an empty user registry by default. Explorer tools should see
+the mandatory Device object and its metadata; sample analog/binary points are
+created only when `--objects <N>` is provided.
 
 ---
 

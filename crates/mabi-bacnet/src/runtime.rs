@@ -304,9 +304,11 @@ impl ProtocolDriver for BacnetDriver {
             .with_bind_addr(launch.bind_addr)
             .with_device_name("Mabinogion BACnet Simulator");
         let registry = ObjectRegistry::new();
-        let descriptors = default_object_descriptors();
-        let objects_per_type = std::cmp::max(1, launch.objects / descriptors.len());
-        registry.populate_standard_objects(&descriptors, objects_per_type);
+        if launch.objects > 0 {
+            let descriptors = default_object_descriptors();
+            let objects_per_type = std::cmp::max(1, launch.objects / descriptors.len());
+            registry.populate_standard_objects(&descriptors, objects_per_type);
+        }
         let server = Arc::new(BACnetServer::new(config, registry));
         Ok(Arc::new(BacnetManagedService::new(
             server,

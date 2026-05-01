@@ -52,6 +52,19 @@ struct CaptureManifest {
     replay_kind: String,
     ci_executable: bool,
     notes: String,
+    capture_metadata: Option<CaptureMetadata>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CaptureMetadata {
+    tool_version: String,
+    os: String,
+    bind_address: String,
+    device_instance: u32,
+    observed_object_tree: Vec<String>,
+    failed_property: String,
+    notes: String,
+    artifact_paths: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +84,7 @@ struct CaptureStep {
     request: Option<String>,
     object: Option<String>,
     property: Option<String>,
+    array_index: Option<u32>,
     value: Option<Value>,
     expect: Option<String>,
     invoke_id: Option<u32>,
@@ -332,6 +346,120 @@ fn capture_lane_keeps_gui_tools_out_of_ci_execution() {
         assert!(
             !capture.ci_executable,
             "capture corpus entries must stay manual-only"
+        );
+    }
+}
+
+#[test]
+fn yabe_empty_registry_capture_covers_phase_2_metadata_sequence() {
+    let catalog = load_capture_catalog();
+    let capture = catalog
+        .captures
+        .iter()
+        .find(|capture| capture.id == "yabe-empty-registry-device-metadata")
+        .expect("Phase 2 YABE empty-registry metadata capture should be cataloged");
+
+    assert_eq!(capture.tool, "yabe");
+    assert_eq!(capture.peer, "yabe");
+    assert_eq!(capture.lane, "capture_manual");
+    assert_eq!(capture.profile_ids, ["basic_ip"]);
+    assert_eq!(capture.capability_ids, ["discovery", "property_io"]);
+    assert!(!capture.ci_executable);
+
+    let manifest_path = capture
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.role == "manifest")
+        .map(|artifact| resolve_capture_path(&artifact.path))
+        .expect("YABE empty-registry capture should declare a manifest");
+    let manifest: CaptureManifest =
+        toml::from_str(&fs::read_to_string(manifest_path).expect("manifest should read"))
+            .expect("manifest should parse");
+    let metadata = manifest
+        .capture_metadata
+        .expect("YABE empty-registry capture should declare capture metadata");
+    assert!(!metadata.tool_version.trim().is_empty());
+    assert!(!metadata.os.trim().is_empty());
+    assert!(!metadata.bind_address.trim().is_empty());
+    assert_eq!(metadata.device_instance, 4104);
+    assert_eq!(metadata.observed_object_tree, ["device,4104"]);
+    assert_eq!(metadata.failed_property, "none");
+    assert!(!metadata.notes.trim().is_empty());
+    for required_artifact in [
+        "manifest.toml",
+        "replay.json",
+        "packet-summary.json",
+        "runbook.md",
+    ] {
+        assert!(
+            metadata
+                .artifact_paths
+                .iter()
+                .any(|path| path == required_artifact),
+            "YABE capture metadata should list {required_artifact}"
+        );
+    }
+
+    let replay_path = capture
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.role == "replay")
+        .map(|artifact| resolve_capture_path(&artifact.path))
+        .expect("YABE empty-registry capture should declare a replay");
+    let replay: CaptureReplay =
+        serde_json::from_str(&fs::read_to_string(replay_path).expect("replay should read"))
+            .expect("replay should parse");
+
+    let has_who_is = replay
+        .steps
+        .iter()
+        .any(|step| step.request.as_deref() == Some("Who-Is"));
+    let has_device_object_name = replay.steps.iter().any(|step| {
+        step.property.as_deref() == Some("Object_Name")
+            && step.object.as_deref() == Some("device,4104")
+    });
+    let has_full_object_list = replay
+        .steps
+        .iter()
+        .any(|step| step.property.as_deref() == Some("Object_List") && step.array_index.is_none());
+    let has_object_list_count = replay
+        .steps
+        .iter()
+        .any(|step| step.property.as_deref() == Some("Object_List") && step.array_index == Some(0));
+    let has_object_list_first_element = replay
+        .steps
+        .iter()
+        .any(|step| step.property.as_deref() == Some("Object_List") && step.array_index == Some(1));
+
+    assert!(has_who_is, "YABE capture should include Who-Is discovery");
+    assert!(
+        has_device_object_name,
+        "YABE capture should include Device Object_Name"
+    );
+    assert!(
+        has_full_object_list,
+        "YABE capture should include full Device Object_List"
+    );
+    assert!(
+        has_object_list_count,
+        "YABE capture should include Object_List index 0 count"
+    );
+    assert!(
+        has_object_list_first_element,
+        "YABE capture should include Object_List index 1 first element"
+    );
+
+    for expected_outcome in [
+        "discovery_ok",
+        "device_name_readable",
+        "object_list_full_readable",
+        "object_list_index_0_count_readable",
+        "object_list_index_1_device_readable",
+        "only_mandatory_device_object_expected",
+    ] {
+        assert!(
+            replay.expected_outcomes.contains_key(expected_outcome),
+            "YABE replay should declare expected outcome {expected_outcome}"
         );
     }
 }

@@ -10,7 +10,11 @@ fi
 case "$target" in
     bacpypes3-canary)
         ;;
+    bacpypes3-yabe-sequence)
+        ;;
     bac0-canary)
+        ;;
+    bac0-yabe-readmultiple)
         ;;
     bacnet-stack-canary)
         ;;

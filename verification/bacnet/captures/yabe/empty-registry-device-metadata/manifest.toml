@@ -1,0 +1,27 @@
+version = 1
+id = "yabe-empty-registry-device-metadata"
+tool = "yabe"
+peer = "yabe"
+lane = "capture_manual"
+curation_state = "seeded"
+source_kind = "manual_gui_capture_normalized"
+profile_ids = ["basic_ip"]
+capability_ids = ["discovery", "property_io"]
+replay_kind = "operator_runbook"
+ci_executable = false
+notes = "Normalized YABE seed for default empty-registry Device metadata discovery after Who-Is/I-Am."
+
+[capture_metadata]
+tool_version = "placeholder: record exact YABE build when refreshing this capture"
+os = "placeholder: record maintainer OS when refreshing this capture"
+bind_address = "127.0.0.1:ephemeral-or-47808"
+device_instance = 4104
+observed_object_tree = ["device,4104"]
+failed_property = "none"
+notes = "Empty registry is expected to expose only the mandatory Device object; sample points remain opt-in."
+artifact_paths = [
+  "manifest.toml",
+  "replay.json",
+  "packet-summary.json",
+  "runbook.md",
+]

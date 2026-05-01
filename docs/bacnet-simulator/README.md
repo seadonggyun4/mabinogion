@@ -32,8 +32,14 @@ Current verification source-of-truth and lane documentation live here as well:
 
 - [verification-baseline.md](./verification-baseline.md)
 - [verification-contract.yaml](./verification-contract.yaml)
+- [yabe-discovery-compatibility-plan.md](./yabe-discovery-compatibility-plan.md)
 - [../../verification/bacnet/README.md](../../verification/bacnet/README.md)
 - [../../verification/bacnet/captures/README.md](../../verification/bacnet/captures/README.md)
+
+The current Phase 5 policy keeps the default workspace path deterministic:
+YABE is manual/capture-only, BACpypes3/BAC0 YABE surrogates are ignored interop
+checks, perf is release-only ignored, and Docker, GUI tools, external peers,
+and perf thresholds do not belong in `cargo test --workspace`.
 
 ## Architecture
 
@@ -338,9 +344,18 @@ pub struct ServerConfig {
 ### CLI Configuration
 
 ```bash
-# Start BACnet/IP server
-mabi bacnet --port 47808 --instance 1234
+# Start BACnet/IP server with the mandatory Device object only
+mabi serve bacnet --port 47808 --instance 1234
+
+# Add opt-in demo/sample objects for explorer demos
+mabi serve bacnet --port 47808 --instance 1234 --objects 100
 ```
+
+The default CLI path mirrors `BACnetServer::new(...)`: it does not silently add
+analog or binary sample points. With an empty user registry, BACnet explorers
+such as YABE should discover the Device object, resolve `Object_Name`, read
+`Object_List`, and see only that mandatory Device object. Use `--objects <N>`
+when you want demo objects to appear immediately in an explorer tree.
 
 ### YAML Configuration
 

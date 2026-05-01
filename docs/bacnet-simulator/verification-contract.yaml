@@ -159,7 +159,7 @@ profiles:
     capabilities:
       - property_multiple
     phase_introduced: phase_1
-    notes: Covers batch property access semantics and error mapping.
+    notes: Covers batch property access semantics and error mapping; the BAC0 ignored interop lane also probes Device metadata readMultiple behavior for YABE-style explorer compatibility.
   - id: cov_flow
     lane: deterministic
     capabilities:

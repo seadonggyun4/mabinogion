@@ -44,10 +44,14 @@ pub trait BACnetObject: Send + Sync + 'static {
 
         if let Some(index) = array_index {
             match value {
-                BACnetValue::Array(arr) => arr
-                    .get(index as usize)
-                    .cloned()
-                    .ok_or(PropertyError::InvalidArrayIndex(index)),
+                BACnetValue::Array(arr) => {
+                    if index == 0 {
+                        return Ok(BACnetValue::Unsigned(arr.len() as u32));
+                    }
+                    arr.get((index - 1) as usize)
+                        .cloned()
+                        .ok_or(PropertyError::InvalidArrayIndex(index))
+                }
                 _ => Err(PropertyError::InvalidArrayIndex(index)),
             }
         } else {

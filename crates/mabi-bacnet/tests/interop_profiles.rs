@@ -7,11 +7,12 @@ use std::time::Duration;
 
 use mabi_bacnet::object::BACnetObject;
 use mabi_bacnet::prelude::BACnetServer;
+use mabi_bacnet::prelude::ObjectRegistry;
 
 use support::assertions::{
     assert_active_peer_transcript, assert_bacpypes3_canary_transcript,
     assert_capability_interop_coverage, assert_peer_ci_participation, assert_peer_lane,
-    ActivePeerExpectations,
+    assert_yabe_metadata_transcript, ActivePeerExpectations,
 };
 use support::contract::contract;
 use support::fixtures::{loopback_server_config, property_fixture};
@@ -68,6 +69,27 @@ fn property_fixture_envs(
             format!("AO_{object_instance}"),
         ),
         ("MABI_BACNET_WRITE_VALUE", INTEROP_WRITE_VALUE.to_string()),
+        (
+            "MABI_BACNET_TRANSCRIPT_PATH",
+            transcript_path.display().to_string(),
+        ),
+    ]
+}
+
+fn yabe_metadata_envs(
+    sut_addr: &str,
+    device_instance: u32,
+    device_name: &str,
+    transcript_path: &Path,
+) -> Vec<(&'static str, String)> {
+    vec![
+        ("MABI_BACNET_SUT_ADDR", sut_addr.to_string()),
+        ("MABI_BACNET_DEVICE_INSTANCE", device_instance.to_string()),
+        ("MABI_BACNET_DEVICE_NAME", device_name.to_string()),
+        (
+            "MABI_BACNET_DEVICE_OBJECT_ID",
+            format!("device,{device_instance}"),
+        ),
         (
             "MABI_BACNET_TRANSCRIPT_PATH",
             transcript_path.display().to_string(),
@@ -157,6 +179,53 @@ async fn bacpypes3_canary_profile_smoke_contract() {
 
 #[tokio::test]
 #[ignore]
+async fn bacpypes3_yabe_sequence_smoke_contract() {
+    assert_interop_policies();
+    assert_peer_lane("bacpypes3", "active_interop");
+    assert_peer_ci_participation("bacpypes3", false);
+    assert_capability_interop_coverage("discovery", "active");
+    assert_capability_interop_coverage("property_io", "active");
+
+    let device_instance = 4_211;
+    let config = interop_server_config(device_instance);
+    let device_name = config.device_name.clone();
+    let server = BACnetServer::new(config, ObjectRegistry::new());
+    let harness = BacnetServerHarness::start(server).await;
+    let transcript_path = temp_transcript_path("bacpypes3-yabe-sequence");
+    let sut_addr = harness.addr().to_string();
+
+    let result: Result<(), String> = async {
+        let mut envs =
+            yabe_metadata_envs(&sut_addr, device_instance, &device_name, &transcript_path);
+        envs.push((
+            "MABI_BACNET_INTEROP_SCENARIO",
+            "yabe_metadata_sequence".to_string(),
+        ));
+
+        let output =
+            run_python_peer(&bacpypes3_peer_script(), &envs, Duration::from_secs(60)).await;
+        assert_process_success("BACpypes3 YABE sequence", &transcript_path, &output);
+
+        let transcript = load_active_peer_transcript(&transcript_path);
+        assert_yabe_metadata_transcript(
+            &transcript,
+            "bacpypes3",
+            &sut_addr,
+            device_instance,
+            &device_name,
+            false,
+        );
+        Ok(())
+    }
+    .await;
+
+    harness.shutdown().await;
+    let _ = fs::remove_file(&transcript_path);
+    result.unwrap_or_else(|error| panic!("{error}"));
+}
+
+#[tokio::test]
+#[ignore]
 async fn bac0_canary_profile_smoke_contract() {
     assert_interop_policies();
     assert_peer_lane("bac0", "active_interop");
@@ -196,6 +265,60 @@ async fn bac0_canary_profile_smoke_contract() {
                 require_property_multiple: true,
                 expected_round_trip_value: Some(INTEROP_WRITE_VALUE),
             },
+        );
+        Ok(())
+    }
+    .await;
+
+    harness.shutdown().await;
+    let _ = fs::remove_file(&transcript_path);
+    result.unwrap_or_else(|error| panic!("{error}"));
+}
+
+#[tokio::test]
+#[ignore]
+async fn bac0_yabe_readmultiple_probe_smoke_contract() {
+    assert_interop_policies();
+    assert_peer_lane("bac0", "active_interop");
+    assert_peer_ci_participation("bac0", false);
+    assert_capability_interop_coverage("discovery", "active");
+    assert_capability_interop_coverage("property_io", "active");
+    assert_capability_interop_coverage("property_multiple", "active");
+
+    let device_instance = 4_212;
+    let config = interop_server_config(device_instance);
+    let device_name = config.device_name.clone();
+    let server = BACnetServer::new(config, ObjectRegistry::new());
+    let harness = BacnetServerHarness::start(server).await;
+    let transcript_path = temp_transcript_path("bac0-yabe-readmultiple");
+    let sut_addr = harness.addr().to_string();
+
+    let result: Result<(), String> = async {
+        let mut envs =
+            yabe_metadata_envs(&sut_addr, device_instance, &device_name, &transcript_path);
+        envs.push((
+            "MABI_BACNET_INTEROP_SCENARIO",
+            "yabe_readmultiple_metadata".to_string(),
+        ));
+
+        let output = run_python_peer(&bac0_peer_script(), &envs, INTEROP_TIMEOUT).await;
+        assert_process_success("BAC0 YABE readMultiple", &transcript_path, &output);
+
+        let transcript = load_active_peer_transcript(&transcript_path);
+        assert_yabe_metadata_transcript(
+            &transcript,
+            "bac0",
+            &sut_addr,
+            device_instance,
+            &device_name,
+            true,
+        );
+        assert!(
+            transcript
+                .unsupported_features
+                .iter()
+                .any(|feature| feature == "object_list_indexed_readmultiple"),
+            "BAC0 transcript should explicitly record indexed Object_List readMultiple fallback"
         );
         Ok(())
     }

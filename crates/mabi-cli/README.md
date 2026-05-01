@@ -97,9 +97,14 @@ mabi-chaos = "1.6.2"       # Chaos engineering (optional)
 mabi serve modbus --port 502 --devices 10 --points 100
 mabi serve opcua --config opcua.yaml --session default
 mabi serve bacnet --port 47808 --instance 1234
+mabi serve bacnet --port 47808 --instance 1234 --objects 100  # opt-in demo objects
 mabi serve knx --port 3671 --address 1.1.1
 mabi scenario run scenario.yaml --time-scale 2.0 --duration 10m
 ```
+
+BACnet starts with only the mandatory Device object by default. Use
+`--objects <N>` when you explicitly want demo/sample analog and binary objects
+to appear in BACnet explorer tools.
 
 ---
 

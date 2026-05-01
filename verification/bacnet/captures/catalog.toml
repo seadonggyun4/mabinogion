@@ -34,6 +34,39 @@ notes = "Seeded manual capture lane for YABE-style discovery and single-property
   format = "markdown"
 
 [[captures]]
+id = "yabe-empty-registry-device-metadata"
+tool = "yabe"
+peer = "yabe"
+lane = "capture_manual"
+curation_state = "seeded"
+profile_ids = ["basic_ip"]
+capability_ids = ["discovery", "property_io"]
+artifact_dir = "yabe/empty-registry-device-metadata"
+replay_kind = "operator_runbook"
+ci_executable = false
+notes = "Seeded manual capture lane for YABE-style empty-registry Device metadata discovery."
+
+  [[captures.artifacts]]
+  role = "manifest"
+  path = "yabe/empty-registry-device-metadata/manifest.toml"
+  format = "toml"
+
+  [[captures.artifacts]]
+  role = "replay"
+  path = "yabe/empty-registry-device-metadata/replay.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "packet_summary"
+  path = "yabe/empty-registry-device-metadata/packet-summary.json"
+  format = "json"
+
+  [[captures.artifacts]]
+  role = "runbook"
+  path = "yabe/empty-registry-device-metadata/runbook.md"
+  format = "markdown"
+
+[[captures]]
 id = "vts-duplicate-request-tsm"
 tool = "vts"
 peer = "vts"

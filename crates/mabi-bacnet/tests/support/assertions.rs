@@ -188,6 +188,72 @@ pub fn assert_bacpypes3_canary_transcript(
     );
 }
 
+pub fn assert_yabe_metadata_transcript(
+    transcript: &ActivePeerTranscript,
+    expected_peer: &str,
+    expected_sut_addr: &str,
+    expected_device_instance: u32,
+    expected_device_name: &str,
+    require_read_multiple_metadata: bool,
+) {
+    assert_eq!(transcript.peer, expected_peer);
+    assert_eq!(transcript.sut_addr, expected_sut_addr);
+    assert_eq!(transcript.device_instance, expected_device_instance);
+    assert!(
+        transcript.discovery_ok,
+        "{expected_peer} should complete Who-Is/I-Am discovery"
+    );
+    assert!(
+        transcript.device_name_ok,
+        "{expected_peer} should read Device Object_Name"
+    );
+    assert_eq!(transcript.device_name, expected_device_name);
+    assert!(
+        transcript.object_list_full_ok,
+        "{expected_peer} should read full Device Object_List"
+    );
+    assert!(
+        transcript.object_list_count_ok,
+        "{expected_peer} should read Object_List index 0 count or record supported fallback"
+    );
+    assert!(
+        transcript.object_list_first_ok,
+        "{expected_peer} should read Object_List index 1 first object"
+    );
+    assert!(
+        transcript.object_name_reads_ok,
+        "{expected_peer} should read returned object name/type metadata"
+    );
+    assert!(
+        transcript.object_list_count >= 1,
+        "{expected_peer} should observe at least the mandatory Device object"
+    );
+    assert!(
+        transcript
+            .object_list_objects
+            .iter()
+            .any(|object| object == &format!("device,{expected_device_instance}")),
+        "{expected_peer} Object_List should include the Device object: {:?}",
+        transcript.object_list_objects
+    );
+    if require_read_multiple_metadata {
+        assert!(
+            transcript.read_multiple_metadata_ok,
+            "{expected_peer} should complete the readMultiple metadata probe"
+        );
+    }
+    assert!(
+        transcript.failure_category.is_none(),
+        "{expected_peer} transcript should not report fatal failure category: {:?}",
+        transcript.failure_category
+    );
+    assert!(
+        transcript.errors.is_empty(),
+        "{expected_peer} transcript should not report errors: {:?}",
+        transcript.errors
+    );
+}
+
 pub fn expect_i_am(packet: &ReceivedPacket, expected_device_instance: u32) {
     match &packet.apdu {
         Some(ApduFrame::UnconfirmedRequest {
@@ -287,7 +353,19 @@ pub fn decode_read_property_ack(packet: &ReceivedPacket) -> ReadPropertyAck {
         "expected property value opening tag"
     );
     decoder.read_u8().expect("opening tag should be consumed");
-    let value = decode_value(&mut decoder);
+    let mut values = Vec::new();
+    while !decoder.is_empty() && !decoder.is_closing_tag(3) {
+        values.push(decode_value(&mut decoder));
+    }
+    let value = if property_id == PropertyId::ObjectList && array_index.is_none() {
+        BACnetValue::Array(values)
+    } else {
+        match values.len() {
+            0 => BACnetValue::Array(Vec::new()),
+            1 => values.pop().expect("single decoded value should exist"),
+            _ => BACnetValue::Array(values),
+        }
+    };
     assert!(
         decoder.is_closing_tag(3),
         "expected property value closing tag"

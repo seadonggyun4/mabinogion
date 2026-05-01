@@ -20,7 +20,29 @@ pub struct ActivePeerTranscript {
     #[serde(default)]
     pub property_multiple_ok: bool,
     #[serde(default)]
+    pub device_name_ok: bool,
+    #[serde(default)]
+    pub object_list_full_ok: bool,
+    #[serde(default)]
+    pub object_list_count_ok: bool,
+    #[serde(default)]
+    pub object_list_first_ok: bool,
+    #[serde(default)]
+    pub object_name_reads_ok: bool,
+    #[serde(default)]
+    pub read_multiple_metadata_ok: bool,
+    #[serde(default)]
     pub round_trip_value: f64,
+    #[serde(default)]
+    pub device_name: String,
+    #[serde(default)]
+    pub object_list_count: u32,
+    #[serde(default)]
+    pub object_list_objects: Vec<String>,
+    #[serde(default)]
+    pub unsupported_features: Vec<String>,
+    #[serde(default)]
+    pub failure_category: Option<String>,
     pub errors: Vec<String>,
 }
 

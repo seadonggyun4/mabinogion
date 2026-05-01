@@ -113,9 +113,15 @@ version.
 mabi serve modbus --port 502 --devices 10 --points 100
 mabi serve opcua --config opcua.yaml --session default
 mabi serve bacnet --port 47808 --instance 1234
+mabi serve bacnet --port 47808 --instance 1234 --objects 100  # opt-in demo objects
 mabi serve knx --port 3671 --address 1.1.1
 mabi scenario run scenario.yaml --time-scale 2.0 --duration 10m
 ```
+
+BACnet starts with an empty user registry by default: BACnet explorers such as
+YABE should see the mandatory Device object, Device Object_Name, Object_List,
+and protocol metadata. Add `--objects <N>` only when you want explicit demo
+analog/binary sample objects.
 
 ---
 

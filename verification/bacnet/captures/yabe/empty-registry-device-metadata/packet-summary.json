@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "tool": "yabe",
+  "packets": [
+    {
+      "direction": "client_to_server",
+      "service": "Who-Is",
+      "purpose": "discovery handshake start"
+    },
+    {
+      "direction": "server_to_client",
+      "service": "I-Am",
+      "purpose": "device identity confirmation"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "read Device Object_Name"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "read full Device Object_List"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "read Device Object_List array index 0 count"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "read Device Object_List array index 1 first object"
+    },
+    {
+      "direction": "client_to_server",
+      "service": "ReadProperty",
+      "purpose": "read returned object Object_Name and Object_Type"
+    }
+  ]
+}
