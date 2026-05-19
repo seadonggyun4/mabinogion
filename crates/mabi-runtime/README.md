@@ -19,7 +19,7 @@ depending on protocol-specific internals.
 
 ```toml
 [dependencies]
-mabi-runtime = "1.6.3"
+mabi-runtime = "1.7.0"
 ```
 
 The crate follows the workspace release version. Runtime compatibility is

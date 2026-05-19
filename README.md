@@ -113,14 +113,14 @@ See [docs/README.md](./docs/README.md) for the product-family documentation map.
 
 ```toml
 [dependencies]
-mabi-core = "1.6.3"
-mabi-runtime = "1.6.3"
-mabi-modbus = "1.6.3"
-mabi-opcua = "1.6.3"
-mabi-bacnet = "1.6.3"
-mabi-knx = "1.6.3"
-mabi-scenario = "1.6.3"
-mabi-chaos = "1.6.3"
+mabi-core = "1.7.0"
+mabi-runtime = "1.7.0"
+mabi-modbus = "1.7.0"
+mabi-opcua = "1.7.0"
+mabi-bacnet = "1.7.0"
+mabi-knx = "1.7.0"
+mabi-scenario = "1.7.0"
+mabi-chaos = "1.7.0"
 ```
 
 The Mabinogion release version is sourced from `[workspace.package].version` in

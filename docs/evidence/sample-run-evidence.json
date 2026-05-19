@@ -4,7 +4,7 @@
   "runtime_contract_version": "runtime-contract-v1",
   "snapshot_metadata_version": "snapshot-metadata-v1",
   "run_id": "run-2026-05-19-modbus-l1-001",
-  "engine_version": "1.6.3",
+  "engine_version": "1.7.0",
   "protocol_profile": {
     "protocol": "modbus",
     "profile_id": "modbus.l1.function_code",

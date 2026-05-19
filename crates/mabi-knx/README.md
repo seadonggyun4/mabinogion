@@ -17,7 +17,7 @@ Mabinogion trials that need stable group value and tunnel lifecycle behavior.
 
 ```toml
 [dependencies]
-mabi-knx = "1.6.3"
+mabi-knx = "1.7.0"
 ```
 
 The crate follows the workspace release version. KNX capability metadata is

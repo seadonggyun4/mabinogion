@@ -18,7 +18,7 @@ interop verification.
 
 ```toml
 [dependencies]
-mabi-bacnet = "1.6.3"
+mabi-bacnet = "1.7.0"
 ```
 
 The crate follows the workspace release version. BACnet capability metadata is

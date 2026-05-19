@@ -19,7 +19,7 @@ Trials consumers.
 
 ```toml
 [dependencies]
-mabi-core = "1.6.3"
+mabi-core = "1.7.0"
 ```
 
 The crate follows the workspace release version. Compatibility contracts are

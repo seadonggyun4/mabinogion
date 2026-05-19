@@ -19,7 +19,7 @@ does not own the trial corpus or scoring rules.
 
 ```toml
 [dependencies]
-mabi-scenario = "1.6.3"
+mabi-scenario = "1.7.0"
 ```
 
 The crate follows the workspace release version. Runner-facing scenario

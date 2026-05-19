@@ -18,7 +18,7 @@ runtime behavior.
 
 ```toml
 [dependencies]
-mabi-opcua = "1.6.3"
+mabi-opcua = "1.7.0"
 ```
 
 The crate follows the workspace release version. OPC UA capability metadata is

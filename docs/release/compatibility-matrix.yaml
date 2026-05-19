@@ -1,8 +1,8 @@
 schema_version: 1
 matrix_id: mabinogion-engine-compatibility
 matrix_version: compatibility-matrix-v1
-current_engine_version: "1.6.3"
-engine_version_range: ">=1.6.3 <2.0.0"
+current_engine_version: "1.7.0"
+engine_version_range: ">=1.7.0 <2.0.0"
 workspace_rust_version: "1.75"
 release_channel: source-build
 version_metadata_contract: version-metadata-contract-v1
