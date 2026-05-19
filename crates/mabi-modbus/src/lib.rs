@@ -1,6 +1,6 @@
-//! # trap-sim-modbus
+//! # mabi-modbus
 //!
-//! Modbus TCP/RTU simulator for the TRAP protocol simulator.
+//! Modbus TCP/RTU runtime driver for the Mabinogion protocol resilience engine.
 //!
 //! This crate provides:
 //! - A transport-independent Modbus core and datastore context layer

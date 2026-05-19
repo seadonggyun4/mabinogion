@@ -10,7 +10,7 @@
 //! 5. CRC calculation (RTU)
 //! 6. Protocol timing requirements
 //!
-//! Run with: `cargo test -p trap-sim-modbus --test e2e_protocol_tests -- --nocapture`
+//! Run with: `cargo test -p mabi-modbus --test e2e_protocol_tests -- --nocapture`
 
 use mabi_modbus::{
     handler::{ExceptionCode, HandlerContext, HandlerRegistry},

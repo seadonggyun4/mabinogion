@@ -1,6 +1,6 @@
-//! # trap-sim-opcua
+//! # mabi-opcua
 //!
-//! OPC UA server simulator for the TRAP protocol simulator.
+//! OPC UA runtime driver for the Mabinogion protocol resilience engine.
 //!
 //! This crate provides a comprehensive OPC UA server simulation capability with:
 //!

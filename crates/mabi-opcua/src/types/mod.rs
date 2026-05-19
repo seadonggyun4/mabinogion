@@ -1,7 +1,7 @@
 //! OPC UA type system.
 //!
 //! This module provides OPC UA specific types that are compatible with the
-//! OPC UA specification while maintaining interoperability with trap-sim-core.
+//! OPC UA specification while maintaining interoperability with Mabinogion core types.
 
 pub mod attribute;
 pub mod data_value;

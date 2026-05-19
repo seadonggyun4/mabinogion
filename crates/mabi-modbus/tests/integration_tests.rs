@@ -8,7 +8,7 @@
 //! 3. Error handling and exception responses
 //! 4. Concurrent operations
 //!
-//! Run with: `cargo test -p trap-sim-modbus --test integration_tests -- --nocapture`
+//! Run with: `cargo test -p mabi-modbus --test integration_tests -- --nocapture`
 
 use std::net::SocketAddr;
 use std::sync::Arc;

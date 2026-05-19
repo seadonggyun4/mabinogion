@@ -9,7 +9,7 @@
 //! | TPS                   | 100,000+      | `test_100k_tps`               |
 //! | Memory usage          | < 2GB (10K)   | `test_memory_budget`          |
 //!
-//! Run with: `cargo test -p trap-sim-modbus --test stress_tests --release -- --nocapture --ignored`
+//! Run with: `cargo test -p mabi-modbus --test stress_tests --release -- --nocapture --ignored`
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

@@ -210,7 +210,7 @@ impl ConfigLoader {
     /// let config: EngineConfig = ConfigLoader::load_first(&[
     ///     "config.yaml",
     ///     "config.json",
-    ///     "/etc/trap-sim/config.yaml",
+    ///     "/etc/mabinogion/config.yaml",
     /// ])?;
     /// ```
     pub fn load_first<T: DeserializeOwned>(paths: &[impl AsRef<Path>]) -> Result<(T, PathBuf)> {

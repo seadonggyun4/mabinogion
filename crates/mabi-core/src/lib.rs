@@ -1,11 +1,11 @@
-//! # trap-sim-core
+//! # mabi-core
 //!
-//! Core abstractions and utilities for the TRAP protocol simulator.
+//! Shared domain kernel for the Mabinogion protocol resilience engine.
 //!
 //! This crate provides:
 //! - Device trait and abstractions
 //! - Data point types and value representations
-//! - Simulator engine for managing virtual devices
+//! - Engine types for managing virtual devices and protocol sessions
 //! - Metrics collection and export
 //! - Configuration management with hot reload support
 //! - Structured logging and tracing
@@ -41,7 +41,7 @@
 //! - [`factory`]: Device factory pattern for extensibility
 //! - [`logging`]: Structured logging and tracing setup
 //! - [`metrics`]: Prometheus metrics collection
-//! - [`protocol`]: Protocol definitions (Modbus, OPC UA, BACnet, KNX)
+//! - [`protocol`]: Protocol definitions for Modbus, OPC UA, BACnet, and KNX
 //! - [`types`]: Data point types and addresses
 //! - [`utils`]: Utility functions and helper macros
 //! - [`value`]: Dynamic value types

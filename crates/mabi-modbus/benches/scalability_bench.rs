@@ -1,6 +1,6 @@
 //! Benchmarks for scalability module components.
 //!
-//! Run with: `cargo bench -p trap-sim-modbus`
+//! Run with: `cargo bench -p mabi-modbus`
 //!
 //! ## Benchmark Categories
 //!

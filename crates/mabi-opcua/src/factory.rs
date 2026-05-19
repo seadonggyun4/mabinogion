@@ -1,7 +1,7 @@
 //! OPC UA device factory implementation.
 //!
 //! Provides factory for creating OPC UA devices from configuration,
-//! implementing the trap-sim-core DeviceFactory trait.
+//! implementing the Mabinogion core `DeviceFactory` trait.
 
 use std::collections::HashMap;
 
