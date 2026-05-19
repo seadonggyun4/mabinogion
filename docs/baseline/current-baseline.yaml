@@ -1,0 +1,270 @@
+schema_version: 1
+phase: phase_0_current_baseline_reconciliation
+title: Current Baseline Reconciliation
+purpose: >
+  Record the runtime, CLI, and protocol verification surface that the current
+  mabinogion code already provides before the Forge and Trials contracts are
+  frozen in later phases.
+source_policy:
+  source_of_truth: this_file
+  maintenance_rule: >
+    Update this baseline whenever workspace membership, shared runtime symbols,
+    CLI command variants, or protocol verification contract status changes.
+  non_goals:
+    - define trial suites
+    - score trial results
+    - issue certifications
+workspace:
+  root: .
+  manifest: Cargo.toml
+  crates:
+    - id: mabi-core
+      path: crates/mabi-core
+      role: Shared domain kernel for protocol values, device handles, and common error types.
+      public_surface: protocol-agnostic domain types
+    - id: mabi-runtime
+      path: crates/mabi-runtime
+      role: Shared service lifecycle, driver registry, readiness, stop, and snapshot contracts.
+      public_surface: runtime/session/driver contracts
+    - id: mabi-modbus
+      path: crates/mabi-modbus
+      role: Modbus simulator implementation and normalized protocol driver.
+      public_surface: modbus protocol launch and control surfaces
+    - id: mabi-opcua
+      path: crates/mabi-opcua
+      role: OPC UA simulator implementation and normalized protocol driver.
+      public_surface: opcua protocol launch and control surfaces
+    - id: mabi-bacnet
+      path: crates/mabi-bacnet
+      role: BACnet/IP simulator implementation with verification contract coverage.
+      public_surface: bacnet protocol launch and verification surfaces
+    - id: mabi-knx
+      path: crates/mabi-knx
+      role: KNXnet/IP simulator implementation with verification contract coverage.
+      public_surface: knx protocol launch and verification surfaces
+    - id: mabi-scenario
+      path: crates/mabi-scenario
+      role: Scenario parsing and control-plane execution over runtime device ports.
+      public_surface: scenario validation and execution
+    - id: mabi-chaos
+      path: crates/mabi-chaos
+      role: Fault orchestration and middleware for simulator sessions.
+      public_surface: chaos runtime controls
+    - id: mabi-cli
+      path: crates/mabi-cli
+      role: CLI composition root, installed command surface, and protocol registry consumer.
+      public_surface: mabi command line interface
+runtime_contract:
+  contract_status: frozen_contract_v1
+  contract_docs:
+    - docs/runtime/runtime-contract.md
+    - docs/runtime/runtime-contract.yaml
+  source_refs:
+    - path: crates/mabi-runtime/src/service.rs
+      symbols:
+        - RuntimeError
+        - RuntimeErrorKind
+        - RuntimeErrorInfo
+        - ServiceState
+        - ServiceStatus
+        - ServiceSnapshot
+        - ServiceRuntimeMetadata
+        - ServiceReadinessReport
+        - ServiceHandle
+        - ManagedService
+        - RUNTIME_CONTRACT_VERSION
+        - SNAPSHOT_METADATA_VERSION
+    - path: crates/mabi-runtime/src/session.rs
+      symbols:
+        - RuntimeSessionSpec
+        - RuntimeSession
+        - RuntimeSessionSnapshot
+    - path: crates/mabi-runtime/src/driver.rs
+      symbols:
+        - ProtocolDescriptor
+        - ProtocolLaunchSpec
+        - ProtocolDriverRegistry
+  lifecycle_flow:
+    - construct_runtime_session
+    - start_managed_services
+    - wait_for_readiness
+    - capture_service_snapshots
+    - stop_managed_services
+  next_phase_gaps:
+    - PHASE 4 run evidence now builds on runtime-contract-v1; future work is mabi trial run execution.
+evidence_contract:
+  contract_status: run_evidence_schema_v1
+  contract_docs:
+    - docs/evidence/run-evidence-schema.yaml
+    - docs/evidence/trial-artifact-contract.yaml
+    - docs/evidence/README.md
+    - docs/evidence/sample-run-evidence.json
+  source_refs:
+    - path: crates/mabi-runtime/src/evidence.rs
+      symbols:
+        - RUN_EVIDENCE_SCHEMA_VERSION
+        - TRIAL_ARTIFACT_CONTRACT_VERSION
+        - RunEvidence
+        - RunEvidenceBuilder
+        - ProtocolProfileEvidence
+        - PassCriteriaEvidence
+        - FailureReplayArtifact
+        - PublicPrivateBoundary
+  ownership_boundary:
+    - execution evidence export is owned by mabinogion
+    - scoring, proof publication, and certification remain outside mabinogion
+release_version_contract:
+  contract_status: version_metadata_contract_v1
+  contract_docs:
+    - docs/release/version-metadata-contract.yaml
+    - docs/release/compatibility-matrix.yaml
+    - docs/release/release-checklist.md
+    - docs/release/changelog-policy.md
+  source_refs:
+    - path: crates/mabi-cli/src/runner_contract.rs
+      symbols:
+        - VERSION_METADATA_CONTRACT_VERSION
+        - VersionReport
+        - ReleaseMetadata
+        - ProtocolCapabilityVersion
+        - RunnerCompatibilityPolicy
+    - path: scripts/release-version.py
+      symbols:
+        - check_release_docs
+        - version-metadata-contract-v1
+  compatibility_matrix:
+    matrix_version: compatibility-matrix-v1
+    current_engine_version_source: Cargo.toml workspace.package.version
+    decision_owner: mabinogion-trials-or-forge
+  ownership_boundary:
+    - release and protocol capability metadata export is owned by mabinogion
+    - engine/trial-suite allow deny decisions remain outside mabinogion
+cli_surface:
+  contract_status: implemented_baseline
+  output_contract_status: local_runner_contract_v1
+  contract_docs:
+    - docs/cli/local-runner-contract.yaml
+    - docs/cli/local-runner-contract.md
+  source_ref: crates/mabi-cli/src/main.rs
+  registry_ref: crates/mabi-cli/src/runtime_registry.rs
+  commands:
+    - id: serve
+      source_variant: Serve
+      status: implemented
+      surface: Shared runtime protocol launch.
+    - id: scenario
+      source_variant: Scenario
+      status: implemented
+      surface: Scenario controller commands.
+    - id: chaos
+      source_variant: Chaos
+      status: implemented
+      surface: Fault orchestration commands.
+    - id: inspect
+      source_variant: Inspect
+      status: implemented
+      surface: Runtime and schema inspection.
+    - id: validate
+      source_variant: Validate
+      status: implemented
+      surface: Scenario and config validation.
+    - id: control
+      source_variant: Control
+      status: implemented
+      surface: Runtime control commands for simulator sessions.
+    - id: generate
+      source_variant: Generate
+      status: implemented
+      surface: Deterministic generation from canonical configs.
+    - id: doctor
+      source_variant: Doctor
+      status: implemented
+      surface: Installed CLI and built-in protocol smoke report.
+    - id: version
+      source_variant: Version
+      status: implemented_structured_output
+      surface: Workspace release, protocol, and contract version reporting.
+  next_phase_gaps:
+    - future trial run implementation remains outside PHASE 3; local-runner-contract-v1 only documents the execution spec that mabinogion-trials will own.
+protocol_verification:
+  unified_readiness_contract_status: unified_readiness_contract_v1
+  contract_docs:
+    - docs/protocol-readiness/unified-readiness-contract.yaml
+    - docs/protocol-readiness/protocol-readiness-matrix.yaml
+    - docs/protocol-readiness/README.md
+  expected_unified_fields:
+    - capability_id
+    - profile_id
+    - lane
+    - coverage_status
+    - optional_interop_policy
+    - trial_profile_id
+    - trial_level
+    - required_evidence
+    - engine_requirement
+    - forge_display_label
+  protocols:
+    - id: bacnet
+      crate: mabi-bacnet
+      status: contract_present
+      verification_contract: docs/bacnet-simulator/verification-contract.yaml
+      verification_baseline: docs/bacnet-simulator/verification-baseline.md
+      readiness_contract_gap: false
+      notes: BACnet has deterministic readiness profiles mapped to unified-readiness-contract-v1 with optional interop and capture policy preserved.
+    - id: knx
+      crate: mabi-knx
+      status: contract_present
+      verification_contract: docs/knx-simulator/verification-contract.yaml
+      verification_baseline: docs/knx-simulator/verification-baseline.md
+      readiness_contract_gap: false
+      notes: KNX has deterministic readiness profiles mapped to unified-readiness-contract-v1 with optional interop and capture policy preserved.
+    - id: modbus
+      crate: mabi-modbus
+      status: contract_present
+      verification_contract: docs/modbus-simulator/verification-contract.yaml
+      verification_baseline: docs/modbus-simulator/verification-baseline.md
+      readiness_contract_gap: false
+      related_docs:
+        - docs/modbus-simulator/dx-reference-matrix.yaml
+        - docs/modbus-simulator/simulator-config-spec.md
+        - docs/modbus-simulator/simulator-control-plane-spec.md
+      notes: Modbus now has Level 1 and Level 2 readiness profiles mapped to unified-readiness-contract-v1.
+    - id: opcua
+      crate: mabi-opcua
+      status: contract_present
+      verification_contract: docs/opcua-simulator/verification-contract.yaml
+      verification_baseline: docs/opcua-simulator/verification-baseline.md
+      readiness_contract_gap: false
+      related_docs:
+        - docs/opcua-simulator/simulator-config-spec.md
+        - docs/opcua-simulator/simulator-control-plane-spec.md
+        - docs/opcua-simulator/tcp-transport-stack.md
+      notes: OPC UA now has Level 1 through Level 3 readiness profiles mapped to unified-readiness-contract-v1.
+test_lanes:
+  deterministic_local:
+    status: supported
+    command: cargo test --workspace
+    purpose: Deterministic developer validation for the Rust workspace.
+  operational_optional:
+    status: manual_or_nightly
+    lanes:
+      - external_peer_interop
+      - performance_soak
+      - docker_peer_matrix
+    purpose: Costly or environment-dependent operational verification outside PHASE 0.
+  deploy_blocking_ci:
+    status: defined_by_strategy_docs
+    purpose: Actual service operation checks are documented in the repo strategy plans, not in this baseline.
+ownership_boundaries:
+  mabinogion_owns:
+    - protocol_session_execution
+    - shared_runtime_contract
+    - installed_cli_surface
+    - run_evidence_export_primitives
+    - run_evidence_schema
+    - release_version_metadata
+  not_owned_by_mabinogion:
+    - trial_definition_authoring
+    - scoring_policy
+    - proof_report_publication
+    - certification_issuance

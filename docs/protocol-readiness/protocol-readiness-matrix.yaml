@@ -1,0 +1,194 @@
+schema_version: 1
+contract_id: unified-readiness-contract-v1
+matrix_version: protocol-readiness-matrix-v1
+protocols:
+  - id: opcua
+    profiles:
+      - capability_id: session_lifecycle
+        profile_id: session_lifecycle
+        trial_profile_id: opcua.l1.session_lifecycle
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: secure_channel_renewal
+        profile_id: secure_channel_renewal
+        trial_profile_id: opcua.l2.secure_channel_renewal
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: reconnect
+        profile_id: reconnect
+        trial_profile_id: opcua.l3.reconnect
+        trial_level: 3
+        lane: ignored_interop
+        coverage_status: partial
+        optional_interop_policy: nightly
+      - capability_id: subscription
+        profile_id: subscription
+        trial_profile_id: opcua.l2.subscription
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: timeout
+        profile_id: timeout
+        trial_profile_id: opcua.l3.timeout
+        trial_level: 3
+        lane: deterministic
+        coverage_status: partial
+        optional_interop_policy: nightly
+      - capability_id: malformed_service_response
+        profile_id: malformed_service_response
+        trial_profile_id: opcua.l3.malformed_service_response
+        trial_level: 3
+        lane: deterministic
+        coverage_status: partial
+        optional_interop_policy: none
+      - capability_id: operation_limit
+        profile_id: operation_limit
+        trial_profile_id: opcua.l2.operation_limit
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: none
+  - id: bacnet
+    profiles:
+      - capability_id: discovery
+        profile_id: basic_ip
+        trial_profile_id: bacnet.l1.discovery
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: property_io
+        profile_id: property_io
+        trial_profile_id: bacnet.l1.property_io
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: cov
+        profile_id: cov_flow
+        trial_profile_id: bacnet.l2.cov
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: segmentation
+        profile_id: segmentation
+        trial_profile_id: bacnet.l3.segmentation
+        trial_level: 3
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: bbmd_foreign_device
+        profile_id: bbmd_fdr
+        trial_profile_id: bacnet.l3.bbmd_fdr
+        trial_level: 3
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: tsm_duplicate_handling
+        profile_id: tsm_resilience
+        trial_profile_id: bacnet.l3.duplicate_handling
+        trial_level: 3
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: capture_only
+  - id: modbus
+    profiles:
+      - capability_id: function_code
+        profile_id: function_code_core
+        trial_profile_id: modbus.l1.function_code
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: none
+      - capability_id: register_map
+        profile_id: register_map
+        trial_profile_id: modbus.l1.register_map
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: none
+      - capability_id: exception_response
+        profile_id: exception_response
+        trial_profile_id: modbus.l1.exception_response
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: none
+      - capability_id: multi_unit
+        profile_id: multi_unit
+        trial_profile_id: modbus.l2.multi_unit
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: none
+      - capability_id: timeout
+        profile_id: timeout
+        trial_profile_id: modbus.l2.timeout
+        trial_level: 2
+        lane: deterministic
+        coverage_status: partial
+        optional_interop_policy: none
+      - capability_id: partial_response
+        profile_id: partial_response
+        trial_profile_id: modbus.l2.partial_response
+        trial_level: 2
+        lane: deterministic
+        coverage_status: partial
+        optional_interop_policy: none
+      - capability_id: slow_device
+        profile_id: slow_device
+        trial_profile_id: modbus.l2.slow_device
+        trial_level: 2
+        lane: deterministic
+        coverage_status: partial
+        optional_interop_policy: release_only
+  - id: knx
+    profiles:
+      - capability_id: discovery
+        profile_id: basic_discovery
+        trial_profile_id: knx.l1.discovery
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: tunneling_connect
+        profile_id: tunnel_lifecycle
+        trial_profile_id: knx.l1.tunneling_lifecycle
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: group_value_read_write
+        profile_id: group_io
+        trial_profile_id: knx.l1.group_value_io
+        trial_level: 1
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: dpt_codec
+        profile_id: dpt_matrix
+        trial_profile_id: knx.l2.dpt_codec
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: sequence_ack_retry
+        profile_id: tunnel_resilience
+        trial_profile_id: knx.l2.sequence_validation
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly
+      - capability_id: heartbeat_timeout
+        profile_id: heartbeat_timeout
+        trial_profile_id: knx.l2.heartbeat_connection_state
+        trial_level: 2
+        lane: deterministic
+        coverage_status: implemented
+        optional_interop_policy: nightly

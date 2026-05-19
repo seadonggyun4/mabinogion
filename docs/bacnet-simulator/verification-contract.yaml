@@ -290,3 +290,123 @@ peers:
       - device_control_time_sync
     excluded_from_current_ci: true
     notes: Packet-centric manual tool kept outside current CI automation and normalized into the seeded capture corpus lane.
+
+unified_readiness:
+  contract_id: unified-readiness-contract-v1
+  protocol: bacnet
+  baseline: docs/bacnet-simulator/verification-baseline.md
+  matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
+  profiles:
+    - capability_id: discovery
+      profile_id: basic_ip
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: bacnet.l1.discovery
+      trial_level: 1
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-bacnet runtime-contract-v1 with BACnet/IP lifecycle support.
+      forge_display_label: BACnet/IP discovery
+      source_refs:
+        - crates/mabi-bacnet/src/service/discovery.rs
+        - crates/mabi-bacnet/src/server/bacnet_server.rs
+      test_refs:
+        - crates/mabi-bacnet/tests/profile_basic_property.rs
+        - crates/mabi-bacnet/tests/runtime_smoke.rs
+    - capability_id: property_io
+      profile_id: property_io
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: bacnet.l1.property_io
+      trial_level: 1
+      required_evidence:
+        - protocol_exchange
+        - report_field
+      engine_requirement: BACnet ReadProperty and WriteProperty support.
+      forge_display_label: BACnet property I/O
+      source_refs:
+        - crates/mabi-bacnet/src/service/property.rs
+        - crates/mabi-bacnet/src/object/property.rs
+      test_refs:
+        - crates/mabi-bacnet/tests/profile_basic_property.rs
+        - crates/mabi-bacnet/tests/interop_profiles.rs
+    - capability_id: cov
+      profile_id: cov_flow
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: bacnet.l2.cov
+      trial_level: 2
+      required_evidence:
+        - protocol_exchange
+        - log
+        - report_field
+      engine_requirement: BACnet SubscribeCOV and notification lifecycle support.
+      forge_display_label: BACnet COV flow
+      source_refs:
+        - crates/mabi-bacnet/src/service/cov.rs
+        - crates/mabi-bacnet/src/service/subscribe_cov.rs
+      test_refs:
+        - crates/mabi-bacnet/tests/profile_cov_lifecycle.rs
+        - crates/mabi-bacnet/tests/interop_profiles.rs
+    - capability_id: segmentation
+      profile_id: segmentation
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: bacnet.l3.segmentation
+      trial_level: 3
+      required_evidence:
+        - protocol_exchange
+        - replay
+        - report_field
+      engine_requirement: BACnet APDU segmentation and reassembly support.
+      forge_display_label: BACnet segmentation
+      source_refs:
+        - crates/mabi-bacnet/src/apdu/segmentation.rs
+        - crates/mabi-bacnet/src/server/bacnet_server.rs
+      test_refs:
+        - crates/mabi-bacnet/tests/profile_network_resilience.rs
+        - crates/mabi-bacnet/tests/interop_profiles.rs
+    - capability_id: bbmd_foreign_device
+      profile_id: bbmd_fdr
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: bacnet.l3.bbmd_fdr
+      trial_level: 3
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: BACnet BBMD and foreign-device registration support.
+      forge_display_label: BACnet BBMD/FDR
+      source_refs:
+        - crates/mabi-bacnet/src/network/bbmd.rs
+        - crates/mabi-bacnet/src/server/bacnet_server.rs
+      test_refs:
+        - crates/mabi-bacnet/tests/profile_network_resilience.rs
+        - crates/mabi-bacnet/tests/interop_matrix.rs
+    - capability_id: tsm_duplicate_handling
+      profile_id: tsm_resilience
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: capture_only
+      trial_profile_id: bacnet.l3.duplicate_handling
+      trial_level: 3
+      required_evidence:
+        - protocol_exchange
+        - replay
+        - report_field
+      engine_requirement: BACnet transaction state and duplicate request handling.
+      forge_display_label: BACnet duplicate handling
+      source_refs:
+        - crates/mabi-bacnet/src/service/tsm.rs
+        - crates/mabi-bacnet/src/server/bacnet_server.rs
+      test_refs:
+        - crates/mabi-bacnet/tests/profile_network_resilience.rs
+        - crates/mabi-bacnet/tests/capture_corpus.rs

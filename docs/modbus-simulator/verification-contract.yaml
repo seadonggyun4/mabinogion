@@ -1,0 +1,239 @@
+version: 1
+
+baseline:
+  crate: mabi-modbus
+  protocol_scope: modbus_tcp_and_rtu
+  integration_layer_present: true
+  interop_plane_present: false
+  capture_corpus_present: false
+  perf_contract_present: true
+  default_workspace_command: cargo test --workspace
+
+policies:
+  default_workspace_lane: deterministic
+  interop_lane: future_optional
+  perf_lane: release_only
+  capture_lane: future_artifact_only
+  default_perf_thresholds_forbidden: true
+  production_dependency_policy: verification_assets_only
+
+capabilities:
+  - id: function_code
+    description: Standard Modbus function code read/write behavior.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/server.rs
+      - crates/mabi-modbus/src/register.rs
+  - id: register_map
+    description: Register, coil, sparse map, data type, and word order behavior.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/register.rs
+      - crates/mabi-modbus/src/unit/manager.rs
+  - id: exception_response
+    description: Modbus exception response generation and transport parity.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/server.rs
+      - crates/mabi-modbus/src/error.rs
+  - id: multi_unit
+    description: Multi-unit addressing, broadcast behavior, and per-unit state.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/unit/manager.rs
+      - crates/mabi-modbus/src/config.rs
+  - id: timeout
+    description: Connection and readiness timeout behavior.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/server.rs
+      - crates/mabi-modbus/src/runtime/service.rs
+  - id: partial_response
+    description: Short frame, malformed frame, and partial request handling.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/server.rs
+      - crates/mabi-modbus/src/tcp/codec.rs
+      - crates/mabi-modbus/src/rtu/codec.rs
+  - id: slow_device
+    description: Delayed response simulation and high-throughput preset policy.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-modbus/src/config.rs
+      - crates/mabi-modbus/src/runtime/service.rs
+
+profiles:
+  - id: function_code_core
+    lane: deterministic
+    capabilities:
+      - function_code
+    notes: Covers the core Modbus function code contract for Trials Level 1.
+  - id: register_map
+    lane: deterministic
+    capabilities:
+      - register_map
+    notes: Covers dense/sparse register maps and typed value representation.
+  - id: exception_response
+    lane: deterministic
+    capabilities:
+      - exception_response
+    notes: Covers exception response shape and illegal request handling.
+  - id: multi_unit
+    lane: deterministic
+    capabilities:
+      - multi_unit
+    notes: Covers unit addressing, broadcast, and per-unit state behavior.
+  - id: timeout
+    lane: deterministic
+    capabilities:
+      - timeout
+    notes: Covers bounded readiness and transport timeout behavior.
+  - id: partial_response
+    lane: deterministic
+    capabilities:
+      - partial_response
+    notes: Covers malformed and partial frame behavior.
+  - id: slow_device
+    lane: deterministic
+    capabilities:
+      - slow_device
+    notes: Covers configured delayed-response behavior without making perf thresholds default.
+
+unified_readiness:
+  contract_id: unified-readiness-contract-v1
+  protocol: modbus
+  baseline: docs/modbus-simulator/verification-baseline.md
+  matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
+  profiles:
+    - capability_id: function_code
+      profile_id: function_code_core
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: none
+      trial_profile_id: modbus.l1.function_code
+      trial_level: 1
+      required_evidence:
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-modbus runtime-contract-v1 with TCP or RTU session config.
+      forge_display_label: Modbus function code core
+      source_refs:
+        - crates/mabi-modbus/src/server.rs
+        - crates/mabi-modbus/src/register.rs
+      test_refs:
+        - crates/mabi-modbus/tests/contract_function_codes.rs
+        - crates/mabi-modbus/tests/integration_tests.rs
+    - capability_id: register_map
+      profile_id: register_map
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: none
+      trial_profile_id: modbus.l1.register_map
+      trial_level: 1
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-modbus register and point configuration.
+      forge_display_label: Modbus register map
+      source_refs:
+        - crates/mabi-modbus/src/register.rs
+        - crates/mabi-modbus/src/unit/manager.rs
+      test_refs:
+        - crates/mabi-modbus/tests/contract_parity.rs
+        - crates/mabi-modbus/tests/advanced_features.rs
+    - capability_id: exception_response
+      profile_id: exception_response
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: none
+      trial_profile_id: modbus.l1.exception_response
+      trial_level: 1
+      required_evidence:
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-modbus exception response mapping for invalid requests.
+      forge_display_label: Modbus exception response
+      source_refs:
+        - crates/mabi-modbus/src/server.rs
+        - crates/mabi-modbus/src/error.rs
+      test_refs:
+        - crates/mabi-modbus/tests/contract_validation.rs
+        - crates/mabi-modbus/tests/e2e_protocol_tests.rs
+    - capability_id: multi_unit
+      profile_id: multi_unit
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: none
+      trial_profile_id: modbus.l2.multi_unit
+      trial_level: 2
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-modbus multi-unit session config and unit manager.
+      forge_display_label: Modbus multi-unit addressing
+      source_refs:
+        - crates/mabi-modbus/src/unit/manager.rs
+        - crates/mabi-modbus/src/config.rs
+      test_refs:
+        - crates/mabi-modbus/tests/advanced_features.rs
+        - crates/mabi-modbus/tests/contract_broadcast.rs
+    - capability_id: timeout
+      profile_id: timeout
+      lane: deterministic
+      coverage_status: partial
+      optional_interop_policy: none
+      trial_profile_id: modbus.l2.timeout
+      trial_level: 2
+      required_evidence:
+        - log
+        - runtime_snapshot
+        - report_field
+      engine_requirement: mabi-modbus bounded readiness and transport timeout config.
+      forge_display_label: Modbus timeout behavior
+      source_refs:
+        - crates/mabi-modbus/src/server.rs
+        - crates/mabi-modbus/src/runtime/service.rs
+      test_refs:
+        - crates/mabi-modbus/tests/contract_malformed.rs
+        - crates/mabi-modbus/tests/transport_latency_validation.rs
+    - capability_id: partial_response
+      profile_id: partial_response
+      lane: deterministic
+      coverage_status: partial
+      optional_interop_policy: none
+      trial_profile_id: modbus.l2.partial_response
+      trial_level: 2
+      required_evidence:
+        - protocol_exchange
+        - replay
+        - report_field
+      engine_requirement: mabi-modbus malformed frame and short PDU handling.
+      forge_display_label: Modbus partial response
+      source_refs:
+        - crates/mabi-modbus/src/server.rs
+        - crates/mabi-modbus/src/tcp/codec.rs
+        - crates/mabi-modbus/src/rtu/codec.rs
+      test_refs:
+        - crates/mabi-modbus/tests/contract_malformed.rs
+        - crates/mabi-modbus/tests/e2e_protocol_tests.rs
+    - capability_id: slow_device
+      profile_id: slow_device
+      lane: deterministic
+      coverage_status: partial
+      optional_interop_policy: release_only
+      trial_profile_id: modbus.l2.slow_device
+      trial_level: 2
+      required_evidence:
+        - metric
+        - runtime_snapshot
+        - report_field
+      engine_requirement: mabi-modbus response_delay_ms or performance preset semantics.
+      forge_display_label: Modbus slow device
+      source_refs:
+        - crates/mabi-modbus/src/config.rs
+        - crates/mabi-modbus/src/runtime/service.rs
+      test_refs:
+        - crates/mabi-modbus/tests/performance_preset_semantics.rs
+        - crates/mabi-modbus/tests/transport_performance_contract.rs

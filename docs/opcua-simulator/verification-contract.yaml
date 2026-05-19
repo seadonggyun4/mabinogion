@@ -1,0 +1,260 @@
+version: 1
+
+baseline:
+  crate: mabi-opcua
+  protocol_scope: opcua_binary_core
+  integration_layer_present: true
+  interop_plane_present: true
+  capture_corpus_present: false
+  perf_contract_present: true
+  default_workspace_command: cargo test --workspace
+
+policies:
+  default_workspace_lane: deterministic
+  interop_lane: ignored
+  interop_execution_model: repo_owned_container_matrix
+  perf_lane: release_only_ignored
+  capture_lane: future_artifact_only
+  default_perf_thresholds_forbidden: true
+  production_dependency_policy: verification_assets_only
+
+capabilities:
+  - id: session_lifecycle
+    description: CreateSession, ActivateSession, service use, CloseSession, and cleanup behavior.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/core/handlers/session.rs
+      - crates/mabi-opcua/src/transport/runtime.rs
+  - id: secure_channel_renewal
+    description: OpenSecureChannel renewal with stable channel id and renewed token id.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/transport/secure_channel_runtime.rs
+      - crates/mabi-opcua/src/channel/secure_channel.rs
+  - id: reconnect
+    description: Reverse-connect, peer reconnection, and session recovery readiness.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/transport/tcp_reverse_connector.rs
+      - crates/mabi-opcua/src/core/handlers/transfer_subscription.rs
+  - id: subscription
+    description: Data-change subscription, monitored item, and transfer subscription behavior.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/core/handlers/subscription.rs
+      - crates/mabi-opcua/src/sdk/subscription/mod.rs
+  - id: timeout
+    description: Hello, OpenSecureChannel, request, and reverse-connect timeout behavior.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/transport/runtime.rs
+      - crates/mabi-opcua/src/transport/tcp_reverse_connector.rs
+  - id: malformed_service_response
+    description: ServiceFault and malformed message handling.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/transport/runtime.rs
+      - crates/mabi-opcua/src/core/status.rs
+  - id: operation_limit
+    description: ServerCapabilities OperationLimits nodes and batch-size exposure.
+    implemented_in_core: true
+    code_refs:
+      - crates/mabi-opcua/src/nodes/batch.rs
+      - crates/mabi-opcua/src/nodes/builder.rs
+
+profiles:
+  - id: session_lifecycle
+    lane: deterministic
+    capabilities:
+      - session_lifecycle
+    notes: Covers the core session lifecycle for Trials Level 1.
+  - id: secure_channel_renewal
+    lane: deterministic
+    capabilities:
+      - secure_channel_renewal
+    notes: Covers in-band secure channel token renewal.
+  - id: reconnect
+    lane: interop
+    capabilities:
+      - reconnect
+    notes: Covers reconnect and reverse-connect readiness through ignored interop evidence.
+  - id: subscription
+    lane: deterministic
+    capabilities:
+      - subscription
+    notes: Covers subscriptions and monitored item behavior.
+  - id: timeout
+    lane: deterministic
+    capabilities:
+      - timeout
+    notes: Covers bounded transport and request timeout behavior.
+  - id: malformed_service_response
+    lane: deterministic
+    capabilities:
+      - malformed_service_response
+    notes: Covers malformed request and ServiceFault behavior.
+  - id: operation_limit
+    lane: deterministic
+    capabilities:
+      - operation_limit
+    notes: Covers OperationLimits metadata exposed in the address space.
+
+peers:
+  - id: open62541
+    automation_lane: active_interop
+    role: c_reference_peer
+    profiles:
+      - session_lifecycle
+      - subscription
+      - reconnect
+  - id: milo
+    automation_lane: active_interop
+    role: jvm_reference_peer
+    profiles:
+      - session_lifecycle
+      - subscription
+  - id: async-opcua
+    automation_lane: active_interop
+    role: rust_ecosystem_peer
+    profiles:
+      - session_lifecycle
+      - secure_channel_renewal
+
+unified_readiness:
+  contract_id: unified-readiness-contract-v1
+  protocol: opcua
+  baseline: docs/opcua-simulator/verification-baseline.md
+  matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
+  profiles:
+    - capability_id: session_lifecycle
+      profile_id: session_lifecycle
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: opcua.l1.session_lifecycle
+      trial_level: 1
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-opcua runtime-contract-v1 with canonical session config.
+      forge_display_label: OPC UA session lifecycle
+      source_refs:
+        - crates/mabi-opcua/src/core/handlers/session.rs
+        - docs/opcua-simulator/SESSION_LIFECYCLE_FIX.md
+      test_refs:
+        - crates/mabi-opcua/tests/interop_profiles.rs
+        - crates/mabi-opcua/tests/ctt_fixtures.rs
+    - capability_id: secure_channel_renewal
+      profile_id: secure_channel_renewal
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: opcua.l2.secure_channel_renewal
+      trial_level: 2
+      required_evidence:
+        - protocol_exchange
+        - log
+        - report_field
+      engine_requirement: OPC UA secure channel renewal support.
+      forge_display_label: OPC UA secure channel renewal
+      source_refs:
+        - crates/mabi-opcua/src/transport/secure_channel_runtime.rs
+        - docs/opcua-simulator/SECURE_CHANNEL_RENEWAL.md
+      test_refs:
+        - crates/mabi-opcua/tests/interop_profiles.rs
+        - crates/mabi-opcua/tests/transport_protocols.rs
+    - capability_id: reconnect
+      profile_id: reconnect
+      lane: ignored_interop
+      coverage_status: partial
+      optional_interop_policy: nightly
+      trial_profile_id: opcua.l3.reconnect
+      trial_level: 3
+      required_evidence:
+        - log
+        - metric
+        - report_field
+      engine_requirement: OPC UA reverse-connect and transfer subscription readiness.
+      forge_display_label: OPC UA reconnect readiness
+      source_refs:
+        - crates/mabi-opcua/src/transport/tcp_reverse_connector.rs
+        - verification/opcua/interop-matrix.toml
+      test_refs:
+        - crates/mabi-opcua/tests/transport_protocols.rs
+        - crates/mabi-opcua/tests/interop_matrix.rs
+    - capability_id: subscription
+      profile_id: subscription
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: opcua.l2.subscription
+      trial_level: 2
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: OPC UA subscription and monitored item support.
+      forge_display_label: OPC UA subscription
+      source_refs:
+        - crates/mabi-opcua/src/core/handlers/subscription.rs
+        - crates/mabi-opcua/src/sdk/subscription/mod.rs
+      test_refs:
+        - crates/mabi-opcua/tests/interop_profiles.rs
+        - crates/mabi-opcua/tests/experimental_namespace_api.rs
+    - capability_id: timeout
+      profile_id: timeout
+      lane: deterministic
+      coverage_status: partial
+      optional_interop_policy: nightly
+      trial_profile_id: opcua.l3.timeout
+      trial_level: 3
+      required_evidence:
+        - log
+        - metric
+        - report_field
+      engine_requirement: OPC UA bounded transport timeout policy.
+      forge_display_label: OPC UA timeout behavior
+      source_refs:
+        - crates/mabi-opcua/src/transport/runtime.rs
+        - crates/mabi-opcua/src/transport/tcp_reverse_connector.rs
+      test_refs:
+        - crates/mabi-opcua/tests/transport_protocols.rs
+        - crates/mabi-opcua/tests/interop_matrix.rs
+    - capability_id: malformed_service_response
+      profile_id: malformed_service_response
+      lane: deterministic
+      coverage_status: partial
+      optional_interop_policy: none
+      trial_profile_id: opcua.l3.malformed_service_response
+      trial_level: 3
+      required_evidence:
+        - protocol_exchange
+        - replay
+        - report_field
+      engine_requirement: OPC UA ServiceFault and malformed message mapping.
+      forge_display_label: OPC UA malformed service response
+      source_refs:
+        - crates/mabi-opcua/src/transport/runtime.rs
+        - crates/mabi-opcua/src/core/status.rs
+      test_refs:
+        - crates/mabi-opcua/tests/ctt_fixtures.rs
+        - crates/mabi-opcua/tests/interop_profiles.rs
+    - capability_id: operation_limit
+      profile_id: operation_limit
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: none
+      trial_profile_id: opcua.l2.operation_limit
+      trial_level: 2
+      required_evidence:
+        - runtime_snapshot
+        - report_field
+      engine_requirement: OPC UA ServerCapabilities OperationLimits nodes.
+      forge_display_label: OPC UA operation limits
+      source_refs:
+        - crates/mabi-opcua/src/nodes/batch.rs
+        - docs/opcua-simulator/README.md
+      test_refs:
+        - crates/mabi-opcua/tests/interop_profiles.rs
+        - crates/mabi-opcua/tests/experimental_namespace_api.rs

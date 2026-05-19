@@ -358,3 +358,122 @@ interop_targets:
       - group_value_read_write
       - dpt_codec
       - secure_future
+
+unified_readiness:
+  contract_id: unified-readiness-contract-v1
+  protocol: knx
+  baseline: docs/knx-simulator/verification-baseline.md
+  matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
+  profiles:
+    - capability_id: discovery
+      profile_id: basic_discovery
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: knx.l1.discovery
+      trial_level: 1
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: mabi-knx runtime-contract-v1 with KNXnet/IP search support.
+      forge_display_label: KNXnet/IP discovery
+      source_refs:
+        - crates/mabi-knx/src/server.rs
+        - crates/mabi-knx/src/frame/service.rs
+      test_refs:
+        - crates/mabi-knx/tests/profile_basic.rs
+        - crates/mabi-knx/tests/runtime_smoke.rs
+    - capability_id: tunneling_connect
+      profile_id: tunnel_lifecycle
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: knx.l1.tunneling_lifecycle
+      trial_level: 1
+      required_evidence:
+        - runtime_snapshot
+        - protocol_exchange
+        - report_field
+      engine_requirement: KNXnet/IP tunneling connect, state, and disconnect support.
+      forge_display_label: KNX tunnel lifecycle
+      source_refs:
+        - crates/mabi-knx/src/tunnel/connection.rs
+        - crates/mabi-knx/src/tunnel/fsm.rs
+      test_refs:
+        - crates/mabi-knx/tests/profile_basic.rs
+        - crates/mabi-knx/tests/interop_profiles.rs
+    - capability_id: group_value_read_write
+      profile_id: group_io
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: knx.l1.group_value_io
+      trial_level: 1
+      required_evidence:
+        - protocol_exchange
+        - report_field
+      engine_requirement: KNX group value read/write over cEMI tunneling.
+      forge_display_label: KNX group value I/O
+      source_refs:
+        - crates/mabi-knx/src/cemi.rs
+        - crates/mabi-knx/src/group.rs
+      test_refs:
+        - crates/mabi-knx/tests/profile_group_io.rs
+        - crates/mabi-knx/tests/interop_profiles.rs
+    - capability_id: dpt_codec
+      profile_id: dpt_matrix
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: knx.l2.dpt_codec
+      trial_level: 2
+      required_evidence:
+        - protocol_exchange
+        - report_field
+      engine_requirement: KNX DPT encode/decode and group value representation.
+      forge_display_label: KNX DPT codec
+      source_refs:
+        - crates/mabi-knx/src/dpt/registry.rs
+        - crates/mabi-knx/src/dpt/types.rs
+      test_refs:
+        - crates/mabi-knx/tests/profile_group_io.rs
+        - crates/mabi-knx/tests/negative_fixtures.rs
+    - capability_id: sequence_ack_retry
+      profile_id: tunnel_resilience
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: knx.l2.sequence_validation
+      trial_level: 2
+      required_evidence:
+        - protocol_exchange
+        - log
+        - report_field
+      engine_requirement: KNX tunneling sequence, ACK, retry, and desync handling.
+      forge_display_label: KNX sequence validation
+      source_refs:
+        - crates/mabi-knx/src/tunnel/sequence.rs
+        - crates/mabi-knx/src/tunnel/ack_waiter.rs
+      test_refs:
+        - crates/mabi-knx/tests/profile_resilience.rs
+        - crates/mabi-knx/tests/interop_matrix.rs
+    - capability_id: heartbeat_timeout
+      profile_id: heartbeat_timeout
+      lane: deterministic
+      coverage_status: implemented
+      optional_interop_policy: nightly
+      trial_profile_id: knx.l2.heartbeat_connection_state
+      trial_level: 2
+      required_evidence:
+        - runtime_snapshot
+        - log
+        - report_field
+      engine_requirement: KNX connection state polling and heartbeat timeout handling.
+      forge_display_label: KNX heartbeat and connection state
+      source_refs:
+        - crates/mabi-knx/src/heartbeat.rs
+        - crates/mabi-knx/src/tunnel/connection.rs
+      test_refs:
+        - crates/mabi-knx/tests/profile_resilience.rs
+        - crates/mabi-knx/tests/runtime_smoke.rs
