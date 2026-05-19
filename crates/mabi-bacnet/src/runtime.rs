@@ -28,8 +28,30 @@ struct BacnetLaunchConfig {
     bbmd_enabled: bool,
 }
 
-fn runtime_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
-    mabi_runtime::RuntimeError::service(message)
+fn config_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::config(message)
+}
+
+fn protocol_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::protocol(message)
+}
+
+fn internal_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::internal(message)
+}
+
+fn bind_or_protocol_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    let message = message.into();
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("bind")
+        || lower.contains("listen")
+        || lower.contains("address already in use")
+        || lower.contains("address not available")
+    {
+        mabi_runtime::RuntimeError::bind(message)
+    } else {
+        protocol_error(message)
+    }
 }
 
 fn snapshot_with_metadata(
@@ -202,7 +224,10 @@ impl ManagedService for BacnetManagedService {
                 status.state = ServiceState::Error;
                 status.ready = false;
                 status.last_error = Some(error.to_string());
-                Err(runtime_error(format!("bacnet server failed: {}", error)))
+                Err(bind_or_protocol_error(format!(
+                    "bacnet server failed: {}",
+                    error
+                )))
             }
         }
     }
@@ -217,22 +242,22 @@ impl ManagedService for BacnetManagedService {
         metadata.insert(
             "bind_address".to_string(),
             to_value(self.launch.bind_addr.to_string())
-                .map_err(|error: serde_json::Error| runtime_error(error.to_string()))?,
+                .map_err(|error: serde_json::Error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "device_instance".to_string(),
             to_value(self.launch.device_instance)
-                .map_err(|error: serde_json::Error| runtime_error(error.to_string()))?,
+                .map_err(|error: serde_json::Error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "objects".to_string(),
             to_value(self.launch.objects)
-                .map_err(|error: serde_json::Error| runtime_error(error.to_string()))?,
+                .map_err(|error: serde_json::Error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "bbmd_enabled".to_string(),
             to_value(self.launch.bbmd_enabled)
-                .map_err(|error: serde_json::Error| runtime_error(error.to_string()))?,
+                .map_err(|error: serde_json::Error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "metrics".to_string(),
@@ -299,7 +324,7 @@ impl ProtocolDriver for BacnetDriver {
         _extensions: RuntimeExtensions,
     ) -> RuntimeResult<Arc<dyn ManagedService>> {
         let launch: BacnetLaunchConfig = serde_json::from_value(spec.config.clone())
-            .map_err(|error| runtime_error(format!("invalid bacnet launch config: {}", error)))?;
+            .map_err(|error| config_error(format!("invalid bacnet launch config: {}", error)))?;
         let config = ServerConfig::new(launch.device_instance)
             .with_bind_addr(launch.bind_addr)
             .with_device_name("Mabinogion BACnet Simulator");

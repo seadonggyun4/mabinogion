@@ -1,0 +1,134 @@
+schema_version: 1
+contract_id: mabinogion-runtime-contract
+contract_version: runtime-contract-v1
+snapshot_metadata_version: snapshot-metadata-v1
+owner: mabinogion
+purpose: >
+  Freeze the shared runtime contract used by the installed CLI, Forge runners,
+  and Mabinogion Trials compatibility checks.
+ownership:
+  mabinogion_owns:
+    - runtime lifecycle
+    - protocol session execution
+    - structured runtime errors
+    - service snapshot metadata export
+  not_owned_by_mabinogion:
+    - trial definition
+    - scoring
+    - certification issuance
+    - public proof publication
+runtime_error_taxonomy:
+  stable_kinds:
+    - protocol_error
+    - config_error
+    - bind_error
+    - timeout
+    - internal_error
+  public_api:
+    kind_accessor: RuntimeError::kind
+    info_accessor: RuntimeError::info
+    payload_type: RuntimeErrorInfo
+  mapping_policy:
+    config_error:
+      - invalid launch config
+      - invalid protocol-scoped runtime config
+      - invalid address/profile/modeling config
+    bind_error:
+      - bind failure
+      - listen failure
+      - address already in use
+      - address not available
+    protocol_error:
+      - server start failure after config is accepted
+      - server run failure
+      - graceful stop failure
+    timeout:
+      - readiness timeout
+      - bounded runtime wait timeout
+    internal_error:
+      - serialization failure
+      - task join failure
+      - impossible runtime state
+snapshot_metadata:
+  reserved_runtime_key: _runtime
+  stable_common_fields:
+    - contract_version
+    - snapshot_metadata_version
+    - captured_at
+    - service_name
+    - protocol
+    - state
+    - ready
+    - started_at
+    - last_error
+  policy:
+    - Stable common metadata must live under _runtime.
+    - Top-level protocol metadata remains protocol-owned.
+    - Nested metrics fields are experimental unless promoted here.
+    - Human table output hides reserved keys that start with an underscore.
+    - JSON, YAML, and compact machine output preserve reserved keys.
+protocol_stable_metadata:
+  modbus:
+    stable_top_level_keys:
+      - transport
+      - devices
+      - points
+      - bind_address
+      - rtu_transport
+      - metrics
+    note: Modbus uses either bind_address or rtu_transport depending on transport.
+  opcua:
+    stable_top_level_keys:
+      - endpoint
+      - transport_protocol
+      - nodes
+      - devices
+      - namespaces
+      - security_profile
+      - durability_mode
+      - restored_subscriptions
+      - detached_restored_subscriptions
+      - generated_types
+      - stats
+  bacnet:
+    stable_top_level_keys:
+      - bind_address
+      - device_instance
+      - objects
+      - bbmd_enabled
+      - metrics
+  knx:
+    stable_top_level_keys:
+      - bind_address
+      - individual_address
+      - group_objects
+      - metrics
+readiness_contract:
+  report_type: ServiceReadinessReport
+  stable_fields:
+    - contract_version
+    - checked_at
+    - service_name
+    - protocol
+    - state
+    - ready
+    - timeout_ms
+    - error
+session_snapshot_contract:
+  report_type: RuntimeSessionSnapshot
+  stable_fields:
+    - contract_version
+    - snapshot_metadata_version
+    - captured_at
+    - services
+breaking_change_policy:
+  breaking:
+    - removing RuntimeErrorKind values
+    - removing _runtime fields
+    - changing stable field meaning or type
+    - removing protocol stable top-level metadata keys without version bump
+  non_breaking:
+    - adding RuntimeError variants while preserving kind/info
+    - adding _runtime fields
+    - adding protocol top-level metadata keys
+    - adding nested metrics fields

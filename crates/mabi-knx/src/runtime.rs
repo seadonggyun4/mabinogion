@@ -26,8 +26,30 @@ struct KnxLaunchConfig {
     group_objects: usize,
 }
 
-fn runtime_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
-    mabi_runtime::RuntimeError::service(message)
+fn config_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::config(message)
+}
+
+fn protocol_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::protocol(message)
+}
+
+fn internal_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::internal(message)
+}
+
+fn bind_or_protocol_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    let message = message.into();
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("bind")
+        || lower.contains("listen")
+        || lower.contains("address already in use")
+        || lower.contains("address not available")
+    {
+        mabi_runtime::RuntimeError::bind(message)
+    } else {
+        protocol_error(message)
+    }
 }
 
 fn snapshot_with_metadata(
@@ -173,7 +195,7 @@ impl ManagedService for KnxManagedService {
         self.server
             .stop()
             .await
-            .map_err(|error| runtime_error(format!("knx stop failed: {}", error)))?;
+            .map_err(|error| protocol_error(format!("knx stop failed: {}", error)))?;
         let mut status = self.status.write();
         status.state = ServiceState::Stopped;
         status.ready = false;
@@ -198,7 +220,10 @@ impl ManagedService for KnxManagedService {
                 status.state = ServiceState::Error;
                 status.ready = false;
                 status.last_error = Some(error.to_string());
-                Err(runtime_error(format!("knx server failed: {}", error)))
+                Err(bind_or_protocol_error(format!(
+                    "knx server failed: {}",
+                    error
+                )))
             }
         }
     }
@@ -212,22 +237,22 @@ impl ManagedService for KnxManagedService {
         metadata.insert(
             "bind_address".to_string(),
             to_value(self.launch.bind_addr.to_string())
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "individual_address".to_string(),
             to_value(self.launch.individual_address.clone())
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "group_objects".to_string(),
             to_value(self.launch.group_objects)
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "metrics".to_string(),
             to_value(self.server.metrics_snapshot())
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         Ok(snapshot_with_metadata(&self.status(), metadata))
     }
@@ -275,11 +300,11 @@ impl ProtocolDriver for KnxDriver {
         _extensions: RuntimeExtensions,
     ) -> RuntimeResult<Arc<dyn ManagedService>> {
         let launch: KnxLaunchConfig = serde_json::from_value(spec.config.clone())
-            .map_err(|error| runtime_error(format!("invalid knx launch config: {}", error)))?;
+            .map_err(|error| config_error(format!("invalid knx launch config: {}", error)))?;
         let individual_address: IndividualAddress = launch
             .individual_address
             .parse()
-            .map_err(|error| runtime_error(format!("invalid KNX individual address: {}", error)))?;
+            .map_err(|error| config_error(format!("invalid KNX individual address: {}", error)))?;
         let config = KnxServerConfig {
             bind_addr: launch.bind_addr,
             individual_address,

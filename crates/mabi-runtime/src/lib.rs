@@ -2,6 +2,7 @@
 
 pub mod device;
 pub mod driver;
+pub mod evidence;
 pub mod service;
 pub mod session;
 
@@ -10,8 +11,18 @@ pub use driver::{
     ProtocolCatalogEntry, ProtocolDescriptor, ProtocolDriver, ProtocolDriverRegistry,
     ProtocolLaunchSpec,
 };
-pub use service::{
-    ManagedService, RuntimeError, RuntimeResult, ServiceContext, ServiceEvent, ServiceHandle,
-    ServiceSnapshot, ServiceState, ServiceStatus,
+pub use evidence::{
+    ArtifactVisibility, FailureReplayArtifact, PassCriteriaEvidence, ProtocolProfileEvidence,
+    PublicFailureReplayArtifact, PublicPrivateBoundary, PublicRunEvidenceSummary, RecoveryEvent,
+    ResourceUsageSummary, RunEvidence, RunEvidenceBuilder, RunEvidenceMetrics,
+    RUN_EVIDENCE_SCHEMA_VERSION, TRIAL_ARTIFACT_CONTRACT_VERSION,
 };
-pub use session::{DevicePortLayer, RuntimeExtensions, RuntimeSession, RuntimeSessionSpec};
+pub use service::{
+    ManagedService, RuntimeError, RuntimeErrorInfo, RuntimeErrorKind, RuntimeResult,
+    ServiceContext, ServiceEvent, ServiceHandle, ServiceReadinessReport, ServiceRuntimeMetadata,
+    ServiceSnapshot, ServiceState, ServiceStatus, RUNTIME_CONTRACT_VERSION, RUNTIME_METADATA_KEY,
+    SNAPSHOT_METADATA_VERSION,
+};
+pub use session::{
+    DevicePortLayer, RuntimeExtensions, RuntimeSession, RuntimeSessionSnapshot, RuntimeSessionSpec,
+};

@@ -1,24 +1,33 @@
 # mabi-runtime
 
-Shared runtime contracts and service orchestration for the Mabinogion simulator stack.
+Runtime/session contract layer for the Mabinogion protocol resilience engine.
 
-`mabi-runtime` provides the common runtime traits, session handles, control surfaces, and service wiring used by the protocol crates in this workspace.
+## What this crate owns
 
-For the 1.6.x release line, OPC UA, Modbus, BACnet/IP, and KNXnet/IP are substantially stabilized with deterministic regression lanes and optional external/interop lanes where applicable.
+- Runtime service lifecycle, readiness, stop, and snapshot contracts.
+- Protocol driver registry types and session orchestration.
+- `runtime-contract-v1`, `snapshot-metadata-v1`, Run Evidence primitives, and artifact metadata types.
 
-## Installation
+## How it fits in Mabinogion
+
+`mabi-runtime` is the shared execution substrate used by Modbus, OPC UA,
+BACnet/IP, KNXnet/IP, `mabi doctor`, `mabi serve`, and future Mabinogion trials
+runner surfaces. It lets Forge and Trials consume a stable runtime shape without
+depending on protocol-specific internals.
+
+## Versioning / contracts
 
 ```toml
 [dependencies]
 mabi-runtime = "1.6.3"
 ```
 
-## What It Provides
+The crate follows the workspace release version. Runtime compatibility is
+tracked separately through `RUNTIME_CONTRACT_VERSION`,
+`SNAPSHOT_METADATA_VERSION`, `RUN_EVIDENCE_SCHEMA_VERSION`, and
+`TRIAL_ARTIFACT_CONTRACT_VERSION`.
 
-- Shared runtime contracts for launching and controlling simulator services
-- Session and lifecycle abstractions reused across protocol implementations
-- Common orchestration utilities for workspace crates such as `mabi-modbus` and `mabi-opcua`
+## Not owned here
 
-## Versioning
-
-The crate follows the workspace release version. For this release line, the published version is `1.6.1`.
+`mabi-runtime` does not define trial suites, score trial results, publish proof
+reports, issue certification, or replace official certification programs.

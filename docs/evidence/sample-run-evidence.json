@@ -1,0 +1,110 @@
+{
+  "run_evidence_schema_version": "run-evidence-schema-v1",
+  "trial_artifact_contract_version": "trial-artifact-contract-v1",
+  "runtime_contract_version": "runtime-contract-v1",
+  "snapshot_metadata_version": "snapshot-metadata-v1",
+  "run_id": "run-2026-05-19-modbus-l1-001",
+  "engine_version": "1.6.3",
+  "protocol_profile": {
+    "protocol": "modbus",
+    "profile_id": "modbus.l1.function_code",
+    "capability_id": "modbus.function_code",
+    "lane": "deterministic",
+    "coverage_status": "implemented"
+  },
+  "trial_suite_version": "mabinogion-trials-2026.05",
+  "started_at": "2026-05-19T00:00:00Z",
+  "ended_at": "2026-05-19T00:00:03Z",
+  "feature_flags": ["opcua-https-disabled"],
+  "pass_criteria": {
+    "owner": "mabinogion-trials",
+    "criteria_id": "modbus-l1-function-code-pass",
+    "summary": "All required Modbus function code checks complete without protocol errors.",
+    "machine_conditions": [
+      {
+        "kind": "all_required_checks_pass"
+      }
+    ]
+  },
+  "failure_replay_artifacts": [
+    {
+      "artifact_id": "public-summary",
+      "kind": "failure_summary",
+      "media_type": "application/json",
+      "visibility": "public_summary",
+      "description": "Public-safe replay summary"
+    },
+    {
+      "artifact_id": "raw-log",
+      "kind": "raw_log",
+      "path": "private/raw-log.txt",
+      "media_type": "text/plain",
+      "digest": "sha256:example",
+      "visibility": "private_raw",
+      "description": "Private runner log for failure replay"
+    }
+  ],
+  "public_private_boundary": {
+    "public_summary_fields": [
+      "run_id",
+      "engine_version",
+      "protocol_profile",
+      "trial_suite_version",
+      "started_at",
+      "ended_at",
+      "feature_flags",
+      "pass_criteria",
+      "failure_replay_artifacts.public_summary",
+      "metrics"
+    ],
+    "private_artifact_fields": [
+      "failure_replay_artifacts.path",
+      "failure_replay_artifacts.digest",
+      "raw_logs",
+      "packet_captures"
+    ],
+    "private_artifact_policy": "private raw artifacts are referenced by metadata and are not embedded in public summaries"
+  },
+  "runtime_snapshot": {
+    "contract_version": "runtime-contract-v1",
+    "snapshot_metadata_version": "snapshot-metadata-v1",
+    "captured_at": "2026-05-19T00:00:03Z",
+    "services": [
+      {
+        "name": "contract-modbus",
+        "protocol": "modbus",
+        "status": {
+          "name": "contract-modbus",
+          "protocol": "modbus",
+          "state": "running",
+          "ready": true,
+          "started_at": "2026-05-19T00:00:00Z",
+          "last_error": null
+        },
+        "metadata": {
+          "_runtime": {
+            "contract_version": "runtime-contract-v1",
+            "snapshot_metadata_version": "snapshot-metadata-v1",
+            "captured_at": "2026-05-19T00:00:03Z",
+            "service_name": "contract-modbus",
+            "protocol": "modbus",
+            "state": "running",
+            "ready": true,
+            "started_at": "2026-05-19T00:00:00Z",
+            "last_error": null
+          }
+        }
+      }
+    ]
+  },
+  "metrics": {
+    "latency_ms": 12.5,
+    "reconnect_count": 0,
+    "error_count": 0,
+    "recovery_events": [],
+    "resource_usage": {
+      "peak_memory_bytes": 2048,
+      "average_cpu_percent": 1.5
+    }
+  }
+}

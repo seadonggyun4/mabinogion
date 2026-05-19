@@ -55,8 +55,30 @@ struct ModbusProtocolRuntimeConfig {
     connection_disruption: Option<ConnectionDisruptionConfig>,
 }
 
-fn runtime_error(message: impl Into<String>) -> RuntimeError {
-    RuntimeError::service(message)
+fn config_error(message: impl Into<String>) -> RuntimeError {
+    RuntimeError::config(message)
+}
+
+fn protocol_error(message: impl Into<String>) -> RuntimeError {
+    RuntimeError::protocol(message)
+}
+
+fn internal_error(message: impl Into<String>) -> RuntimeError {
+    RuntimeError::internal(message)
+}
+
+fn bind_or_protocol_error(message: impl Into<String>) -> RuntimeError {
+    let message = message.into();
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("bind")
+        || lower.contains("listen")
+        || lower.contains("address already in use")
+        || lower.contains("address not available")
+    {
+        RuntimeError::bind(message)
+    } else {
+        RuntimeError::protocol(message)
+    }
 }
 
 fn new_status(name: &str, protocol: Protocol) -> ServiceStatus {
@@ -175,14 +197,13 @@ impl ModbusRuntimeServer {
 
     async fn run(&self) -> RuntimeResult<()> {
         match self {
-            Self::Tcp(server) => server
-                .run()
-                .await
-                .map_err(|error| runtime_error(format!("modbus tcp server failed: {}", error))),
+            Self::Tcp(server) => server.run().await.map_err(|error| {
+                bind_or_protocol_error(format!("modbus tcp server failed: {}", error))
+            }),
             Self::Rtu(server) => server
                 .run()
                 .await
-                .map_err(|error| runtime_error(format!("modbus rtu server failed: {}", error))),
+                .map_err(|error| protocol_error(format!("modbus rtu server failed: {}", error))),
         }
     }
 
@@ -317,11 +338,12 @@ impl ManagedService for ModbusManagedService {
         metadata.insert(
             "transport".to_string(),
             to_value(self.server.transport_name())
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "devices".to_string(),
-            to_value(self.profile.units.len()).map_err(|error| runtime_error(error.to_string()))?,
+            to_value(self.profile.units.len())
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "points".to_string(),
@@ -332,21 +354,21 @@ impl ManagedService for ModbusManagedService {
                     .map(|unit| unit.points.len())
                     .sum::<usize>(),
             )
-            .map_err(|error| runtime_error(error.to_string()))?,
+            .map_err(|error| internal_error(error.to_string()))?,
         );
         match &self.launch.transport {
             ModbusTransportLaunch::Tcp { bind_addr, .. } => {
                 metadata.insert(
                     "bind_address".to_string(),
                     to_value(bind_addr.to_string())
-                        .map_err(|error| runtime_error(error.to_string()))?,
+                        .map_err(|error| internal_error(error.to_string()))?,
                 );
             }
             ModbusTransportLaunch::Rtu { config } => {
                 metadata.insert(
                     "rtu_transport".to_string(),
                     to_value(&config.transport)
-                        .map_err(|error| runtime_error(error.to_string()))?,
+                        .map_err(|error| internal_error(error.to_string()))?,
                 );
             }
         }
@@ -368,9 +390,8 @@ impl ModbusDriver {
         extensions: &RuntimeExtensions,
     ) -> RuntimeResult<ModbusProtocolRuntimeConfig> {
         match extensions.protocol_config("modbus") {
-            Some(config) => serde_json::from_value(config.clone()).map_err(|error| {
-                runtime_error(format!("invalid modbus runtime config: {}", error))
-            }),
+            Some(config) => serde_json::from_value(config.clone())
+                .map_err(|error| config_error(format!("invalid modbus runtime config: {}", error))),
             None => Ok(ModbusProtocolRuntimeConfig::default()),
         }
     }
@@ -381,7 +402,7 @@ impl ModbusDriver {
                 serde_json::from_value::<LegacyModbusLaunchConfig>(config)
                     .map(LegacyModbusLaunchConfig::into_service_launch)
             })
-            .map_err(|error| runtime_error(format!("invalid modbus launch config: {}", error)))
+            .map_err(|error| config_error(format!("invalid modbus launch config: {}", error)))
     }
 
     fn resolved_profile(launch: &ModbusServiceLaunchConfig) -> Profile {
@@ -443,7 +464,7 @@ impl ProtocolDriver for ModbusDriver {
                     .profile(profile.clone())
                     .build()
                     .map_err(|error| {
-                        runtime_error(format!("failed to build modbus tcp server: {}", error))
+                        config_error(format!("failed to build modbus tcp server: {}", error))
                     })?;
 
                 if let Some(fault_injection) = runtime_config.fault_injection.clone() {
@@ -463,7 +484,7 @@ impl ProtocolDriver for ModbusDriver {
                 server.set_broadcast_enabled(profile.broadcast_enabled);
                 for unit in profile.units.iter().cloned() {
                     let device = ModbusDevice::from_profile(&unit).map_err(|error| {
-                        runtime_error(format!("failed to build modbus rtu device: {}", error))
+                        config_error(format!("failed to build modbus rtu device: {}", error))
                     })?;
                     server.add_device(device);
                 }

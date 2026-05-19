@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
+use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 use tokio::task::{AbortHandle, JoinError, JoinHandle};
 use tokio::time::{timeout, Duration};
@@ -18,8 +18,48 @@ use crate::device::DeviceRegistry;
 /// Runtime-level result type.
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
+/// Stable runtime contract version consumed by Forge and Trials.
+pub const RUNTIME_CONTRACT_VERSION: &str = "runtime-contract-v1";
+
+/// Stable service snapshot metadata contract version.
+pub const SNAPSHOT_METADATA_VERSION: &str = "snapshot-metadata-v1";
+
+/// Reserved metadata key for runtime-owned service snapshot fields.
+pub const RUNTIME_METADATA_KEY: &str = "_runtime";
+
+/// Machine-readable runtime error classification.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeErrorKind {
+    ProtocolError,
+    ConfigError,
+    BindError,
+    Timeout,
+    InternalError,
+}
+
+impl std::fmt::Display for RuntimeErrorKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::ProtocolError => "protocol_error",
+            Self::ConfigError => "config_error",
+            Self::BindError => "bind_error",
+            Self::Timeout => "timeout",
+            Self::InternalError => "internal_error",
+        })
+    }
+}
+
+/// Structured runtime error payload for machine consumers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeErrorInfo {
+    pub kind: RuntimeErrorKind,
+    pub message: String,
+}
+
 /// Runtime-level errors.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RuntimeError {
     #[error("service error: {message}")]
     Service { message: String },
@@ -29,6 +69,12 @@ pub enum RuntimeError {
 
     #[error("service readiness timed out after {seconds}s")]
     ReadinessTimeout { seconds: u64 },
+
+    #[error("{kind}: {message}")]
+    Classified {
+        kind: RuntimeErrorKind,
+        message: String,
+    },
 }
 
 impl RuntimeError {
@@ -38,13 +84,72 @@ impl RuntimeError {
             message: message.into(),
         }
     }
+
+    /// Creates a protocol-level runtime error.
+    pub fn protocol(message: impl Into<String>) -> Self {
+        Self::classified(RuntimeErrorKind::ProtocolError, message)
+    }
+
+    /// Creates a configuration-level runtime error.
+    pub fn config(message: impl Into<String>) -> Self {
+        Self::classified(RuntimeErrorKind::ConfigError, message)
+    }
+
+    /// Creates a bind/listen/address allocation runtime error.
+    pub fn bind(message: impl Into<String>) -> Self {
+        Self::classified(RuntimeErrorKind::BindError, message)
+    }
+
+    /// Creates a timeout runtime error.
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self::classified(RuntimeErrorKind::Timeout, message)
+    }
+
+    /// Creates an internal runtime error.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::classified(RuntimeErrorKind::InternalError, message)
+    }
+
+    fn classified(kind: RuntimeErrorKind, message: impl Into<String>) -> Self {
+        Self::Classified {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    /// Returns the stable machine-readable error kind.
+    pub fn kind(&self) -> RuntimeErrorKind {
+        match self {
+            Self::Service { .. } | Self::TaskJoin { .. } => RuntimeErrorKind::InternalError,
+            Self::ReadinessTimeout { .. } => RuntimeErrorKind::Timeout,
+            Self::Classified { kind, .. } => *kind,
+        }
+    }
+
+    /// Returns the human-readable error message without losing the stable kind.
+    pub fn message(&self) -> String {
+        match self {
+            Self::Service { message }
+            | Self::TaskJoin { message }
+            | Self::Classified { message, .. } => message.clone(),
+            Self::ReadinessTimeout { seconds } => {
+                format!("service readiness timed out after {seconds}s")
+            }
+        }
+    }
+
+    /// Returns the structured runtime error payload.
+    pub fn info(&self) -> RuntimeErrorInfo {
+        RuntimeErrorInfo {
+            kind: self.kind(),
+            message: self.message(),
+        }
+    }
 }
 
 impl From<JoinError> for RuntimeError {
     fn from(error: JoinError) -> Self {
-        Self::TaskJoin {
-            message: error.to_string(),
-        }
+        Self::internal(format!("service task failed: {error}"))
     }
 }
 
@@ -117,6 +222,95 @@ impl ServiceSnapshot {
     pub fn with_metadata(mut self, key: impl Into<String>, value: JsonValue) -> Self {
         self.metadata.insert(key.into(), value);
         self
+    }
+
+    /// Adds or refreshes runtime-owned metadata under the reserved `_runtime` key.
+    pub fn with_runtime_metadata(mut self) -> Self {
+        self.ensure_runtime_metadata();
+        self
+    }
+
+    /// Ensures runtime-owned metadata exists under the reserved `_runtime` key.
+    pub fn ensure_runtime_metadata(&mut self) {
+        let metadata = ServiceRuntimeMetadata::from_snapshot(self);
+        self.metadata
+            .insert(RUNTIME_METADATA_KEY.to_string(), json!(metadata));
+    }
+
+    /// Returns parsed runtime metadata when present.
+    pub fn runtime_metadata(&self) -> Option<ServiceRuntimeMetadata> {
+        self.metadata
+            .get(RUNTIME_METADATA_KEY)
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+    }
+}
+
+/// Runtime-owned stable service snapshot metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ServiceRuntimeMetadata {
+    pub contract_version: String,
+    pub snapshot_metadata_version: String,
+    pub captured_at: DateTime<Utc>,
+    pub service_name: String,
+    pub protocol: Option<String>,
+    pub state: ServiceState,
+    pub ready: bool,
+    pub started_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+}
+
+impl ServiceRuntimeMetadata {
+    /// Builds runtime metadata from the current service snapshot.
+    pub fn from_snapshot(snapshot: &ServiceSnapshot) -> Self {
+        let protocol = snapshot
+            .status
+            .protocol
+            .or(snapshot.protocol)
+            .map(|protocol| protocol.to_string());
+        Self {
+            contract_version: RUNTIME_CONTRACT_VERSION.to_string(),
+            snapshot_metadata_version: SNAPSHOT_METADATA_VERSION.to_string(),
+            captured_at: Utc::now(),
+            service_name: snapshot.status.name.clone(),
+            protocol,
+            state: snapshot.status.state,
+            ready: snapshot.status.ready,
+            started_at: snapshot.status.started_at,
+            last_error: snapshot.status.last_error.clone(),
+        }
+    }
+}
+
+/// Structured readiness report for runner-facing health checks.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ServiceReadinessReport {
+    pub contract_version: String,
+    pub checked_at: DateTime<Utc>,
+    pub service_name: String,
+    pub protocol: Option<String>,
+    pub state: ServiceState,
+    pub ready: bool,
+    pub timeout_ms: u64,
+    pub error: Option<RuntimeErrorInfo>,
+}
+
+impl ServiceReadinessReport {
+    /// Builds a readiness report from a status and optional error.
+    pub fn from_status(
+        status: ServiceStatus,
+        timeout: Duration,
+        error: Option<RuntimeErrorInfo>,
+    ) -> Self {
+        Self {
+            contract_version: RUNTIME_CONTRACT_VERSION.to_string(),
+            checked_at: Utc::now(),
+            service_name: status.name,
+            protocol: status.protocol.map(|protocol| protocol.to_string()),
+            state: status.state,
+            ready: status.ready,
+            timeout_ms: timeout.as_millis() as u64,
+            error,
+        }
     }
 }
 
@@ -360,9 +554,23 @@ impl ServiceHandle {
             }
         })
         .await
-        .map_err(|_| RuntimeError::ReadinessTimeout {
-            seconds: max_wait.as_secs(),
+        .map_err(|_| {
+            RuntimeError::timeout(format!(
+                "service readiness timed out after {}ms",
+                max_wait.as_millis()
+            ))
         })
+    }
+
+    /// Returns a structured readiness report without discarding status context.
+    pub async fn readiness_report(&self, max_wait: Duration) -> ServiceReadinessReport {
+        match self.readiness(max_wait).await {
+            Ok(status) => ServiceReadinessReport::from_status(status, max_wait, None),
+            Err(error) => {
+                let status = self.status();
+                ServiceReadinessReport::from_status(status, max_wait, Some(error.info()))
+            }
+        }
     }
 
     /// Returns the latest status.
@@ -372,7 +580,7 @@ impl ServiceHandle {
 
     /// Returns the latest snapshot.
     pub async fn snapshot(&self) -> RuntimeResult<ServiceSnapshot> {
-        self.service.snapshot().await
+        Ok(self.service.snapshot().await?.with_runtime_metadata())
     }
 }
 
@@ -384,8 +592,9 @@ mod tests {
     use tokio::time::Duration;
 
     use crate::service::{
-        ManagedService, RuntimeResult, ServiceContext, ServiceHandle, ServiceSnapshot,
-        ServiceState, ServiceStatus,
+        ManagedService, RuntimeError, RuntimeErrorKind, RuntimeResult, ServiceContext,
+        ServiceHandle, ServiceSnapshot, ServiceState, ServiceStatus, RUNTIME_CONTRACT_VERSION,
+        RUNTIME_METADATA_KEY, SNAPSHOT_METADATA_VERSION,
     };
 
     struct TestService {
@@ -447,7 +656,31 @@ mod tests {
         handle.spawn().await.unwrap();
         let status = handle.readiness(Duration::from_secs(1)).await.unwrap();
         assert!(status.ready);
+        let report = handle.readiness_report(Duration::from_secs(1)).await;
+        assert!(report.ready);
+        assert_eq!(report.contract_version, RUNTIME_CONTRACT_VERSION);
+        assert!(serde_json::to_value(&report).unwrap()["checked_at"].is_string());
+
+        let snapshot = handle.snapshot().await.unwrap();
+        assert!(snapshot.metadata.contains_key(RUNTIME_METADATA_KEY));
+        let runtime = snapshot.runtime_metadata().expect("runtime metadata");
+        assert_eq!(runtime.contract_version, RUNTIME_CONTRACT_VERSION);
+        assert_eq!(runtime.snapshot_metadata_version, SNAPSHOT_METADATA_VERSION);
+        assert_eq!(runtime.service_name, "test");
+        assert!(runtime.ready);
+
         handle.stop().await.unwrap();
         assert_eq!(handle.status().state, ServiceState::Stopped);
+    }
+
+    #[test]
+    fn runtime_error_info_uses_stable_kinds() {
+        let error = RuntimeError::config("invalid launch config");
+        assert_eq!(error.kind(), RuntimeErrorKind::ConfigError);
+        assert_eq!(error.info().message, "invalid launch config");
+
+        let value = serde_json::to_value(error.info()).unwrap();
+        assert_eq!(value["kind"], "config_error");
+        assert_eq!(value["message"], "invalid launch config");
     }
 }

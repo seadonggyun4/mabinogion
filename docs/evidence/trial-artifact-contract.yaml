@@ -1,0 +1,43 @@
+schema_version: 1
+contract_version: trial-artifact-contract-v1
+owner: mabinogion
+purpose: >
+  Define metadata for artifacts referenced by run evidence. Artifact contents
+  are produced by runners or protocol tools and are not embedded by default.
+artifact_directory_policy:
+  artifact_dir_owner: mabinogion-trials or mabinogion-forge-back runner
+  mabinogion_responsibility: reference artifact metadata in run evidence
+  default_layout:
+    - evidence.json
+    - public-summary.json
+    - private/
+    - replay/
+artifact_metadata_fields:
+  required:
+    - artifact_id
+    - kind
+    - visibility
+  optional:
+    - path
+    - media_type
+    - digest
+    - description
+visibility_values:
+  - public_summary
+  - private_raw
+  - internal_only
+failure_replay_policy:
+  public_summary: >
+    May describe the failure and replay category, but must not include raw log
+    paths, packet capture paths, private artifact body, or private digest.
+  private_raw: >
+    May reference raw logs, traces, captures, or replay material that should be
+    consumed only by authorized Forge/Trials workflows.
+  internal_only: >
+    May reference engine or maintainer diagnostics that are not intended for
+    product-facing proof reports.
+non_goals:
+  - enforce authorization
+  - collect artifact files
+  - hash artifact files
+  - publish public proof reports

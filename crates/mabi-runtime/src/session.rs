@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tokio::time::Duration;
@@ -8,7 +9,10 @@ use mabi_core::Protocol;
 
 use crate::device::{DeviceRegistry, DynDevicePort};
 use crate::driver::{ProtocolDriverRegistry, ProtocolLaunchSpec};
-use crate::service::{RuntimeError, RuntimeResult, ServiceHandle, ServiceSnapshot};
+use crate::service::{
+    RuntimeError, RuntimeResult, ServiceHandle, ServiceSnapshot, RUNTIME_CONTRACT_VERSION,
+    SNAPSHOT_METADATA_VERSION,
+};
 
 /// Decorates controller-visible device ports at runtime.
 pub trait DevicePortLayer: Send + Sync {
@@ -67,6 +71,27 @@ pub struct RuntimeSessionSpec {
     pub readiness_timeout: Option<u64>,
 }
 
+/// Session-level runtime snapshot envelope for runner-facing consumers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeSessionSnapshot {
+    pub contract_version: String,
+    pub snapshot_metadata_version: String,
+    pub captured_at: DateTime<Utc>,
+    pub services: Vec<ServiceSnapshot>,
+}
+
+impl RuntimeSessionSnapshot {
+    /// Builds a session snapshot envelope around normalized service snapshots.
+    pub fn new(services: Vec<ServiceSnapshot>) -> Self {
+        Self {
+            contract_version: RUNTIME_CONTRACT_VERSION.to_string(),
+            snapshot_metadata_version: SNAPSHOT_METADATA_VERSION.to_string(),
+            captured_at: Utc::now(),
+            services,
+        }
+    }
+}
+
 impl RuntimeSessionSpec {
     /// Returns the configured readiness timeout or a fallback duration.
     pub fn readiness_duration(&self, fallback: Duration) -> Duration {
@@ -91,7 +116,7 @@ impl RuntimeSession {
         extensions: RuntimeExtensions,
     ) -> RuntimeResult<Self> {
         if spec.services.is_empty() {
-            return Err(RuntimeError::service(
+            return Err(RuntimeError::config(
                 "runtime session requires at least one service",
             ));
         }
@@ -101,7 +126,7 @@ impl RuntimeSession {
 
         for launch in &spec.services {
             let driver = registry.get(launch.key()).ok_or_else(|| {
-                RuntimeError::service(format!("unknown protocol driver: {}", launch.key()))
+                RuntimeError::config(format!("unknown protocol driver: {}", launch.key()))
             })?;
             let descriptor = driver.descriptor();
             let service = driver.build(launch.clone(), extensions.clone()).await?;
@@ -145,7 +170,7 @@ impl RuntimeSession {
                 Ok(status) if status.ready && !status.is_terminal() => started.push(handle),
                 Ok(status) => {
                     self.stop_started(&started).await;
-                    return Err(RuntimeError::service(format!(
+                    return Err(RuntimeError::protocol(format!(
                         "service failed to become ready: {} ({:?})",
                         status.name, status.state
                     )));
@@ -177,7 +202,7 @@ impl RuntimeSession {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(RuntimeError::service(errors.join("; ")))
+            Err(RuntimeError::protocol(errors.join("; ")))
         }
     }
 
@@ -193,6 +218,11 @@ impl RuntimeSession {
             snapshots.push(handle.snapshot().await?);
         }
         Ok(snapshots)
+    }
+
+    /// Returns a session-level snapshot envelope with normalized service snapshots.
+    pub async fn session_snapshot(&self) -> RuntimeResult<RuntimeSessionSnapshot> {
+        Ok(RuntimeSessionSnapshot::new(self.snapshots().await?))
     }
 
     /// Returns the managed handles.
@@ -315,7 +345,12 @@ mod tests {
             .await
             .unwrap();
         session.start(Duration::from_secs(1)).await.unwrap();
-        assert_eq!(session.snapshots().await.unwrap().len(), 1);
+        let snapshots = session.snapshots().await.unwrap();
+        assert_eq!(snapshots.len(), 1);
+        assert!(snapshots[0].runtime_metadata().is_some());
+        let session_snapshot = session.session_snapshot().await.unwrap();
+        assert_eq!(session_snapshot.services.len(), 1);
+        assert_eq!(session_snapshot.contract_version, "runtime-contract-v1");
         session.stop().await.unwrap();
     }
 }

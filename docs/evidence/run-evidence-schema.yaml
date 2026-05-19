@@ -1,0 +1,68 @@
+schema_version: 1
+schema_id: mabinogion-run-evidence
+contract_version: run-evidence-schema-v1
+trial_artifact_contract_version: trial-artifact-contract-v1
+owner: mabinogion
+purpose: >
+  Define the execution evidence artifact that mabinogion exports so
+  mabinogion-trials and mabinogion-forge-back can build Proof Report inputs.
+ownership_boundary:
+  mabinogion_owns:
+    - protocol_session_execution
+    - runtime_snapshot_export
+    - run_evidence_serialization
+    - failure_replay_artifact_metadata
+  not_owned_by_mabinogion:
+    - trial_definition_authoring
+    - scoring_policy
+    - proof_report_publication
+    - certification_issuance
+required_fields:
+  - run_id
+  - engine_version
+  - protocol_profile
+  - trial_suite_version
+  - started_at
+  - ended_at
+  - feature_flags
+  - pass_criteria
+  - failure_replay_artifacts
+  - public_private_boundary
+version_fields:
+  - run_evidence_schema_version
+  - trial_artifact_contract_version
+  - runtime_contract_version
+  - snapshot_metadata_version
+embedded_runtime_fields:
+  - runtime_snapshot
+  - runtime_snapshot.services
+  - runtime_snapshot.services.metadata._runtime
+optional_report_metrics:
+  - latency_ms
+  - reconnect_count
+  - error_count
+  - recovery_events
+  - resource_usage
+public_private_policy:
+  public_summary_may_include:
+    - run_id
+    - engine_version
+    - protocol_profile
+    - trial_suite_version
+    - started_at
+    - ended_at
+    - feature_flags
+    - pass_criteria
+    - public failure replay summaries
+    - report-friendly metrics
+  private_only:
+    - raw log paths
+    - packet capture paths
+    - raw artifact digests
+    - private replay artifacts
+non_goals:
+  - score trial results
+  - issue certifications
+  - publish public proof reports
+  - collect raw logs automatically
+  - calculate artifact digests automatically

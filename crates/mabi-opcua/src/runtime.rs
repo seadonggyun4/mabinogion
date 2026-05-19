@@ -32,8 +32,30 @@ struct LegacyOpcUaLaunchConfig {
     security_mode: String,
 }
 
-fn runtime_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
-    mabi_runtime::RuntimeError::service(message)
+fn config_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::config(message)
+}
+
+fn protocol_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::protocol(message)
+}
+
+fn internal_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    mabi_runtime::RuntimeError::internal(message)
+}
+
+fn bind_or_protocol_error(message: impl Into<String>) -> mabi_runtime::RuntimeError {
+    let message = message.into();
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("bind")
+        || lower.contains("listen")
+        || lower.contains("address already in use")
+        || lower.contains("address not available")
+    {
+        mabi_runtime::RuntimeError::bind(message)
+    } else {
+        protocol_error(message)
+    }
 }
 
 fn new_status(name: &str) -> ServiceStatus {
@@ -239,7 +261,7 @@ impl ManagedService for OpcUaManagedService {
         self.server
             .stop()
             .await
-            .map_err(|error| runtime_error(format!("opcua stop failed: {}", error)))?;
+            .map_err(|error| protocol_error(format!("opcua stop failed: {}", error)))?;
         let mut status = self.status.write();
         status.state = ServiceState::Stopped;
         status.ready = false;
@@ -250,7 +272,7 @@ impl ManagedService for OpcUaManagedService {
         self.server
             .start()
             .await
-            .map_err(|error| runtime_error(format!("opcua start failed: {}", error)))?;
+            .map_err(|error| bind_or_protocol_error(format!("opcua start failed: {}", error)))?;
         {
             let mut status = self.status.write();
             status.state = ServiceState::Running;
@@ -270,7 +292,7 @@ impl ManagedService for OpcUaManagedService {
         metadata.insert(
             "endpoint".to_string(),
             serde_json::to_value(&self.launch.server_config.endpoint_url)
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "transport_protocol".to_string(),
@@ -281,7 +303,7 @@ impl ManagedService for OpcUaManagedService {
         metadata.insert(
             "namespaces".to_string(),
             serde_json::to_value(&self.launch.catalog.namespace_table)
-                .map_err(|error| runtime_error(error.to_string()))?,
+                .map_err(|error| internal_error(error.to_string()))?,
         );
         metadata.insert(
             "security_profile".to_string(),
@@ -364,13 +386,13 @@ impl ProtocolDriver for OpcUaDriver {
         _extensions: RuntimeExtensions,
     ) -> RuntimeResult<Arc<dyn ManagedService>> {
         let launch = decode_launch_config(&spec)
-            .map_err(|error| runtime_error(format!("invalid opcua launch config: {}", error)))?;
+            .map_err(|error| config_error(format!("invalid opcua launch config: {}", error)))?;
         let mut build_spec = ServerBuildSpec::from_server_config(launch.server_config.clone())
             .with_generated_catalog(launch.catalog.clone());
         build_spec.defaults.subscription.durability = launch.runtime.durability.clone();
         build_spec.defaults.security = launch.security.manager_config.clone();
         let server = Arc::new(OpcUaServer::from_build_spec(build_spec).map_err(
-            |error: OpcUaError| runtime_error(format!("failed to create opcua server: {}", error)),
+            |error: OpcUaError| config_error(format!("failed to create opcua server: {}", error)),
         )?);
         Ok(Arc::new(OpcUaManagedService::new(
             server,
