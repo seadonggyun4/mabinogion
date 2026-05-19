@@ -1,0 +1,103 @@
+schema_version: 1
+matrix_id: mabinogion-engine-compatibility
+matrix_version: compatibility-matrix-v1
+current_engine_version: "1.6.3"
+engine_version_range: ">=1.6.3 <2.0.0"
+workspace_rust_version: "1.75"
+release_channel: source-build
+version_metadata_contract: version-metadata-contract-v1
+readiness_matrix_version: protocol-readiness-matrix-v1
+compatible_trial_suite_range: ">=0.1.0 <1.0.0"
+runner_policy_document: docs/release/release-checklist.md
+release_policy_document: docs/release/release-checklist.md
+changelog_policy_document: docs/release/changelog-policy.md
+compatibility_decision_owner: mabinogion-trials-or-forge
+supported_contract_versions:
+  - local-runner-contract-v1
+  - cli-output-envelope-v1
+  - runtime-contract-v1
+  - snapshot-metadata-v1
+  - unified-readiness-contract-v1
+  - run-evidence-schema-v1
+  - trial-artifact-contract-v1
+  - version-metadata-contract-v1
+protocol_capabilities:
+  - protocol_key: modbus
+    capability_version: modbus-capabilities-v1
+    readiness_matrix_version: protocol-readiness-matrix-v1
+    readiness_contract_version: unified-readiness-contract-v1
+    trial_profile_ids:
+      - modbus.l1.function_code
+      - modbus.l1.register_map
+      - modbus.l1.exception_response
+      - modbus.l2.multi_unit
+      - modbus.l2.timeout
+      - modbus.l2.partial_response
+      - modbus.l2.slow_device
+    breaking_change_scope:
+      - config
+      - runtime_contract
+      - readiness_contract
+      - run_evidence_schema
+      - version_metadata_contract
+  - protocol_key: opcua
+    capability_version: opcua-capabilities-v1
+    readiness_matrix_version: protocol-readiness-matrix-v1
+    readiness_contract_version: unified-readiness-contract-v1
+    trial_profile_ids:
+      - opcua.l1.session_lifecycle
+      - opcua.l2.secure_channel_renewal
+      - opcua.l3.reconnect
+      - opcua.l2.subscription
+      - opcua.l3.timeout
+      - opcua.l3.malformed_service_response
+      - opcua.l2.operation_limit
+    breaking_change_scope:
+      - config
+      - runtime_contract
+      - readiness_contract
+      - run_evidence_schema
+      - version_metadata_contract
+  - protocol_key: bacnet
+    capability_version: bacnet-capabilities-v1
+    readiness_matrix_version: protocol-readiness-matrix-v1
+    readiness_contract_version: unified-readiness-contract-v1
+    trial_profile_ids:
+      - bacnet.l1.discovery
+      - bacnet.l1.property_io
+      - bacnet.l2.cov
+      - bacnet.l3.segmentation
+      - bacnet.l3.bbmd_fdr
+      - bacnet.l3.duplicate_handling
+    breaking_change_scope:
+      - config
+      - runtime_contract
+      - readiness_contract
+      - run_evidence_schema
+      - version_metadata_contract
+  - protocol_key: knx
+    capability_version: knx-capabilities-v1
+    readiness_matrix_version: protocol-readiness-matrix-v1
+    readiness_contract_version: unified-readiness-contract-v1
+    trial_profile_ids:
+      - knx.l1.discovery
+      - knx.l1.tunneling_lifecycle
+      - knx.l1.group_value_io
+      - knx.l2.dpt_codec
+      - knx.l2.sequence_validation
+      - knx.l2.heartbeat_connection_state
+    breaking_change_scope:
+      - config
+      - runtime_contract
+      - readiness_contract
+      - run_evidence_schema
+      - version_metadata_contract
+ownership_boundary:
+  mabinogion_owns:
+    - engine_release_metadata
+    - protocol_capability_metadata
+    - contract_version_metadata
+  not_owned_by_mabinogion:
+    - trial_suite_allow_deny_decision
+    - scoring_policy
+    - certification_issuance

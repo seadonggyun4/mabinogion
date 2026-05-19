@@ -1,0 +1,66 @@
+schema_version: 1
+contract_id: mabinogion-version-metadata
+contract_version: version-metadata-contract-v1
+owner: mabinogion
+purpose: >
+  Define the machine-readable release and compatibility metadata emitted by
+  `mabi --format json version` so mabinogion-trials and
+  mabinogion-forge-back can decide whether an installed engine is usable.
+machine_output_command: mabi --format json version
+required_version_data_fields:
+  - engine_version
+  - rust_version
+  - registered_protocols
+  - contract_versions
+  - feature_flags
+  - trial_compatible_metadata
+  - release_metadata
+required_contract_versions:
+  - local-runner-contract-v1
+  - cli-output-envelope-v1
+  - runtime-contract-v1
+  - snapshot-metadata-v1
+  - unified-readiness-contract-v1
+  - run-evidence-schema-v1
+  - trial-artifact-contract-v1
+  - version-metadata-contract-v1
+release_metadata_required_fields:
+  - engine_version
+  - workspace_rust_version
+  - release_channel
+  - compatibility_matrix_version
+  - compatibility_matrix_document
+  - release_policy_document
+  - changelog_policy_document
+registered_protocol_required_fields:
+  - key
+  - protocol_key
+  - display_name
+  - default_port
+  - features
+  - capability_version
+  - readiness_matrix_version
+  - readiness_contract_version
+  - trial_profile_ids
+  - breaking_change_scope
+trial_compatible_metadata_required_fields:
+  - trial_definition_owner
+  - scoring_owner
+  - supported_machine_formats
+  - runner_facing_commands
+  - future_trial_run_contract_documented
+  - compatible_trial_suite_range
+  - compatibility_decision_owner
+  - runner_policy_document
+compatibility_policy:
+  decision_owner: mabinogion-trials-or-forge
+  mabinogion_role: >
+    Emit release, protocol capability, and contract metadata. Do not make
+    allow/deny decisions for trial suites or Forge runner admission.
+  source_of_truth: docs/release/compatibility-matrix.yaml
+non_goals:
+  - publish crates
+  - generate GitHub releases
+  - score trial results
+  - certify engines
+  - make Forge allow/deny decisions

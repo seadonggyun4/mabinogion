@@ -67,6 +67,21 @@ SURFACE_RULES = {
     },
 }
 
+VERSION_METADATA_CONTRACT_VERSION = "version-metadata-contract-v1"
+COMPATIBILITY_MATRIX_VERSION = "compatibility-matrix-v1"
+PROTOCOL_READINESS_MATRIX_VERSION = "protocol-readiness-matrix-v1"
+PROTOCOL_KEYS = ["modbus", "opcua", "bacnet", "knx"]
+REQUIRED_RELEASE_CONTRACTS = [
+    "local-runner-contract-v1",
+    "cli-output-envelope-v1",
+    "runtime-contract-v1",
+    "snapshot-metadata-v1",
+    "unified-readiness-contract-v1",
+    "run-evidence-schema-v1",
+    "trial-artifact-contract-v1",
+    VERSION_METADATA_CONTRACT_VERSION,
+]
+
 
 def fail(message: str) -> None:
     print(f"release-version check failed: {message}", file=sys.stderr)
@@ -84,6 +99,11 @@ def write_text(path: Path, text: str) -> None:
 def root_release_version() -> str:
     cargo = tomllib.loads(read_text(ROOT_CARGO))
     return cargo["workspace"]["package"]["version"]
+
+
+def root_rust_version() -> str:
+    cargo = tomllib.loads(read_text(ROOT_CARGO))
+    return cargo["workspace"]["package"]["rust-version"]
 
 
 def expected_internal_dependency_block(version: str) -> str:
@@ -212,6 +232,65 @@ def check_surface_files() -> None:
                 fail(f"{path.relative_to(ROOT)} still contains forbidden version surface: {forbidden}")
 
 
+def yaml_scalar(text: str, key: str, path: Path) -> str:
+    pattern = re.compile(rf"^\s*{re.escape(key)}:\s*(?:\"([^\"]+)\"|([^#\n]+))", re.MULTILINE)
+    match = pattern.search(text)
+    if not match:
+        fail(f"{path.relative_to(ROOT)} is missing required key {key}")
+    return (match.group(1) or match.group(2)).strip()
+
+
+def check_release_docs(version: str) -> None:
+    release_docs = [
+        ROOT / "docs/release/version-metadata-contract.yaml",
+        ROOT / "docs/release/compatibility-matrix.yaml",
+        ROOT / "docs/release/release-checklist.md",
+        ROOT / "docs/release/changelog-policy.md",
+    ]
+    for path in release_docs:
+        if not path.is_file():
+            fail(f"{path.relative_to(ROOT)} is missing")
+
+    version_contract = read_text(ROOT / "docs/release/version-metadata-contract.yaml")
+    matrix_path = ROOT / "docs/release/compatibility-matrix.yaml"
+    matrix = read_text(matrix_path)
+    local_runner_contract = read_text(ROOT / "docs/cli/local-runner-contract.yaml")
+    runner_contract = read_text(ROOT / "crates/mabi-cli/src/runner_contract.rs")
+    runtime_registry = read_text(ROOT / "crates/mabi-cli/src/runtime_registry.rs")
+    readiness_matrix = read_text(ROOT / "docs/protocol-readiness/protocol-readiness-matrix.yaml")
+
+    if yaml_scalar(version_contract, "contract_version", ROOT / "docs/release/version-metadata-contract.yaml") != VERSION_METADATA_CONTRACT_VERSION:
+        fail("version metadata contract version is not version-metadata-contract-v1")
+    if yaml_scalar(matrix, "matrix_version", matrix_path) != COMPATIBILITY_MATRIX_VERSION:
+        fail("compatibility matrix version is not compatibility-matrix-v1")
+    if yaml_scalar(matrix, "current_engine_version", matrix_path) != version:
+        fail("compatibility matrix current_engine_version is out of sync with workspace.package.version")
+    if yaml_scalar(matrix, "workspace_rust_version", matrix_path) != root_rust_version():
+        fail("compatibility matrix workspace_rust_version is out of sync with workspace.package.rust-version")
+    if yaml_scalar(matrix, "readiness_matrix_version", matrix_path) != PROTOCOL_READINESS_MATRIX_VERSION:
+        fail("compatibility matrix readiness_matrix_version is out of sync with protocol readiness matrix")
+
+    for contract in REQUIRED_RELEASE_CONTRACTS:
+        for label, text in [
+            ("version metadata contract", version_contract),
+            ("compatibility matrix", matrix),
+        ]:
+            if contract not in text:
+                fail(f"{label} is missing required contract version {contract}")
+    if VERSION_METADATA_CONTRACT_VERSION not in local_runner_contract:
+        fail("local runner contract does not report version-metadata-contract-v1")
+    if VERSION_METADATA_CONTRACT_VERSION not in runner_contract or "version_metadata_contract" not in runner_contract:
+        fail("CLI version output source does not expose version-metadata-contract-v1")
+
+    for protocol in PROTOCOL_KEYS:
+        if f"protocol_key: {protocol}" not in matrix:
+            fail(f"compatibility matrix is missing protocol capability entry for {protocol}")
+        if f"mabi_{protocol}" not in runtime_registry:
+            fail(f"runtime registry no longer registers mabi_{protocol}")
+        if f"- id: {protocol}" not in readiness_matrix:
+            fail(f"protocol readiness matrix is missing {protocol}")
+
+
 def run_check() -> None:
     version = root_release_version()
     check_root_cargo(version)
@@ -219,6 +298,7 @@ def run_check() -> None:
     check_workspace_metadata(version)
     check_readmes(version)
     check_surface_files()
+    check_release_docs(version)
     print(f"release version surfaces are in sync for {version}")
 
 
