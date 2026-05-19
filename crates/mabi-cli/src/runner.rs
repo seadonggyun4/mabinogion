@@ -85,6 +85,15 @@ impl CommandOutput {
             quiet: false,
         }
     }
+
+    /// Create a failed output without a default message.
+    pub fn quiet_failure(code: i32) -> Self {
+        Self {
+            exit_code: code,
+            message: None,
+            quiet: true,
+        }
+    }
 }
 
 /// Command runner for executing commands with lifecycle management.

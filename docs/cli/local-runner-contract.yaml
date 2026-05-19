@@ -1,0 +1,134 @@
+schema_version: 1
+contract_version: local-runner-contract-v1
+envelope_version: cli-output-envelope-v1
+owner: mabinogion
+purpose: >
+  Freeze the installed mabi CLI surfaces consumed by mabinogion-trials and
+  mabinogion-forge-back local runners.
+ownership_boundary:
+  mabinogion_owns:
+    - installed_cli_invocation
+    - protocol_session_execution
+    - machine_readable_runner_output
+    - execution_evidence_primitives
+  not_owned_by_mabinogion:
+    - trial_definition_authoring
+    - scoring_policy
+    - proof_report_publication
+    - certification_issuance
+machine_output:
+  formats:
+    - json
+    - yaml
+    - compact
+  table_output_policy: Human output remains outside the runner parsing contract.
+  required_envelope_fields:
+    - contract_version
+    - envelope_version
+    - command
+    - status
+    - exit_code
+    - exit_category
+    - generated_at
+    - engine_version
+    - data
+    - warnings
+    - errors
+exit_code_policy:
+  - code: 0
+    category: success
+    meaning: Command completed successfully.
+  - code: 2
+    category: input_contract_error
+    meaning: Config, argument, or input contract error.
+  - code: 6
+    category: validation_failure
+    meaning: Validation command completed and found invalid input.
+  - code: 9
+    category: runtime_failure
+    meaning: Runtime engine failed while launching or operating a protocol service.
+  - code: 124
+    category: timeout
+    meaning: Bounded operation timed out.
+  - code: 130
+    category: interrupted
+    meaning: User or runner interrupted execution.
+  - code: 1
+    category: internal_failure
+    meaning: Internal or unclassified failure.
+runner_facing_commands:
+  - command: doctor
+    stable_machine_output: true
+    example: mabi --format json doctor --protocol modbus
+    data_contract: Doctor report with runtime smoke, readiness, snapshot, stop, and optional prereq results.
+  - command: inspect protocols
+    stable_machine_output: true
+    example: mabi --format json inspect protocols
+    data_contract: Registered protocol catalog with contract metadata for runner compatibility.
+  - command: inspect schema
+    stable_machine_output: true
+    example: mabi --format json inspect schema
+    data_contract: Supported schema surfaces.
+  - command: inspect status
+    stable_machine_output: true
+    example: mabi --format json inspect status
+    data_contract: Process-scoped runtime status.
+  - command: inspect modbus-config
+    stable_machine_output: true
+    example: mabi --format json inspect modbus-config config.yaml
+    data_contract: Compiled Modbus config/session summary.
+  - command: inspect opcua-config
+    stable_machine_output: true
+    example: mabi --format json inspect opcua-config config.yaml
+    data_contract: Compiled OPC UA config/session summary.
+  - command: validate scenario
+    stable_machine_output: true
+    example: mabi --format json validate scenario scenario.yaml
+    data_contract: Scenario validation report. Invalid scenario exits 6 and still writes an envelope.
+  - command: validate config
+    stable_machine_output: true
+    example: mabi --format json validate config config.yaml
+    data_contract: Generic file validation report. Invalid files exit 6 and still write an envelope.
+  - command: validate modbus-config
+    stable_machine_output: true
+    example: mabi --format json validate modbus-config config.yaml
+    data_contract: Typed Modbus config validation report.
+  - command: validate opcua-config
+    stable_machine_output: true
+    example: mabi --format json validate opcua-config config.yaml
+    data_contract: Typed OPC UA config validation report.
+  - command: version
+    stable_machine_output: true
+    example: mabi --format json version
+    data_contract: Engine version, registered protocols, protocol capability metadata, feature flags, release metadata, and contract versions.
+contract_versions_reported_by_version:
+  - local-runner-contract-v1
+  - cli-output-envelope-v1
+  - runtime-contract-v1
+  - snapshot-metadata-v1
+  - unified-readiness-contract-v1
+  - run-evidence-schema-v1
+  - trial-artifact-contract-v1
+  - version-metadata-contract-v1
+future_trial_run_execution_spec:
+  command_status: documented_future_contract_only
+  command: mabi trial run
+  owner_of_trial_definition: mabinogion-trials
+  evidence_output_contract: run-evidence-schema-v1
+  artifact_contract: trial-artifact-contract-v1
+  required_fields:
+    - execution_spec_version
+    - run_id
+    - trial_suite_version
+    - protocol
+    - profile_id
+    - config_path
+    - session
+    - readiness_timeout_ms
+    - artifact_dir
+    - output_format
+    - evidence_requirements
+  execution_role: >
+    mabinogion receives an execution spec from mabinogion-trials, runs the
+    requested protocol/session surface, and exports run evidence. It does not
+    define trials or calculate scores.

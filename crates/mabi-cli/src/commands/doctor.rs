@@ -14,6 +14,7 @@ use crate::context::CliContext;
 use crate::error::CliResult;
 use crate::output::{OutputFormat, StatusType, TableBuilder};
 use crate::runner::{Command, CommandOutput};
+use crate::runner_contract::{is_machine_format, write_failure, write_success, CliErrorPayload};
 use crate::runtime_registry::{protocol_catalog, workspace_protocol_registry};
 
 /// Protocol selection for `mabi doctor`.
@@ -154,10 +155,19 @@ impl Command for DoctorCommand {
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
         let report = self.run_report().await;
-        render_report(ctx, &report)?;
+        let has_failures = report_has_failures(&report);
+        let exit_code = if has_failures { 1 } else { 0 };
+        render_report(ctx, &report, exit_code)?;
 
-        if report_has_failures(&report) {
-            Ok(CommandOutput::failure(1, "mabi doctor found failures"))
+        if has_failures {
+            if is_machine_format(ctx.output().format()) {
+                Ok(CommandOutput::quiet_failure(exit_code))
+            } else {
+                Ok(CommandOutput::failure(
+                    exit_code,
+                    "mabi doctor found failures",
+                ))
+            }
         } else {
             Ok(CommandOutput::quiet_success())
         }
@@ -305,10 +315,24 @@ fn report_has_failures(report: &DoctorReport) -> bool {
             .any(|protocol| protocol.status() == DoctorStatus::Fail)
 }
 
-fn render_report(ctx: &CliContext, report: &DoctorReport) -> CliResult<()> {
+fn render_report(ctx: &CliContext, report: &DoctorReport, exit_code: i32) -> CliResult<()> {
     match ctx.output().format() {
         OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact => {
-            ctx.output().write(report)?;
+            if exit_code == 0 {
+                write_success(ctx.output(), "doctor", report)?;
+            } else {
+                write_failure(
+                    ctx.output(),
+                    "doctor",
+                    exit_code,
+                    report,
+                    vec![CliErrorPayload::new(
+                        exit_code,
+                        "doctor_failed",
+                        "mabi doctor found failures",
+                    )],
+                )?;
+            }
         }
         OutputFormat::Table => {
             ctx.output().header("mabi doctor");
@@ -458,15 +482,23 @@ fn reserve_loopback_tcp_addr() -> Option<SocketAddr> {
 fn protocol_metadata_ok(protocol: &str, keys: &[String]) -> bool {
     let keys: BTreeSet<&str> = keys.iter().map(String::as_str).collect();
     let required: &[&str] = match protocol {
-        "modbus" => &["transport", "devices", "points", "bind_address"],
+        "modbus" => &["_runtime", "transport", "devices", "points", "bind_address"],
         "opcua" => &[
+            "_runtime",
             "endpoint",
             "transport_protocol",
             "nodes",
             "security_profile",
         ],
-        "bacnet" => &["bind_address", "device_instance", "objects", "metrics"],
+        "bacnet" => &[
+            "_runtime",
+            "bind_address",
+            "device_instance",
+            "objects",
+            "metrics",
+        ],
         "knx" => &[
+            "_runtime",
             "bind_address",
             "individual_address",
             "group_objects",

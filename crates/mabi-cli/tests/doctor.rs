@@ -32,7 +32,10 @@ fn doctor_protocol_filter_limits_json_report() {
         "doctor failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: Value = serde_json::from_slice(&output.stdout).expect("doctor output is JSON");
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("doctor output is JSON");
+    assert_eq!(envelope["contract_version"], "local-runner-contract-v1");
+    assert_eq!(envelope["command"], "doctor");
+    let report = &envelope["data"];
     let protocols = report["protocols"].as_array().expect("protocols array");
     assert_eq!(protocols.len(), 1);
     assert_eq!(protocols[0]["protocol"], "modbus");
@@ -54,7 +57,10 @@ fn doctor_optional_interop_prereqs_do_not_fail_install_smoke() {
         "doctor failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let report: Value = serde_json::from_slice(&output.stdout).expect("doctor output is JSON");
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("doctor output is JSON");
+    assert_eq!(envelope["contract_version"], "local-runner-contract-v1");
+    assert_eq!(envelope["command"], "doctor");
+    let report = &envelope["data"];
     let optional = report["optional_prereqs"]
         .as_array()
         .expect("optional prereqs array");

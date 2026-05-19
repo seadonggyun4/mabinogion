@@ -47,6 +47,9 @@ impl ServeRuntimeCommand {
         }
         output.kv("State", format!("{:?}", snapshot.status.state));
         for (key, value) in &snapshot.metadata {
+            if key.starts_with('_') {
+                continue;
+            }
             match value {
                 serde_json::Value::String(value) => output.kv(key, value),
                 serde_json::Value::Number(value) => output.kv(key, value),

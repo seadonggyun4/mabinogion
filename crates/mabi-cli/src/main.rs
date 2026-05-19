@@ -71,11 +71,12 @@ const LOGO: &str = "\x1b[38;5;236m\
 #[command(
     name = "mabi",
     version,
-    about = "Industrial protocol simulator for testing and development",
-    long_about = "Mabinogion is a high-performance simulator for industrial protocols including \
-                  Modbus TCP/RTU, OPC UA, BACnet/IP, and KNXnet/IP. It exposes a shared runtime, \
-                  controller surfaces for scenario and chaos workflows, and registry-driven CLI \
-                  inspection tools.",
+    about = "Protocol resilience engine for Mabinogion trials",
+    long_about = "Mabinogion is a protocol resilience engine for Mabinogion trials. It runs local \
+                  Modbus, OPC UA, BACnet/IP, and KNXnet/IP protocol sessions through a shared \
+                  runtime. The installed CLI also exposes stable doctor, inspect, validate, \
+                  version, and evidence-oriented contracts that Forge and Trials can use as \
+                  runner surfaces.",
     before_help = LOGO
 )]
 struct Cli {
@@ -158,31 +159,31 @@ impl From<ModbusRegisterTypeArg> for mabi_core::types::ModbusRegisterType {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Serve a protocol simulator through the shared runtime
+    /// Run a local protocol service through the shared runtime
     Serve(ServeCommandArgs),
 
-    /// Scenario controller commands
+    /// Drive local protocol sessions from scenario files
     Scenario(ScenarioCommandArgs),
 
-    /// Chaos controller commands
+    /// Apply fault orchestration to local protocol sessions
     Chaos(ChaosCommandArgs),
 
-    /// Inspect runtime and schema surfaces
+    /// Inspect runner-facing runtime, protocol, and schema surfaces
     Inspect(InspectCommandArgs),
 
-    /// Validate scenario or config files
+    /// Validate runner-facing scenario or config files
     Validate(ValidateCommandArgs),
 
-    /// Runtime control commands for simulator sessions
+    /// Runtime control commands for local protocol sessions
     Control(ControlCommandArgs),
 
-    /// Deterministic code generation from canonical simulator configs
+    /// Deterministic code generation from canonical protocol configs
     Generate(GenerateCommandArgs),
 
     /// Verify the installed CLI and built-in protocol runtimes
     Doctor(DoctorArgs),
 
-    /// Show version information
+    /// Show engine, protocol, contract, and trial compatibility metadata
     Version,
 }
 
@@ -1004,17 +1005,9 @@ async fn main() -> ExitCode {
             runner.run(&cmd).await
         }
         Commands::Version => {
-            println!("mabi {} (Mabinogion)", mabi_core::RELEASE_VERSION);
-            println!("Rust {}", rustc_version());
-            println!();
-            println!("Registered protocols:");
-            for entry in protocol_catalog() {
-                println!(
-                    "  - {} ({})",
-                    entry.descriptor.display_name, entry.descriptor.key
-                );
-            }
-            return ExitCode::SUCCESS;
+            let ctx_handle = runner.context();
+            let mut ctx = ctx_handle.write().await;
+            render_version(&mut ctx)
         }
     };
 
@@ -1037,6 +1030,28 @@ async fn main() -> ExitCode {
             ExitCode::from(error.exit_code() as u8)
         }
     }
+}
+
+fn render_version(ctx: &mut CliContext) -> CliResult<CommandOutput> {
+    let catalog = protocol_catalog();
+    let report = mabi_cli::runner_contract::version_report(rustc_version(), &catalog);
+
+    if is_machine_format(ctx.output().format()) {
+        write_success(ctx.output(), "version", &report)?;
+    } else {
+        println!("mabi {} (Mabinogion)", mabi_core::RELEASE_VERSION);
+        println!("Rust {}", rustc_version());
+        println!();
+        println!("Registered protocols:");
+        for entry in &catalog {
+            println!(
+                "  - {} ({})",
+                entry.descriptor.display_name, entry.descriptor.key
+            );
+        }
+    }
+
+    Ok(CommandOutput::quiet_success())
 }
 
 async fn into_launch_spec(
@@ -1273,11 +1288,8 @@ fn parse_opcua_value(raw: &str) -> CliResult<mabi_core::Value> {
 async fn inspect_modbus_schema(ctx: &mut CliContext) -> CliResult<CommandOutput> {
     let schema = mabi_modbus::schema_summary();
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&schema)?;
+    if is_machine_format(ctx.output().format()) {
+        write_success(ctx.output(), "inspect modbus-schema", &schema)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -1323,14 +1335,69 @@ async fn inspect_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         sessions: Vec<CompiledSessionView>,
     }
 
-    let (resolved, config) = load_modbus_config(ctx, &file)?;
+    let machine_output = is_machine_format(ctx.output().format());
+    let (resolved, config) = match load_modbus_config(ctx, &file) {
+        Ok(result) => result,
+        Err(error) if machine_output => {
+            let path = ctx.resolve_path(&file).display().to_string();
+            let payload = json!({
+                "path": path.clone(),
+                "loaded": false,
+                "errors": [
+                    {
+                        "code": "input_contract_error",
+                        "message": error.to_string()
+                    }
+                ]
+            });
+            write_failure(
+                ctx.output(),
+                "inspect modbus-config",
+                2,
+                &payload,
+                vec![
+                    CliErrorPayload::new(2, "input_contract_error", error.to_string())
+                        .with_path(path),
+                ],
+            )?;
+            return Ok(CommandOutput::quiet_failure(2));
+        }
+        Err(error) => return Err(error),
+    };
     let mut sessions = Vec::new();
     for name in config.sessions.keys() {
-        let compiled = config
-            .compile_session(name)
-            .map_err(|error| CliError::InvalidConfig {
-                message: error.to_string(),
-            })?;
+        let compiled = match config.compile_session(name) {
+            Ok(compiled) => compiled,
+            Err(error) if machine_output => {
+                let path = resolved.display().to_string();
+                let payload = json!({
+                    "path": path.clone(),
+                    "loaded": false,
+                    "errors": [
+                        {
+                            "code": "input_contract_error",
+                            "message": error.to_string()
+                        }
+                    ]
+                });
+                write_failure(
+                    ctx.output(),
+                    "inspect modbus-config",
+                    2,
+                    &payload,
+                    vec![
+                        CliErrorPayload::new(2, "input_contract_error", error.to_string())
+                            .with_path(path),
+                    ],
+                )?;
+                return Ok(CommandOutput::quiet_failure(2));
+            }
+            Err(error) => {
+                return Err(CliError::InvalidConfig {
+                    message: error.to_string(),
+                });
+            }
+        };
         sessions.push(CompiledSessionView {
             name: name.clone(),
             service_name: compiled.launch.name.clone(),
@@ -1357,11 +1424,8 @@ async fn inspect_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         sessions,
     };
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&view)?;
+    if machine_output {
+        write_success(ctx.output(), "inspect modbus-config", &view)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -1395,6 +1459,7 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
     #[derive(Serialize)]
     struct ModbusValidationView {
         path: String,
+        valid: bool,
         transports: usize,
         devices: usize,
         sessions: usize,
@@ -1402,9 +1467,38 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
         behaviors: usize,
     }
 
-    let (resolved, config) = load_modbus_config(ctx, &file)?;
+    let machine_output = is_machine_format(ctx.output().format());
+    let (resolved, config) = match load_modbus_config(ctx, &file) {
+        Ok(result) => result,
+        Err(error) if machine_output => {
+            let path = ctx.resolve_path(&file).display().to_string();
+            let payload = json!({
+                "path": path.clone(),
+                "valid": false,
+                "errors": [
+                    {
+                        "code": "validation_error",
+                        "message": error.to_string()
+                    }
+                ],
+                "warnings": []
+            });
+            write_failure(
+                ctx.output(),
+                "validate modbus-config",
+                6,
+                &payload,
+                vec![
+                    CliErrorPayload::new(6, "validation_error", error.to_string()).with_path(path),
+                ],
+            )?;
+            return Ok(CommandOutput::quiet_failure(6));
+        }
+        Err(error) => return Err(error),
+    };
     let view = ModbusValidationView {
         path: resolved.display().to_string(),
+        valid: true,
         transports: config.transports.len(),
         devices: config.devices.len(),
         sessions: config.sessions.len(),
@@ -1412,11 +1506,9 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
         behaviors: config.behaviors.len(),
     };
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&view)?;
+    if machine_output {
+        write_success(ctx.output(), "validate modbus-config", &view)?;
+        return Ok(CommandOutput::quiet_success());
     } else {
         ctx.output().header("Modbus Config Validation");
         ctx.output().kv("Path", &view.path);
@@ -1436,11 +1528,8 @@ async fn validate_modbus_config(ctx: &mut CliContext, file: PathBuf) -> CliResul
 async fn inspect_opcua_schema(ctx: &mut CliContext) -> CliResult<CommandOutput> {
     let schema = mabi_opcua::schema_summary();
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&schema)?;
+    if is_machine_format(ctx.output().format()) {
+        write_success(ctx.output(), "inspect opcua-schema", &schema)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -1489,27 +1578,111 @@ async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<
         sessions: Vec<CompiledSessionView>,
     }
 
-    let (resolved, config) = load_opcua_config(ctx, &file)?;
+    let machine_output = is_machine_format(ctx.output().format());
+    let (resolved, config) = match load_opcua_config(ctx, &file) {
+        Ok(result) => result,
+        Err(error) if machine_output => {
+            let path = ctx.resolve_path(&file).display().to_string();
+            let payload = json!({
+                "path": path.clone(),
+                "loaded": false,
+                "errors": [
+                    {
+                        "code": "input_contract_error",
+                        "message": error.to_string()
+                    }
+                ]
+            });
+            write_failure(
+                ctx.output(),
+                "inspect opcua-config",
+                2,
+                &payload,
+                vec![
+                    CliErrorPayload::new(2, "input_contract_error", error.to_string())
+                        .with_path(path),
+                ],
+            )?;
+            return Ok(CommandOutput::quiet_failure(2));
+        }
+        Err(error) => return Err(error),
+    };
     let mut sessions = Vec::new();
     for name in config.sessions.keys() {
         let (compiled, cache_report) =
-            compile_opcua_session_with_report(&config, name, Some(&resolved)).map_err(|error| {
-                CliError::InvalidConfig {
-                    message: error.to_string(),
+            match compile_opcua_session_with_report(&config, name, Some(&resolved)) {
+                Ok(result) => result,
+                Err(error) if machine_output => {
+                    let path = resolved.display().to_string();
+                    let payload = json!({
+                        "path": path.clone(),
+                        "loaded": false,
+                        "errors": [
+                            {
+                                "code": "input_contract_error",
+                                "message": error.to_string()
+                            }
+                        ]
+                    });
+                    write_failure(
+                        ctx.output(),
+                        "inspect opcua-config",
+                        2,
+                        &payload,
+                        vec![
+                            CliErrorPayload::new(2, "input_contract_error", error.to_string())
+                                .with_path(path),
+                        ],
+                    )?;
+                    return Ok(CommandOutput::quiet_failure(2));
                 }
-            })?;
+                Err(error) => {
+                    return Err(CliError::InvalidConfig {
+                        message: error.to_string(),
+                    });
+                }
+            };
         let endpoint = compiled.launch.config["server_config"]["endpoint_url"]
             .as_str()
             .unwrap_or("unknown")
             .to_string();
-        let launch: OpcUaCompiledLaunchConfig =
-            serde_json::from_value(compiled.launch.config.clone()).map_err(|error| {
-                CliError::ExecutionFailed {
-                    message: format!(
+        let launch: OpcUaCompiledLaunchConfig = match serde_json::from_value(
+            compiled.launch.config.clone(),
+        ) {
+            Ok(launch) => launch,
+            Err(error) if machine_output => {
+                let message = format!(
                     "failed to decode compiled OPC UA launch config for inspect output: {error}"
-                    ),
-                }
-            })?;
+                );
+                let path = resolved.display().to_string();
+                let payload = json!({
+                    "path": path.clone(),
+                    "loaded": false,
+                    "errors": [
+                        {
+                            "code": "internal_error",
+                            "message": message
+                        }
+                    ]
+                });
+                write_failure(
+                    ctx.output(),
+                    "inspect opcua-config",
+                    1,
+                    &payload,
+                    vec![CliErrorPayload::new(1, "internal_error", error.to_string())
+                        .with_path(path)],
+                )?;
+                return Ok(CommandOutput::quiet_failure(1));
+            }
+            Err(error) => {
+                return Err(CliError::ExecutionFailed {
+                        message: format!(
+                            "failed to decode compiled OPC UA launch config for inspect output: {error}"
+                        ),
+                    });
+            }
+        };
         sessions.push(CompiledSessionView {
             name: name.clone(),
             service_name: compiled.launch.name.clone(),
@@ -1544,11 +1717,8 @@ async fn inspect_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult<
         sessions,
     };
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&view)?;
+    if machine_output {
+        write_success(ctx.output(), "inspect opcua-config", &view)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -1602,6 +1772,7 @@ async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
     #[derive(Serialize)]
     struct OpcuaValidationView {
         path: String,
+        valid: bool,
         transports: usize,
         transport_protocols: Vec<String>,
         transport_connection_modes: Vec<String>,
@@ -1618,14 +1789,72 @@ async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         cache_misses: usize,
     }
 
-    let (resolved, config) = load_opcua_config(ctx, &file)?;
+    let machine_output = is_machine_format(ctx.output().format());
+    let (resolved, config) = match load_opcua_config(ctx, &file) {
+        Ok(result) => result,
+        Err(error) if machine_output => {
+            let path = ctx.resolve_path(&file).display().to_string();
+            let payload = json!({
+                "path": path.clone(),
+                "valid": false,
+                "errors": [
+                    {
+                        "code": "validation_error",
+                        "message": error.to_string()
+                    }
+                ],
+                "warnings": []
+            });
+            write_failure(
+                ctx.output(),
+                "validate opcua-config",
+                6,
+                &payload,
+                vec![
+                    CliErrorPayload::new(6, "validation_error", error.to_string()).with_path(path),
+                ],
+            )?;
+            return Ok(CommandOutput::quiet_failure(6));
+        }
+        Err(error) => return Err(error),
+    };
     let mut cache_hits = 0usize;
     let mut cache_misses = 0usize;
     for name in config.sessions.keys() {
-        let (_, report) = compile_opcua_session_with_report(&config, name, Some(&resolved))
-            .map_err(|error| CliError::InvalidConfig {
-                message: error.to_string(),
-            })?;
+        let (_, report) = match compile_opcua_session_with_report(&config, name, Some(&resolved)) {
+            Ok(result) => result,
+            Err(error) if machine_output => {
+                let message = error.to_string();
+                let path = resolved.display().to_string();
+                let payload = json!({
+                    "path": path,
+                    "valid": false,
+                    "errors": [
+                        {
+                            "code": "validation_error",
+                            "message": message
+                        }
+                    ],
+                    "warnings": []
+                });
+                write_failure(
+                    ctx.output(),
+                    "validate opcua-config",
+                    6,
+                    &payload,
+                    vec![
+                        CliErrorPayload::new(6, "validation_error", error.to_string())
+                            .with_path(resolved.display().to_string()),
+                    ],
+                )?;
+                return Ok(CommandOutput::quiet_failure(6));
+            }
+            Err(error) => {
+                return Err(CliError::InvalidConfig {
+                    message: error.to_string(),
+                });
+            }
+        };
         if report.compilation_hit {
             cache_hits += 1;
         } else {
@@ -1634,6 +1863,7 @@ async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
     }
     let view = OpcuaValidationView {
         path: resolved.display().to_string(),
+        valid: true,
         transports: config.transports.len(),
         transport_protocols: {
             let mut protocols = config
@@ -1674,11 +1904,9 @@ async fn validate_opcua_config(ctx: &mut CliContext, file: PathBuf) -> CliResult
         cache_misses,
     };
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&view)?;
+    if machine_output {
+        write_success(ctx.output(), "validate opcua-config", &view)?;
+        return Ok(CommandOutput::quiet_success());
     } else {
         ctx.output().header("OPC UA Config Validation");
         ctx.output().kv("Path", &view.path);
@@ -2225,11 +2453,14 @@ async fn control_opcua(
 
 async fn inspect_protocols(ctx: &mut CliContext) -> CliResult<CommandOutput> {
     let catalog = protocol_catalog();
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&catalog)?;
+    if is_machine_format(ctx.output().format()) {
+        let report = mabi_cli::runner_contract::version_report(rustc_version(), &catalog);
+        let payload = json!({
+            "protocols": catalog,
+            "contract_versions": report.contract_versions,
+            "trial_compatible_metadata": report.trial_compatible_metadata,
+        });
+        write_success(ctx.output(), "inspect protocols", &payload)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -2288,11 +2519,8 @@ async fn inspect_schema(ctx: &mut CliContext, kind: SchemaKindArg) -> CliResult<
         })
         .collect();
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&selected)?;
+    if is_machine_format(ctx.output().format()) {
+        write_success(ctx.output(), "inspect schema", &selected)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -2320,11 +2548,8 @@ async fn inspect_status(ctx: &mut CliContext) -> CliResult<CommandOutput> {
         note: "Status is process-scoped; this invocation has not attached persistent services.",
     };
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&status)?;
+    if is_machine_format(ctx.output().format()) {
+        write_success(ctx.output(), "inspect status", &status)?;
         return Ok(CommandOutput::quiet_success());
     }
 
@@ -2358,19 +2583,100 @@ async fn validate_scenario(
     }
 
     let path = ctx.resolve_path(&args.file);
+    let machine_output = is_machine_format(ctx.output().format());
     if !path.exists() {
+        if machine_output {
+            let report = ScenarioValidationReport {
+                path: path.display().to_string(),
+                name: String::new(),
+                valid: false,
+                errors: 1,
+                warnings: 0,
+                issues: vec![IssueView {
+                    severity: "error".to_string(),
+                    code: "file_not_found".to_string(),
+                    path: path.display().to_string(),
+                    message: "Scenario file not found".to_string(),
+                }],
+            };
+            write_failure(
+                ctx.output(),
+                "validate scenario",
+                6,
+                &report,
+                vec![
+                    CliErrorPayload::new(6, "file_not_found", "Scenario file not found")
+                        .with_path(path.display().to_string()),
+                ],
+            )?;
+            return Ok(CommandOutput::quiet_failure(6));
+        }
         return Err(CliError::ScenarioNotFound { path });
     }
 
-    let scenario =
-        ScenarioParser::load(&path)
-            .await
-            .map_err(|error| CliError::InvalidScenario {
+    let scenario = match ScenarioParser::load(&path).await {
+        Ok(scenario) => scenario,
+        Err(error) if machine_output => {
+            let message = error.to_string();
+            let report = ScenarioValidationReport {
+                path: path.display().to_string(),
+                name: String::new(),
+                valid: false,
+                errors: 1,
+                warnings: 0,
+                issues: vec![IssueView {
+                    severity: "error".to_string(),
+                    code: "parse_error".to_string(),
+                    path: path.display().to_string(),
+                    message: message.clone(),
+                }],
+            };
+            write_failure(
+                ctx.output(),
+                "validate scenario",
+                6,
+                &report,
+                vec![CliErrorPayload::new(6, "parse_error", message)
+                    .with_path(path.display().to_string())],
+            )?;
+            return Ok(CommandOutput::quiet_failure(6));
+        }
+        Err(error) => {
+            return Err(CliError::InvalidScenario {
                 message: error.to_string(),
-            })?;
-    ScenarioParser::validate(&scenario).map_err(|error| CliError::InvalidScenario {
-        message: error.to_string(),
-    })?;
+            });
+        }
+    };
+    if let Err(error) = ScenarioParser::validate(&scenario) {
+        if machine_output {
+            let message = error.to_string();
+            let report = ScenarioValidationReport {
+                path: path.display().to_string(),
+                name: scenario.name.clone(),
+                valid: false,
+                errors: 1,
+                warnings: 0,
+                issues: vec![IssueView {
+                    severity: "error".to_string(),
+                    code: "schema_error".to_string(),
+                    path: path.display().to_string(),
+                    message: message.clone(),
+                }],
+            };
+            write_failure(
+                ctx.output(),
+                "validate scenario",
+                6,
+                &report,
+                vec![CliErrorPayload::new(6, "schema_error", message)
+                    .with_path(path.display().to_string())],
+            )?;
+            return Ok(CommandOutput::quiet_failure(6));
+        }
+        return Err(CliError::InvalidScenario {
+            message: error.to_string(),
+        });
+    }
 
     let validator = ScenarioValidator::new();
     let result = validator.validate(&scenario);
@@ -2395,11 +2701,30 @@ async fn validate_scenario(
         issues,
     };
 
-    if matches!(
-        ctx.output().format(),
-        OutputFormat::Json | OutputFormat::Yaml | OutputFormat::Compact
-    ) {
-        ctx.output().write(&report)?;
+    if machine_output {
+        if report.valid {
+            write_success(ctx.output(), "validate scenario", &report)?;
+            return Ok(CommandOutput::quiet_success());
+        }
+
+        let mut errors = report
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "error")
+            .map(|issue| {
+                CliErrorPayload::new(6, issue.code.clone(), issue.message.clone())
+                    .with_path(issue.path.clone())
+            })
+            .collect::<Vec<_>>();
+        if errors.is_empty() {
+            errors.push(CliErrorPayload::new(
+                6,
+                "validation_error",
+                "scenario failed validation",
+            ));
+        }
+        write_failure(ctx.output(), "validate scenario", 6, &report, errors)?;
+        return Ok(CommandOutput::quiet_failure(6));
     } else {
         ctx.output().header("Scenario Validation");
         ctx.output().kv("Path", &report.path);

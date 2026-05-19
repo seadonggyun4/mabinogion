@@ -1,6 +1,14 @@
 # Mabinogion CLI Reference
 
-This document provides a comprehensive reference for the `mabi` command-line interface, the primary user-facing component of the Mabinogion industrial protocol simulator.
+This document describes `mabi`, the primary local runner and operator-facing
+interface for the Mabinogion protocol resilience engine. It supports direct
+local protocol simulator use and exposes machine-readable surfaces that Forge
+and Trials can consume for Mabinogion trials.
+
+`mabinogion` owns protocol/session execution, runtime inspection, validation,
+version metadata, and evidence export. It does not define trial suites, score
+results, publish proof reports, issue certification, or replace official certification
+programs.
 
 ## Table of Contents
 
@@ -23,7 +31,11 @@ This document provides a comprehensive reference for the `mabi` command-line int
 
 ## Overview
 
-The `mabi` CLI is built using Rust with the `clap` crate for argument parsing and the Tokio async runtime for concurrent operations. It serves as the primary interface for configuring and executing protocol simulations.
+The `mabi` CLI is built using Rust with the `clap` crate for argument parsing
+and the Tokio async runtime for concurrent operations. It serves two audiences:
+local operators who need to run Modbus, OPC UA, BACnet/IP, or KNXnet/IP
+sessions, and runner integrations that need stable JSON/YAML/compact contracts
+for Forge and Trials.
 
 ## Installation
 
@@ -32,11 +44,11 @@ cargo install mabi-cli
 mabi doctor
 ```
 
-`cargo install mabi-cli` installs the self-contained CLI and all Rust protocol
-simulators: Modbus, OPC UA, BACnet/IP, KNXnet/IP, scenario workflows, chaos
-workflows, and the shared runtime. Docker, Python, Java, Node, knxd, and other
-interop peers are optional source-tree verification assets and are not required
-for installed CLI smoke checks.
+`cargo install mabi-cli` installs the self-contained protocol resilience engine:
+Modbus, OPC UA, BACnet/IP, KNXnet/IP, scenario workflows, chaos workflows, and
+the shared runtime. Docker, Python, Java, Node, knxd, and other interop peers
+are optional source-tree verification assets and are not required for installed
+CLI smoke checks.
 
 The default installed CLI keeps OPC UA on the lightweight UA-TCP path. OPC UA
 Binary over HTTPS remains available from source with
@@ -82,7 +94,8 @@ When `--quiet` is active, the server starts and awaits shutdown without producin
 ### doctor
 
 Verify the installed binary and built-in protocol runtimes without external
-tools.
+tools. This is the fastest local smoke path for operators and the first
+deploy-blocking runner check for Forge and Trials.
 
 ```bash
 mabi doctor [--protocol all|modbus|opcua|bacnet|knx]
@@ -141,7 +154,7 @@ mabi scenario run scenario.yaml --dry-run
 
 ### serve modbus
 
-Start a standalone Modbus TCP or RTU simulator.
+Start a standalone Modbus TCP or RTU service through the shared runtime.
 
 ```bash
 mabi serve modbus [OPTIONS]
@@ -188,7 +201,7 @@ mabi serve modbus --rtu --serial /dev/ttyUSB0
 
 ### serve opcua
 
-Start an OPC UA server simulator from a canonical simulator config.
+Start an OPC UA service from a canonical config through the shared runtime.
 
 ```bash
 mabi serve opcua --config <FILE> --session <NAME> [OPTIONS]
@@ -212,7 +225,7 @@ mabi serve opcua --config opcua.yaml --session default
 
 ### serve bacnet
 
-Start a BACnet/IP simulator.
+Start a BACnet/IP service through the shared runtime.
 
 ```bash
 mabi serve bacnet [OPTIONS]
@@ -249,7 +262,7 @@ mabi serve bacnet --instance 1234 --objects 200
 
 ### serve knx
 
-Start a KNXnet/IP simulator.
+Start a KNXnet/IP service through the shared runtime.
 
 ```bash
 mabi serve knx [OPTIONS]
@@ -281,7 +294,9 @@ mabi serve knx --address 1.1.1 --groups 200 --tag location=building-c --tag ligh
 
 ### validate
 
-Validate configuration and scenario files.
+Validate configuration and scenario files. In machine-readable formats,
+validation output is part of the Local Runner Contract consumed by Forge and
+Trials.
 
 ```bash
 mabi validate config <FILES>... [OPTIONS]
@@ -329,7 +344,8 @@ mabi validate config *.yaml --strict
 
 ### inspect
 
-Inspect runtime and schema surfaces.
+Inspect runtime, protocol, schema, and config surfaces. In machine-readable
+formats, `inspect` returns runner-facing metadata for Forge and Trials.
 
 ```bash
 mabi inspect <COMMAND> [OPTIONS]
@@ -367,6 +383,7 @@ release version and is kept in sync by `scripts/release-version.py`.
 
 ```bash
 mabi version
+mabi --format json version
 ```
 
 #### Output
@@ -374,12 +391,20 @@ mabi version
 ```
 mabi X.Y.Z (Mabinogion)
 Rust X.Y.Z
-Supported protocols:
+Registered protocols:
   - Modbus TCP/RTU
   - OPC UA
   - BACnet/IP
   - KNXnet/IP
 ```
+
+Machine-readable `version` output uses `local-runner-contract-v1` and includes
+engine release version, registered protocols, protocol capability versions,
+feature flags, runtime contract version, snapshot metadata contract version,
+Unified Readiness Contract version, Run Evidence Schema version, Trial Artifact
+Contract version, and `version-metadata-contract-v1`. Forge and Trials can use
+this metadata with `docs/release/compatibility-matrix.yaml` to make their own
+engine/trial-suite compatibility decisions.
 
 ## Output Formats
 
@@ -391,6 +416,10 @@ The `--format` option controls output rendering across all commands. For protoco
 | `json` | Pretty-printed JSON with structured server metadata (protocol, endpoint, status, nested objects) |
 | `yaml` | YAML structured output with identical schema to JSON |
 | `compact` | Single-line JSON without whitespace formatting, suitable for log ingestion pipelines |
+
+Runner-facing commands (`doctor`, `inspect`, `validate`, and `version`) wrap
+`json`, `yaml`, and `compact` output in the envelope defined by
+`docs/cli/local-runner-contract.yaml`. Table output remains human-facing.
 
 ### Protocol Command Output Structure
 
@@ -576,20 +605,18 @@ This design decouples validation logic from both the argument definition layer (
 
 ## Exit Codes
 
-| Code | Description |
-|------|-------------|
-| 0 | Success |
-| 1 | General execution failure |
-| 2 | Invalid configuration or scenario |
-| 3 | Unsupported protocol |
-| 4 | Device not found |
-| 5 | Port already in use |
-| 6 | Validation failed |
-| 7 | I/O error |
-| 8 | YAML/JSON parsing error |
-| 9 | Simulator core error |
-| 124 | Operation timeout |
-| 130 | User interrupted (Ctrl+C or Ctrl+Z) |
+| Code | Runner category | Description |
+|------|-----------------|-------------|
+| 0 | `success` | Success |
+| 1 | `internal_failure` | General, internal, or unclassified failure |
+| 2 | `input_contract_error` | Invalid configuration, argument, or input contract |
+| 6 | `validation_failure` | Validation completed and found invalid input |
+| 9 | `runtime_failure` | Runtime engine failed while launching or operating a protocol service |
+| 124 | `timeout` | Operation timeout |
+| 130 | `interrupted` | User or runner interrupted execution |
+
+Existing detailed CLI errors may still map to more specific internal causes,
+but runner-facing envelopes expose these stable categories.
 
 ## Signal Handling and Process Safety
 

@@ -12,6 +12,10 @@ pub use crate::output::{OutputFormat, OutputWriter, StatusType, TableBuilder};
 pub use crate::runner::{
     Command, CommandHook, CommandOutput, CommandRunner, LoggingHook, MetricsHook,
 };
+pub use crate::runner_contract::{
+    is_machine_format, write_failure, write_success, CliErrorPayload, CliExitCategory,
+    CliOutputEnvelope, LOCAL_RUNNER_CONTRACT_VERSION,
+};
 
 // Re-export from core
 pub use mabi_core::prelude::*;

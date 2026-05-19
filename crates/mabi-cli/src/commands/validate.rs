@@ -8,8 +8,10 @@ use crate::output::{
     StatusType, TableBuilder, ValidationError, ValidationResult, ValidationWarning,
 };
 use crate::runner::{Command, CommandOutput};
+use crate::runner_contract::{is_machine_format, write_failure, write_success, CliErrorPayload};
 use async_trait::async_trait;
 use mabi_scenario::Scenario;
+use serde::Serialize;
 use std::path::PathBuf;
 
 /// Validate command for checking configuration files.
@@ -20,6 +22,24 @@ pub struct ValidateCommand {
     detailed: bool,
     /// Whether to check for warnings only (no errors = success).
     strict: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConfigValidationFileReport {
+    path: String,
+    valid: bool,
+    errors: Vec<ValidationError>,
+    warnings: Vec<ValidationWarning>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ConfigValidationReport {
+    total_files: usize,
+    valid_files: usize,
+    errors: usize,
+    warnings: usize,
+    strict: bool,
+    files: Vec<ConfigValidationFileReport>,
 }
 
 impl ValidateCommand {
@@ -264,10 +284,13 @@ impl Command for ValidateCommand {
 
     async fn execute(&self, ctx: &mut CliContext) -> CliResult<CommandOutput> {
         let output = ctx.output();
+        let machine_output = is_machine_format(output.format());
         let mut all_valid = true;
         let mut results = Vec::new();
 
-        output.header("Validating Files");
+        if !machine_output {
+            output.header("Validating Files");
+        }
 
         for path in &self.paths {
             let result = self.validate_file(ctx, path).await;
@@ -275,6 +298,59 @@ impl Command for ValidateCommand {
                 all_valid = false;
             }
             results.push((path.clone(), result));
+        }
+
+        let total = results.len();
+        let valid_count = results.iter().filter(|(_, r)| r.valid).count();
+        let error_count: usize = results.iter().map(|(_, r)| r.errors.len()).sum();
+        let warning_count: usize = results.iter().map(|(_, r)| r.warnings.len()).sum();
+        let report = ConfigValidationReport {
+            total_files: total,
+            valid_files: valid_count,
+            errors: error_count,
+            warnings: warning_count,
+            strict: self.strict,
+            files: results
+                .iter()
+                .map(|(path, result)| ConfigValidationFileReport {
+                    path: path.display().to_string(),
+                    valid: result.valid,
+                    errors: result.errors.clone(),
+                    warnings: result.warnings.clone(),
+                })
+                .collect(),
+        };
+
+        if machine_output {
+            if all_valid {
+                write_success(output, "validate config", &report)?;
+                return Ok(CommandOutput::quiet_success());
+            }
+
+            let mut errors = Vec::new();
+            for file in &report.files {
+                for error in &file.errors {
+                    errors.push(
+                        CliErrorPayload::new(6, "validation_error", error.message.clone())
+                            .with_path(error.path.clone()),
+                    );
+                }
+                if file.errors.is_empty() && !file.valid {
+                    errors.push(
+                        CliErrorPayload::new(6, "validation_error", "file failed validation")
+                            .with_path(file.path.clone()),
+                    );
+                }
+            }
+            if errors.is_empty() {
+                errors.push(CliErrorPayload::new(
+                    6,
+                    "validation_error",
+                    "one or more files failed validation",
+                ));
+            }
+            write_failure(output, "validate config", 6, &report, errors)?;
+            return Ok(CommandOutput::quiet_failure(6));
         }
 
         // Display results
@@ -322,11 +398,6 @@ impl Command for ValidateCommand {
 
         // Summary
         println!();
-        let total = results.len();
-        let valid_count = results.iter().filter(|(_, r)| r.valid).count();
-        let error_count: usize = results.iter().map(|(_, r)| r.errors.len()).sum();
-        let warning_count: usize = results.iter().map(|(_, r)| r.warnings.len()).sum();
-
         output.kv("Total files", total);
         output.kv("Valid", valid_count);
         output.kv("Errors", error_count);
