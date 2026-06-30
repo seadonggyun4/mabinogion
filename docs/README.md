@@ -3,8 +3,12 @@
 Mabinogion is a protocol resilience engine for Mabinogion trials and local
 industrial protocol sessions. These docs are organized around the product
 family boundary: `mabinogion` executes protocol sessions and exports evidence;
-Forge and Trials own trial definitions, scoring, proof publication, and any
+Imugi and Trials own trial definitions, scoring, proof publication, and any
 certification decision.
+
+Legacy compatibility note: older docs and contract fields may still mention
+Forge. After the Imugi rebrand, those references mean the current legacy
+backend baseline or a field retained until contract v2.
 
 Mabinogion does not replace official certification programs. It provides local
 execution evidence and proof/report inputs that other parts of the product

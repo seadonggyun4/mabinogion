@@ -12,7 +12,7 @@ protocol crate to invent different names, lane labels, or evidence language.
 | Artifact | Role |
 | --- | --- |
 | `unified-readiness-contract.yaml` | Versioned field, enum, ownership, and protocol contract policy. |
-| `protocol-readiness-matrix.yaml` | Compact cross-protocol map for Trials and Forge consumers. |
+| `protocol-readiness-matrix.yaml` | Compact cross-protocol map for Trials and Imugi consumers. |
 | `docs/*-simulator/verification-contract.yaml` | Protocol-owned capability/profile source of truth. |
 | `docs/*-simulator/verification-baseline.md` | Human baseline explaining current coverage and gaps. |
 
@@ -31,7 +31,7 @@ Every unified profile must provide:
 | `trial_level` | MVP level expected by `mabinogion-trials`. |
 | `required_evidence` | Evidence types the engine can export or help produce. |
 | `engine_requirement` | Minimum engine surface needed to execute the profile. |
-| `forge_display_label` | Stable human label for Forge and reports. |
+| `forge_display_label` | Stable human label retained as a legacy field until contract v2; Imugi reports may consume it during transition. |
 
 ## Protocol Mapping
 
@@ -46,7 +46,7 @@ Every unified profile must provide:
 
 `mabinogion` owns protocol/session execution and exports readiness metadata for
 local runners. `mabinogion-trials` owns trial definitions, pass criteria,
-scoring, corpus versioning, and readiness grade policy. Forge owns job
+scoring, corpus versioning, and readiness grade policy. Imugi owns job
 orchestration, proof publication, and public/private artifact boundaries.
 
 This contract must not claim official certification equivalence. It is a stable

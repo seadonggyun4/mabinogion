@@ -3,7 +3,7 @@ phase: phase_0_current_baseline_reconciliation
 title: Current Baseline Reconciliation
 purpose: >
   Record the runtime, CLI, and protocol verification surface that the current
-  mabinogion code already provides before the Forge and Trials contracts are
+  mabinogion code already provides before the Imugi and Trials contracts are
   frozen in later phases.
 source_policy:
   source_of_truth: this_file
@@ -135,7 +135,7 @@ release_version_contract:
   compatibility_matrix:
     matrix_version: compatibility-matrix-v1
     current_engine_version_source: Cargo.toml workspace.package.version
-    decision_owner: mabinogion-trials-or-forge
+    decision_owner: mabinogion-trials-or-imugi
   ownership_boundary:
     - release and protocol capability metadata export is owned by mabinogion
     - engine/trial-suite allow deny decisions remain outside mabinogion

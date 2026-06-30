@@ -18,7 +18,7 @@ providing execution mechanics, not scoring policy.
 
 ```toml
 [dependencies]
-mabi-chaos = "1.7.0"
+mabi-chaos = "1.7.1"
 ```
 
 The crate follows the workspace release version. Runner-facing chaos behavior

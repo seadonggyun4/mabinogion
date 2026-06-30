@@ -1,20 +1,23 @@
 # mabi-cli
 
-Installed `mabi` command for local operators, Forge runners, and Mabinogion
+Installed `mabi` command for local operators, Imugi runners, and Mabinogion
 trials integration.
 
 ## What this crate owns
 
 - The installed CLI surface: `doctor`, `serve`, `inspect`, `validate`, `scenario`, `chaos`, `control`, `generate`, and `version`.
-- Machine-readable runner envelopes for Forge and Trials.
+- Machine-readable runner envelopes for Imugi and Trials.
 - Version metadata that reports engine release, protocol capabilities, contracts, and trial compatibility hints.
 
 ## How it fits in Mabinogion
 
 `mabi-cli` is the user-facing and runner-facing entrypoint for the protocol
 resilience engine. Local users can start protocol simulators directly, while
-Forge and Trials can parse JSON/YAML/compact output from stable runner-facing
+Imugi and Trials can parse JSON/YAML/compact output from stable runner-facing
 commands.
+
+Legacy compatibility note: current implementation docs and tests may still
+refer to pre-Imugi runners until Imugi backend PHASE 10 is implemented.
 
 ## Versioning / contracts
 

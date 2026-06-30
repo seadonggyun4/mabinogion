@@ -185,7 +185,7 @@ fn version_metadata_contract_docs_define_required_release_fields() {
     }
     assert_eq!(
         contract.compatibility_policy.decision_owner,
-        "mabinogion-trials-or-forge"
+        "mabinogion-trials-or-imugi"
     );
     assert!(
         contract
@@ -245,7 +245,7 @@ fn compatibility_matrix_matches_workspace_version_and_contract_versions() {
     }
     assert_eq!(
         matrix.compatibility_decision_owner,
-        "mabinogion-trials-or-forge"
+        "mabinogion-trials-or-imugi"
     );
     assert!(matrix
         .ownership_boundary
@@ -423,18 +423,18 @@ fn protocol_capability_metadata_matches_readiness_matrix() {
 }
 
 #[test]
-fn forge_and_trials_remain_compatibility_decision_owners() {
+fn imugi_and_trials_remain_compatibility_decision_owners() {
     let root = repo_root();
     let matrix: CompatibilityMatrix = read_yaml(&root, "docs/release/compatibility-matrix.yaml");
     let envelope = mabi_version_json();
 
     assert_eq!(
         matrix.compatibility_decision_owner,
-        "mabinogion-trials-or-forge"
+        "mabinogion-trials-or-imugi"
     );
     assert_eq!(
         envelope["data"]["trial_compatible_metadata"]["compatibility_decision_owner"],
-        "mabinogion-trials-or-forge"
+        "mabinogion-trials-or-imugi"
     );
     assert!(matrix
         .ownership_boundary

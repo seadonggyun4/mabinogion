@@ -1,8 +1,8 @@
 schema_version: 1
 matrix_id: mabinogion-engine-compatibility
 matrix_version: compatibility-matrix-v1
-current_engine_version: "1.7.0"
-engine_version_range: ">=1.7.0 <2.0.0"
+current_engine_version: "1.7.1"
+engine_version_range: ">=1.7.1 <2.0.0"
 workspace_rust_version: "1.75"
 release_channel: source-build
 version_metadata_contract: version-metadata-contract-v1
@@ -11,7 +11,7 @@ compatible_trial_suite_range: ">=0.1.0 <1.0.0"
 runner_policy_document: docs/release/release-checklist.md
 release_policy_document: docs/release/release-checklist.md
 changelog_policy_document: docs/release/changelog-policy.md
-compatibility_decision_owner: mabinogion-trials-or-forge
+compatibility_decision_owner: mabinogion-trials-or-imugi
 supported_contract_versions:
   - local-runner-contract-v1
   - cli-output-envelope-v1

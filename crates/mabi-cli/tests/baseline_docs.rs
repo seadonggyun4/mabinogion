@@ -318,7 +318,7 @@ fn release_version_contract_refs_existing_docs_and_symbols() {
             .release_version_contract
             .compatibility_matrix
             .decision_owner,
-        "mabinogion-trials-or-forge"
+        "mabinogion-trials-or-imugi"
     );
     assert!(
         baseline

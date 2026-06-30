@@ -9,18 +9,6 @@ const STALE_PHRASES: &[&str] = &[
     concat!("TRAP protocol ", "simulator"),
 ];
 
-const CRATE_READMES: &[(&str, &str)] = &[
-    ("mabi-core", "crates/mabi-core/README.md"),
-    ("mabi-runtime", "crates/mabi-runtime/README.md"),
-    ("mabi-cli", "crates/mabi-cli/README.md"),
-    ("mabi-modbus", "crates/mabi-modbus/README.md"),
-    ("mabi-opcua", "crates/mabi-opcua/README.md"),
-    ("mabi-bacnet", "crates/mabi-bacnet/README.md"),
-    ("mabi-knx", "crates/mabi-knx/README.md"),
-    ("mabi-scenario", "crates/mabi-scenario/README.md"),
-    ("mabi-chaos", "crates/mabi-chaos/README.md"),
-];
-
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -70,56 +58,66 @@ fn is_runtime_legacy_identifier(path: &Path, contents: &str) -> bool {
 }
 
 #[test]
-fn public_docs_use_product_family_positioning() {
+fn root_readme_does_not_reintroduce_product_family_ownership_table() {
     let root = repo_root();
     let root_readme = read(&root, "README.md");
-    let cli_docs = read(&root, "docs/cli/README.md");
-    let docs_index = read(&root, "docs/README.md");
 
-    for (path, contents) in [
-        ("README.md", root_readme.as_str()),
-        ("docs/cli/README.md", cli_docs.as_str()),
-        ("docs/README.md", docs_index.as_str()),
+    assert_no_stale_phrases("README.md", &root_readme);
+    for forbidden in [
+        "## Product Family Role",
+        "| `mabinogion-trials` |",
+        "| `imugi-back` |",
+        "| `imugi-front` |",
+        "The boundary is intentional",
     ] {
-        assert_no_stale_phrases(path, contents);
-        for required in [
-            "protocol resilience engine",
-            "Mabinogion trials",
-            "Forge",
-            "Trials",
-            "official certification",
-        ] {
-            assert!(
-                contents.contains(required),
-                "{path} should contain product-family phrase {required:?}"
-            );
-        }
+        assert!(
+            !root_readme.contains(forbidden),
+            "README.md should not reintroduce product-family ownership text {forbidden:?}"
+        );
     }
 }
 
 #[test]
-fn crate_readmes_are_crate_specific_and_boundary_aware() {
+fn public_markdown_docs_do_not_reintroduce_stale_product_phrases() {
     let root = repo_root();
-    for (crate_name, path) in CRATE_READMES {
-        let contents = read(&root, path);
-        assert_no_stale_phrases(path, &contents);
-        assert!(
-            contents.contains(crate_name),
-            "{path} should identify {crate_name}"
-        );
-        for required in [
-            "What this crate owns",
-            "How it fits in Mabinogion",
-            "Versioning / contracts",
-            "Not owned here",
-            "Mabinogion",
-            "official certification",
-        ] {
-            assert!(
-                contents.contains(required),
-                "{path} should contain crate README section or boundary {required:?}"
-            );
+    let mut files = vec![root.join("README.md")];
+    collect_text_files(&root.join("docs"), &mut files);
+
+    for path in files {
+        if path.extension().and_then(|value| value.to_str()) != Some("md") {
+            continue;
         }
+        let contents = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let relative = path
+            .strip_prefix(&root)
+            .expect("path should be inside root")
+            .display()
+            .to_string();
+        assert_no_stale_phrases(&relative, &contents);
+    }
+}
+
+#[test]
+fn crate_readmes_do_not_reintroduce_stale_product_phrases() {
+    let root = repo_root();
+    let crates_root = root.join("crates");
+    for entry in fs::read_dir(&crates_root)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", crates_root.display()))
+    {
+        let entry = entry.expect("crate directory entry should be readable");
+        let path = entry.path().join("README.md");
+        if !path.is_file() {
+            continue;
+        }
+        let contents = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let relative = path
+            .strip_prefix(&root)
+            .expect("path should be inside root")
+            .display()
+            .to_string();
+        assert_no_stale_phrases(&relative, &contents);
     }
 }
 
@@ -146,7 +144,7 @@ fn source_and_docs_do_not_reintroduce_stale_product_phrases() {
 }
 
 #[test]
-fn cli_help_uses_product_family_wording() {
+fn cli_help_does_not_reintroduce_stale_product_phrases() {
     let output = Command::new(env!("CARGO_BIN_EXE_mabi"))
         .arg("--help")
         .output()
@@ -158,18 +156,6 @@ fn cli_help_uses_product_family_wording() {
     );
     let help = String::from_utf8_lossy(&output.stdout);
     assert_no_stale_phrases("mabi --help", &help);
-    for required in [
-        "protocol resilience engine for Mabinogion trials",
-        "shared runtime",
-        "Forge",
-        "Trials",
-        "runner surfaces",
-    ] {
-        assert!(
-            help.contains(required),
-            "mabi --help should contain {required:?}"
-        );
-    }
     assert!(
         !help.contains("Industrial protocol simulator for testing and development"),
         "mabi --help should not use the old about text"

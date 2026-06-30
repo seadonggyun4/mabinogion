@@ -1,6 +1,6 @@
 [package]
 name = "mabi-cli"
-description = "Mabinogion - Industrial Protocol Simulator CLI"
+description = "Mabinogion - Protocol resilience CLI for Imugi and Trials"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

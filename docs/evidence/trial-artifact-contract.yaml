@@ -5,7 +5,7 @@ purpose: >
   Define metadata for artifacts referenced by run evidence. Artifact contents
   are produced by runners or protocol tools and are not embedded by default.
 artifact_directory_policy:
-  artifact_dir_owner: mabinogion-trials or mabinogion-forge-back runner
+  artifact_dir_owner: mabinogion-trials or imugi-back runner
   mabinogion_responsibility: reference artifact metadata in run evidence
   default_layout:
     - evidence.json
@@ -32,7 +32,7 @@ failure_replay_policy:
     paths, packet capture paths, private artifact body, or private digest.
   private_raw: >
     May reference raw logs, traces, captures, or replay material that should be
-    consumed only by authorized Forge/Trials workflows.
+    consumed only by authorized Imugi/Trials workflows.
   internal_only: >
     May reference engine or maintainer diagnostics that are not intended for
     product-facing proof reports.

@@ -4,7 +4,7 @@ contract_version: runtime-contract-v1
 snapshot_metadata_version: snapshot-metadata-v1
 owner: mabinogion
 purpose: >
-  Freeze the shared runtime contract used by the installed CLI, Forge runners,
+  Freeze the shared runtime contract used by the installed CLI, Imugi runners,
   and Mabinogion Trials compatibility checks.
 ownership:
   mabinogion_owns:

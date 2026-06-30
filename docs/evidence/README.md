@@ -1,7 +1,7 @@
 # Run Evidence and Proof Export
 
 PHASE 4 freezes the run evidence shape that `mabinogion` exports for
-`mabinogion-trials` and `mabinogion-forge-back`.
+`mabinogion-trials` and `imugi-back`.
 
 `mabinogion` remains an execution evidence exporter. It does not own trial
 definition authoring, scoring policy, proof report publication, or
@@ -17,7 +17,7 @@ certification issuance.
 
 ## Evidence Boundary
 
-Run evidence includes runtime/session facts that Forge and Trials can trust:
+Run evidence includes runtime/session facts that Imugi and Trials can trust:
 
 - run id
 - engine version
@@ -40,8 +40,8 @@ publication decision.
 Private raw logs, packet captures, private paths, and private digests remain
 private artifact metadata referenced by the full evidence object.
 
-The boundary is explicit so Forge can publish a Proof Report without leaking raw
-customer diagnostics, while private Forge/Trials workflows can still locate
+The boundary is explicit so Imugi can publish a Proof Report without leaking raw
+customer diagnostics, while private Imugi/Trials workflows can still locate
 failure replay material.
 
 ## Metrics Boundary

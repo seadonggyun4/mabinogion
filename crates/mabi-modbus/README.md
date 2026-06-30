@@ -19,7 +19,7 @@ device lanes.
 
 ```toml
 [dependencies]
-mabi-modbus = "1.7.0"
+mabi-modbus = "1.7.1"
 ```
 
 The crate follows the workspace release version. Trial-facing capability

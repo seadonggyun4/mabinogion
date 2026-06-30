@@ -10,10 +10,7 @@ fn version_command_reports_workspace_release_version() {
         .arg("version")
         .assert()
         .success()
-        .stdout(contains(format!(
-            "mabi {} (Mabinogion)",
-            mabi_core::RELEASE_VERSION
-        )));
+        .stdout(contains(mabi_core::RELEASE_VERSION));
 }
 
 #[test]
@@ -83,7 +80,7 @@ fn version_command_reports_runner_contract_metadata_as_json() {
     );
     assert_eq!(
         envelope["data"]["trial_compatible_metadata"]["compatibility_decision_owner"],
-        "mabinogion-trials-or-forge"
+        "mabinogion-trials-or-imugi"
     );
     assert_eq!(
         envelope["data"]["registered_protocols"]

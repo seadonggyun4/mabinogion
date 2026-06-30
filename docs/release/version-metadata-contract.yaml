@@ -5,7 +5,7 @@ owner: mabinogion
 purpose: >
   Define the machine-readable release and compatibility metadata emitted by
   `mabi --format json version` so mabinogion-trials and
-  mabinogion-forge-back can decide whether an installed engine is usable.
+  imugi-back can decide whether an installed engine is usable.
 machine_output_command: mabi --format json version
 required_version_data_fields:
   - engine_version
@@ -53,14 +53,14 @@ trial_compatible_metadata_required_fields:
   - compatibility_decision_owner
   - runner_policy_document
 compatibility_policy:
-  decision_owner: mabinogion-trials-or-forge
+  decision_owner: mabinogion-trials-or-imugi
   mabinogion_role: >
     Emit release, protocol capability, and contract metadata. Do not make
-    allow/deny decisions for trial suites or Forge runner admission.
+    allow/deny decisions for trial suites or Imugi runner admission.
   source_of_truth: docs/release/compatibility-matrix.yaml
 non_goals:
   - publish crates
   - generate GitHub releases
   - score trial results
   - certify engines
-  - make Forge allow/deny decisions
+  - make Imugi allow/deny decisions

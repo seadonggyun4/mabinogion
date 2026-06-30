@@ -12,14 +12,18 @@ Runtime/session contract layer for the Mabinogion protocol resilience engine.
 
 `mabi-runtime` is the shared execution substrate used by Modbus, OPC UA,
 BACnet/IP, KNXnet/IP, `mabi doctor`, `mabi serve`, and future Mabinogion trials
-runner surfaces. It lets Forge and Trials consume a stable runtime shape without
+runner surfaces. It lets Imugi and Trials consume a stable runtime shape without
 depending on protocol-specific internals.
+
+After the Imugi rebrand, the primary platform consumer is Imugi. `Forge` is a
+legacy consumer name retained only for current implementation compatibility
+until the backend contract is renamed.
 
 ## Versioning / contracts
 
 ```toml
 [dependencies]
-mabi-runtime = "1.7.0"
+mabi-runtime = "1.7.1"
 ```
 
 The crate follows the workspace release version. Runtime compatibility is

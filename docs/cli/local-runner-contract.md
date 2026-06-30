@@ -1,7 +1,7 @@
 # Local Runner Contract
 
 `local-runner-contract-v1` freezes the installed `mabi` CLI surfaces consumed by
-`mabinogion-trials` and `mabinogion-forge-back`.
+`mabinogion-trials` and `imugi-back`.
 
 The contract is about reliable local invocation. It does not define trial
 suites, score results, publish proof reports, or issue certifications.
@@ -44,7 +44,7 @@ Table output remains human-facing and is not part of the parsing contract.
 | `version` | Engine, protocol, feature flag, and contract version metadata. |
 
 `version` reports `run-evidence-schema-v1`, `trial-artifact-contract-v1`, and
-`version-metadata-contract-v1` so Forge and Trials can reject incompatible
+`version-metadata-contract-v1` so Imugi and Trials can reject incompatible
 engines or evidence exporters before launching a runner.
 
 Validation commands emit an envelope for both success and validation failure.

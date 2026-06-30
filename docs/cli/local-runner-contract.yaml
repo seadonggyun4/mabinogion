@@ -4,7 +4,7 @@ envelope_version: cli-output-envelope-v1
 owner: mabinogion
 purpose: >
   Freeze the installed mabi CLI surfaces consumed by mabinogion-trials and
-  mabinogion-forge-back local runners.
+  imugi-back local runners.
 ownership_boundary:
   mabinogion_owns:
     - installed_cli_invocation

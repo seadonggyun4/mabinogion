@@ -34,7 +34,7 @@ fn main() {
 \x1b[0m"
         );
         println!("cargo:warning=");
-        println!("cargo:warning=  MABINOGION - Industrial Protocol Simulator");
+        println!("cargo:warning=  MABINOGION - Protocol Resilience Engine");
         println!("cargo:warning=");
     }
 }

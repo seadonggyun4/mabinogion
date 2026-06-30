@@ -1,4 +1,4 @@
-//! Machine-readable CLI contracts for local Forge and Trials runners.
+//! Machine-readable CLI contracts for local Imugi and Trials runners.
 
 use std::io;
 
@@ -20,7 +20,7 @@ pub const COMPATIBILITY_MATRIX_VERSION: &str = "compatibility-matrix-v1";
 pub const PROTOCOL_READINESS_MATRIX_VERSION: &str = "protocol-readiness-matrix-v1";
 pub const RELEASE_CHANNEL: &str = "source-build";
 pub const COMPATIBLE_TRIAL_SUITE_RANGE: &str = ">=0.1.0 <1.0.0";
-pub const COMPATIBILITY_DECISION_OWNER: &str = "mabinogion-trials-or-forge";
+pub const COMPATIBILITY_DECISION_OWNER: &str = "mabinogion-trials-or-imugi";
 pub const COMPATIBILITY_MATRIX_DOCUMENT: &str = "docs/release/compatibility-matrix.yaml";
 pub const RELEASE_POLICY_DOCUMENT: &str = "docs/release/release-checklist.md";
 pub const CHANGELOG_POLICY_DOCUMENT: &str = "docs/release/changelog-policy.md";

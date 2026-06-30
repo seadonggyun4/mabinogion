@@ -5,10 +5,10 @@ use serde_json::Value as JsonValue;
 use crate::service::{RUNTIME_CONTRACT_VERSION, SNAPSHOT_METADATA_VERSION};
 use crate::session::RuntimeSessionSnapshot;
 
-/// Stable run evidence schema version consumed by Forge and Trials.
+/// Stable run evidence schema version consumed by Imugi and Trials.
 pub const RUN_EVIDENCE_SCHEMA_VERSION: &str = "run-evidence-schema-v1";
 
-/// Stable trial artifact contract version consumed by Forge and Trials.
+/// Stable trial artifact contract version consumed by Imugi and Trials.
 pub const TRIAL_ARTIFACT_CONTRACT_VERSION: &str = "trial-artifact-contract-v1";
 
 /// Protocol profile identity carried through from Unified Readiness and Trials.
@@ -285,7 +285,7 @@ impl Default for PublicPrivateBoundary {
     }
 }
 
-/// Full run evidence exported by mabinogion for Forge and Trials consumers.
+/// Full run evidence exported by mabinogion for Imugi and Trials consumers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunEvidence {
     pub run_evidence_schema_version: String,
@@ -349,7 +349,7 @@ pub struct PublicRunEvidenceSummary {
     pub metrics: Option<RunEvidenceMetrics>,
 }
 
-/// Builder used by Forge/Trials runners to assemble evidence from runtime output.
+/// Builder used by Imugi/Trials runners to assemble evidence from runtime output.
 #[derive(Debug, Clone)]
 pub struct RunEvidenceBuilder {
     evidence: RunEvidence,

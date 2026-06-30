@@ -4,7 +4,7 @@ This directory records the PHASE 0 baseline for `mabinogion`.
 
 The goal is not to add simulator behavior. The goal is to make the current
 runtime, CLI, and protocol verification surface explicit before later phases
-freeze Forge and Trials contracts on top of it.
+freeze Imugi and Trials contracts on top of it.
 
 `current-baseline.yaml` is the machine-readable source of truth. This README is
 the human-facing map for maintainers.
@@ -16,7 +16,7 @@ installed CLI surface, and the primitives needed to export run evidence.
 
 `mabinogion` does not own trial definition authoring, scoring policy, proof
 report publication, or certification issuance. Those belong to the surrounding
-Trials and Forge repos.
+Trials and Imugi repos.
 
 ## Workspace Responsibility Map
 
@@ -55,7 +55,7 @@ The current lifecycle baseline is:
 PHASE 1 froze this contract rather than recreating it. Runtime errors now expose
 `protocol_error`, `config_error`, `bind_error`, `timeout`, and `internal_error`
 through `RuntimeError::kind()` and `RuntimeError::info()`. Service snapshots
-returned through runtime handles include stable `_runtime` metadata for Forge and
+returned through runtime handles include stable `_runtime` metadata for Imugi and
 Trials consumers.
 
 ## Run Evidence Baseline
@@ -67,14 +67,14 @@ execution evidence layer on top of `runtime-contract-v1`.
 | --- | --- |
 | `docs/evidence/run-evidence-schema.yaml` | Machine-readable Run Evidence Schema. |
 | `docs/evidence/trial-artifact-contract.yaml` | Failure replay artifact metadata and visibility policy. |
-| `docs/evidence/sample-run-evidence.json` | Forge/Trials Proof Report input sample. |
+| `docs/evidence/sample-run-evidence.json` | Imugi/Trials Proof Report input sample. |
 
 `mabinogion` owns evidence serialization and runtime snapshot export. It still
 does not own scoring, public proof publication, or certification issuance.
 
 ## Release Version Baseline
 
-PHASE 5 adds `version-metadata-contract-v1` so Forge and Trials can evaluate an
+PHASE 5 adds `version-metadata-contract-v1` so Imugi and Trials can evaluate an
 installed engine without scraping human output.
 
 | Artifact | Purpose |
@@ -84,7 +84,7 @@ installed engine without scraping human output.
 | `docs/release/release-checklist.md` | Release-candidate metadata checklist. |
 | `docs/release/changelog-policy.md` | Breaking-change categories for runner compatibility. |
 
-`mabinogion` owns release metadata export. Forge and Trials own engine/trial
+`mabinogion` owns release metadata export. Imugi and Trials own engine/trial
 suite allow or deny decisions.
 
 ## CLI Baseline
@@ -136,7 +136,7 @@ Every protocol readiness profile now provides:
 - trial level
 - required evidence
 - engine requirement
-- Forge display label
+- `forge_display_label`, retained as a legacy field until contract v2
 
 ## Test And Verification Policy
 

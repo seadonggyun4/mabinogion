@@ -381,7 +381,7 @@ fn protocol_contracts_follow_unified_readiness_shape() {
             );
             assert!(
                 !profile.forge_display_label.trim().is_empty(),
-                "{} profile {} must have a Forge display label",
+                "{} profile {} must have a legacy Forge display label retained until contract v2",
                 protocol_ref.id,
                 profile.profile_id
             );

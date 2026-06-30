@@ -75,7 +75,7 @@ const LOGO: &str = "\x1b[38;5;236m\
     long_about = "Mabinogion is a protocol resilience engine for Mabinogion trials. It runs local \
                   Modbus, OPC UA, BACnet/IP, and KNXnet/IP protocol sessions through a shared \
                   runtime. The installed CLI also exposes stable doctor, inspect, validate, \
-                  version, and evidence-oriented contracts that Forge and Trials can use as \
+                  version, and evidence-oriented contracts that Imugi and Trials can use as \
                   runner surfaces.",
     before_help = LOGO
 )]

@@ -1,7 +1,7 @@
 # Release Checklist
 
 PHASE 5 release discipline keeps the installed `mabi` binary usable by
-mabinogion-trials and mabinogion-forge-back without moving trial decisions into
+mabinogion-trials and imugi-back without moving trial decisions into
 this repository.
 
 Before a release candidate is accepted:
@@ -16,7 +16,7 @@ Before a release candidate is accepted:
 - The changelog classifies breaking changes against CLI output, config,
   runtime contract, readiness contract, run evidence schema, and version
   metadata contract surfaces.
-- Forge and Trials own allow/deny admission for engine and trial-suite pairs.
+- Imugi and Trials own allow/deny admission for engine and trial-suite pairs.
   Mabinogion only exports the metadata required for that decision.
 
 Deploy-blocking operational checks should prove that the release artifact can

@@ -5,7 +5,7 @@ trial_artifact_contract_version: trial-artifact-contract-v1
 owner: mabinogion
 purpose: >
   Define the execution evidence artifact that mabinogion exports so
-  mabinogion-trials and mabinogion-forge-back can build Proof Report inputs.
+  mabinogion-trials and imugi-back can build Proof Report inputs.
 ownership_boundary:
   mabinogion_owns:
     - protocol_session_execution

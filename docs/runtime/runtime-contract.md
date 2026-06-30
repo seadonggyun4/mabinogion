@@ -83,7 +83,7 @@ and compact machine output preserve those keys.
 runner and health checks. `RuntimeSessionSnapshot` wraps normalized
 `ServiceSnapshot` values into a session-level envelope.
 
-Both include `runtime-contract-v1` so Forge and Trials can reject incompatible
+Both include `runtime-contract-v1` so Imugi and Trials can reject incompatible
 future contracts deliberately.
 
 ## Breaking Change Policy

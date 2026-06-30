@@ -1,6 +1,6 @@
 # Changelog Policy
 
-Every release note must describe changes in terms that Forge and Trials can map
+Every release note must describe changes in terms that Imugi and Trials can map
 to runner compatibility.
 
 Breaking-change categories:
@@ -16,6 +16,6 @@ Breaking-change categories:
   protocol capability version fields.
 
 Protocol capability changes must include the affected protocol key,
-capability version, trial profile ids, and whether Forge/Trials should treat the
+capability version, trial profile ids, and whether Imugi/Trials should treat the
 change as compatible, release-gated, or incompatible. The final allow/deny
 decision remains outside `mabinogion`.

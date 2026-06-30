@@ -5,7 +5,7 @@
 <h1 align="center">Mabinogion</h1>
 
 <p align="center">
-  <strong>Protocol resilience engine for Mabinogion trials</strong>
+  <strong>Protocol resilience engine for industrial protocol sessions</strong>
 </p>
 
 <p align="center">
@@ -22,19 +22,18 @@
 ## What is Mabinogion?
 
 **Mabinogion** is a Rust protocol resilience engine for running local
-industrial protocol sessions, exporting execution evidence, and giving
-Mabinogion trials a stable engine surface.
+industrial protocol sessions, managing runtime lifecycles, and exporting
+execution evidence.
 
 It can still be used directly as a local protocol simulator for Modbus,
-OPC UA, BACnet/IP, and KNXnet/IP. The product-family framing is broader:
-`mabinogion` owns protocol/session execution, runtime contracts, installed CLI
-surfaces, release metadata, and evidence export that Forge and Trials can
-consume.
+OPC UA, BACnet/IP, and KNXnet/IP. `mabinogion` owns protocol/session
+execution, runtime contracts, installed CLI surfaces, release metadata, and
+evidence export.
 
-`mabinogion` does **not** define trial suites, score results, publish proof
-reports, issue certification, or replace official certification programs.
-Forge and Trials own those decisions; this repository provides the engine and
-machine-readable evidence they can trust.
+`mabinogion` does **not** define external product responsibilities, score
+results, publish third-party proof reports, issue certification, or replace
+official certification programs. This repository provides the engine and
+machine-readable evidence surface.
 
 ---
 
@@ -62,17 +61,28 @@ release verification work.
 
 ---
 
-## Product Family Role
+## Mabinogion Role
 
-| Component | Owned here | Not owned here |
-| --- | --- | --- |
-| `mabinogion` | Protocol/session execution, runtime lifecycle, CLI runner surface, evidence export, release metadata | Trial definitions, scoring, proof publication, certification issuance |
-| `mabinogion-trials` | Trial corpus and pass criteria consumed by runners | Protocol engine internals |
-| `mabinogion-forge-back` | Job orchestration, proof report assembly, private artifact authorization | Protocol execution internals |
-| `mabinogion-forge-front` | Operator and public report UI | Engine/runtime behavior |
+<!--
+README SCOPE GUARD:
+Keep this README about mabinogion only. Do not reintroduce product-family role
+tables, sibling repository ownership, external UI/backend ownership, scoring
+ownership, proof-publication ownership, or certification-issuance ownership
+here. Those boundaries belong in the owning repositories or dedicated contract
+documents, not in the mabinogion README.
+-->
 
-The boundary is intentional: Mabinogion produces trustworthy execution evidence;
-Forge and Trials decide how that evidence is scored, displayed, or admitted.
+`mabinogion` owns:
+
+- Protocol/session execution.
+- Runtime lifecycle and runtime contracts.
+- Installed CLI runner surfaces.
+- Evidence export.
+- Release metadata for the engine.
+
+`mabinogion` does not own external product roles, external user interfaces,
+external job orchestration, result scoring, proof publication, or certification
+issuance.
 
 ---
 
@@ -89,7 +99,7 @@ Forge and Trials decide how that evidence is scored, displayed, or admitted.
 | `mabi version` | Engine, protocol capability, contract, release, and trial compatibility metadata. |
 
 Runner-facing commands support `--format json`, `--format yaml`, and
-`--format compact` envelopes for Forge and Trials. Human table output remains
+`--format compact` envelopes for automation. Human table output remains
 available for local operators.
 
 ---
@@ -105,7 +115,7 @@ available for local operators.
 | `trial-artifact-contract-v1` | Failure replay artifact metadata and visibility policy. |
 | `version-metadata-contract-v1` | Engine release, protocol capability, and trial compatibility metadata. |
 
-See [docs/README.md](./docs/README.md) for the product-family documentation map.
+See [docs/README.md](./docs/README.md) for the documentation map.
 
 ---
 
@@ -113,14 +123,14 @@ See [docs/README.md](./docs/README.md) for the product-family documentation map.
 
 ```toml
 [dependencies]
-mabi-core = "1.7.0"
-mabi-runtime = "1.7.0"
-mabi-modbus = "1.7.0"
-mabi-opcua = "1.7.0"
-mabi-bacnet = "1.7.0"
-mabi-knx = "1.7.0"
-mabi-scenario = "1.7.0"
-mabi-chaos = "1.7.0"
+mabi-core = "1.7.1"
+mabi-runtime = "1.7.1"
+mabi-modbus = "1.7.1"
+mabi-opcua = "1.7.1"
+mabi-bacnet = "1.7.1"
+mabi-knx = "1.7.1"
+mabi-scenario = "1.7.1"
+mabi-chaos = "1.7.1"
 ```
 
 The Mabinogion release version is sourced from `[workspace.package].version` in

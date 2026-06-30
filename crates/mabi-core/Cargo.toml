@@ -1,6 +1,6 @@
 [package]
 name = "mabi-core"
-description = "Mabinogion - Core abstractions and utilities for industrial protocol simulator"
+description = "Mabinogion - Core abstractions for protocol resilience engines"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

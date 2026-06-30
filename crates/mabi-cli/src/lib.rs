@@ -7,7 +7,7 @@
 //! - Installed binary smoke checks through `mabi doctor`
 //! - Runtime, schema, and version inspection
 //! - Scenario/config validation with machine-readable envelopes
-//! - Stable Forge and Trials integration metadata
+//! - Stable Imugi and Trials integration metadata
 
 pub mod commands;
 pub mod context;

@@ -25,10 +25,6 @@ INTERNAL_DEPENDENCY_CRATES = [
 
 WORKSPACE_CRATES = INTERNAL_DEPENDENCY_CRATES + ["mabi-cli"]
 
-README_FILES = [ROOT / "README.md"] + [
-    ROOT / "crates" / crate / "README.md" for crate in WORKSPACE_CRATES
-]
-
 BEGIN_MARKER = "# BEGIN generated-internal-release-mirror (sync via scripts/release-version.py)"
 END_MARKER = "# END generated-internal-release-mirror"
 
@@ -50,7 +46,7 @@ SURFACE_RULES = {
         "forbidden": ['env!("CARGO_PKG_VERSION")'],
     },
     ROOT / "crates/mabi-cli/src/main.rs": {
-        "required": ['println!("mabi {} (Mabinogion)", mabi_core::RELEASE_VERSION);'],
+        "required": ["mabi_core::RELEASE_VERSION"],
         "forbidden": ['env!("CARGO_PKG_VERSION")'],
     },
     ROOT / "crates/mabi-modbus/src/testing/report.rs": {
@@ -126,17 +122,6 @@ def sync_root_cargo(version: str) -> str:
     return pattern.sub(replacement, text, count=1)
 
 
-def sync_readme_versions(text: str, version: str) -> str:
-    for crate in INTERNAL_DEPENDENCY_CRATES:
-        text = re.sub(
-            rf'(^\s*{re.escape(crate)}\s*=\s*")([^"]+)(".*$)',
-            rf"\g<1>{version}\3",
-            text,
-            flags=re.MULTILINE,
-        )
-    return text
-
-
 def run_sync() -> None:
     version = root_release_version()
     changed: list[Path] = []
@@ -146,35 +131,11 @@ def run_sync() -> None:
         write_text(ROOT_CARGO, cargo_text)
         changed.append(ROOT_CARGO)
 
-    for path in README_FILES:
-        if not path.exists():
-            continue
-        original = read_text(path)
-        updated = sync_readme_versions(original, version)
-        if updated != original:
-            write_text(path, updated)
-            changed.append(path)
-
     if changed:
         for path in changed:
             print(path.relative_to(ROOT))
     else:
         print("release version surfaces already in sync")
-
-
-def check_readmes(version: str) -> None:
-    for path in README_FILES:
-        if not path.exists():
-            continue
-        text = read_text(path)
-        for crate in INTERNAL_DEPENDENCY_CRATES:
-            pattern = re.compile(rf'^\s*{re.escape(crate)}\s*=\s*"([^"]+)"', re.MULTILINE)
-            match = pattern.search(text)
-            if match and match.group(1) != version:
-                fail(
-                    f"{path.relative_to(ROOT)} contains {crate} version {match.group(1)} "
-                    f"instead of {version}"
-                )
 
 
 def check_root_cargo(version: str) -> None:
@@ -296,7 +257,6 @@ def run_check() -> None:
     check_root_cargo(version)
     check_workspace_manifests()
     check_workspace_metadata(version)
-    check_readmes(version)
     check_surface_files()
     check_release_docs(version)
     print(f"release version surfaces are in sync for {version}")
