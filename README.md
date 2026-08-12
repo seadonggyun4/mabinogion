@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="500px" alt="mabinogion Banner" src="https://github.com/user-attachments/assets/bad251b6-b6dc-4452-ad43-d9345a32bd0b" />
+  <img width="700px" alt="mabinogion Banner" src="https://github.com/user-attachments/assets/a17ee255-8746-4fb2-b705-c664a0de4cbf" />
 </div>
 
 <h1 align="center">Mabinogion</h1>
