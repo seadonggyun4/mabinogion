@@ -48,6 +48,10 @@ results, publish third-party proof reports, issue certification, or replace
 official certification programs. This repository provides the engine and
 machine-readable evidence surface.
 
+### Why the name “Mabinogion”?
+
+The name was inspired in part by [Mabinogi](https://mabinogi.nexon.com/page/main/index.asp)—and yes, I used to enjoy playing it.
+
 ---
 
 ## Quick Start
