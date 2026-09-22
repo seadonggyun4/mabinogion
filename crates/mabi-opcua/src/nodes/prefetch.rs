@@ -198,10 +198,8 @@ impl PatternTracker {
         let mut candidates = Vec::new();
 
         for (pattern, freq) in &self.frequencies {
-            if *freq >= min_freq {
-                if pattern.trigger() == Some(trigger) {
-                    candidates.extend(pattern.prefetch_targets().iter().cloned());
-                }
+            if *freq >= min_freq && pattern.trigger() == Some(trigger) {
+                candidates.extend(pattern.prefetch_targets().iter().cloned());
             }
         }
 
@@ -328,8 +326,8 @@ impl NodePrefetcher {
         let to_prefetch: Vec<NodeId> = results
             .iter()
             .filter(|id| !self.cache.contains(id))
-            .cloned()
             .take(self.config.max_prefetch_count)
+            .cloned()
             .collect();
 
         if !to_prefetch.is_empty() {

@@ -7,16 +7,11 @@ use crate::transport::metrics::TransportMetrics;
 use crate::transport::tcp_listener::{OpcUaTcpListener, TcpTransportConfig};
 use crate::transport::tcp_reverse_connector::{TcpReverseConnectConfig, TcpReverseConnector};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ConnectionInitiationMode {
+    #[default]
     Listener,
     ReverseConnect,
-}
-
-impl Default for ConnectionInitiationMode {
-    fn default() -> Self {
-        Self::Listener
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

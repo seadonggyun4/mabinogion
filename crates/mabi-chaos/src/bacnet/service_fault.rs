@@ -285,7 +285,7 @@ impl Fault for ServiceFault {
 
         ctx.set_metadata(
             "bacnet_service_fault",
-            &format!("{:?}", self.config.fault_type),
+            format!("{:?}", self.config.fault_type),
         );
         ctx.record_applied_fault(self.id(), "service_fault");
 

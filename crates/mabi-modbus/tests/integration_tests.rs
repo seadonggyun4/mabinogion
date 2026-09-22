@@ -109,10 +109,10 @@ async fn test_fc01_read_coils() {
 
     let coils = result.unwrap();
     assert_eq!(coils.len(), 4);
-    assert_eq!(coils[0], true);
-    assert_eq!(coils[1], false);
-    assert_eq!(coils[2], true);
-    assert_eq!(coils[3], true);
+    assert!(coils[0]);
+    assert!(!coils[1]);
+    assert!(coils[2]);
+    assert!(coils[3]);
 
     server.shutdown();
 }
@@ -144,10 +144,10 @@ async fn test_fc02_read_discrete_inputs() {
 
     let inputs = result.unwrap();
     assert_eq!(inputs.len(), 4);
-    assert_eq!(inputs[0], true);
-    assert_eq!(inputs[1], true);
-    assert_eq!(inputs[2], false);
-    assert_eq!(inputs[3], true);
+    assert!(inputs[0]);
+    assert!(inputs[1]);
+    assert!(!inputs[2]);
+    assert!(inputs[3]);
 
     server.shutdown();
 }
@@ -233,13 +233,13 @@ async fn test_fc05_write_single_coil() {
 
     // Verify by reading
     let read_result = client.read_coils(10, 1).await.unwrap();
-    assert_eq!(read_result[0], true);
+    assert!(read_result[0]);
 
     // Write false
     client.write_single_coil(10, false).await.unwrap();
 
     let read_result = client.read_coils(10, 1).await.unwrap();
-    assert_eq!(read_result[0], false);
+    assert!(!read_result[0]);
 
     server.shutdown();
 }
@@ -466,10 +466,10 @@ async fn test_multi_client_concurrent_write() {
             let mut client = create_client_with_unit(port_copy, 1).await;
 
             // Each client writes to different address range
-            let base_addr = (client_id * 100) as u16;
+            let base_addr = client_id * 100;
             for i in 0..50 {
                 let addr = base_addr + i;
-                let value = (client_id * 1000 + i) as u16;
+                let value = client_id * 1000 + i;
                 let result = client.write_single_register(addr, value).await;
                 assert!(result.is_ok(), "Client {} write {} failed", client_id, i);
             }
@@ -487,10 +487,10 @@ async fn test_multi_client_concurrent_write() {
     // Verify writes from each client
     let mut client = create_client_with_unit(port, 1).await;
     for client_id in 0..5 {
-        let base_addr = (client_id * 100) as u16;
+        let base_addr = client_id * 100;
         let registers = client.read_holding_registers(base_addr, 50).await.unwrap();
         for (i, &value) in registers.iter().enumerate() {
-            let expected = (client_id * 1000 + i as u16) as u16;
+            let expected = client_id * 1000 + i as u16;
             assert_eq!(
                 value,
                 expected,
@@ -517,7 +517,7 @@ async fn test_multi_device_access() {
     for unit_id in 2..=5u8 {
         let device = ModbusDevice::new(ModbusDeviceConfig::new(
             unit_id,
-            &format!("Device {}", unit_id),
+            format!("Device {}", unit_id),
         ));
         server.add_device(device);
     }

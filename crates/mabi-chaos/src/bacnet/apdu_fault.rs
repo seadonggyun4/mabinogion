@@ -349,10 +349,7 @@ impl Fault for ApduFault {
             return Ok(FaultBehavior::Continue);
         }
 
-        ctx.set_metadata(
-            "bacnet_apdu_fault",
-            &format!("{:?}", self.config.fault_type),
-        );
+        ctx.set_metadata("bacnet_apdu_fault", format!("{:?}", self.config.fault_type));
         ctx.record_applied_fault(self.id(), "apdu_corrupt");
 
         tracing::debug!(

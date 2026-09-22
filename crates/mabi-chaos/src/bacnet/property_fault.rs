@@ -311,11 +311,10 @@ impl PropertyFault {
                 // BACnet application tag format: (tag_number << 4) | length_value_type
                 if data.len() > 4 {
                     // Find the value portion (after header) and change its tag
-                    for i in 4..data.len() {
-                        let byte = data[i];
+                    for byte in data.iter_mut().skip(4) {
                         // Check if this is an application tag (bit 3 clear)
-                        if byte & 0x08 == 0 {
-                            data[i] = (forced_tag << 4) | (byte & 0x0F);
+                        if *byte & 0x08 == 0 {
+                            *byte = (forced_tag << 4) | (*byte & 0x0F);
                             break;
                         }
                     }
@@ -469,7 +468,7 @@ impl Fault for PropertyFault {
 
         ctx.set_metadata(
             "bacnet_property_fault",
-            &format!("{:?}", self.config.fault_type),
+            format!("{:?}", self.config.fault_type),
         );
         ctx.record_applied_fault(self.id(), "property_fault");
 

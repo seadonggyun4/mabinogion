@@ -317,7 +317,7 @@ impl BatchNodeCreator {
         let chunk_size = self.config.chunk_size;
         let mut all_node_ids = Vec::with_capacity(count);
 
-        for (_chunk_idx, chunk) in specs.chunks(chunk_size).enumerate() {
+        for chunk in specs.chunks(chunk_size) {
             let mut chunk_nodes = Vec::with_capacity(chunk.len());
 
             for (node_id, name, value) in chunk {

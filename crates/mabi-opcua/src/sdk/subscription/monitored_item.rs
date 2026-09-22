@@ -8,37 +8,27 @@ use serde::{Deserialize, Serialize};
 use crate::types::{AttributeId, DataValue, NodeId};
 
 /// Data change trigger type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DataChangeTrigger {
     /// Trigger on status change only.
     Status,
     /// Trigger on status or value change.
+    #[default]
     StatusValue,
     /// Trigger on status, value, or timestamp change.
     StatusValueTimestamp,
 }
 
-impl Default for DataChangeTrigger {
-    fn default() -> Self {
-        Self::StatusValue
-    }
-}
-
 /// Deadband type for filtering value changes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DeadbandType {
     /// No deadband filtering.
+    #[default]
     None,
     /// Absolute deadband (change must exceed this value).
     Absolute,
     /// Percent deadband (change must exceed this percentage of the range).
     Percent,
-}
-
-impl Default for DeadbandType {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Data change filter configuration.
@@ -90,18 +80,13 @@ impl DataChangeFilter {
 }
 
 /// The kind of monitoring: data change or event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MonitoredItemKind {
     /// Monitor data changes on a variable attribute.
+    #[default]
     DataChange,
     /// Monitor events on an object with EventNotifier.
     Event,
-}
-
-impl Default for MonitoredItemKind {
-    fn default() -> Self {
-        Self::DataChange
-    }
 }
 
 /// Monitored item configuration.
@@ -194,20 +179,15 @@ pub struct MonitoredItemNotification {
 }
 
 /// Monitoring mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MonitoringMode {
     /// Monitoring is disabled.
     Disabled,
     /// Sampling only (no reporting).
     Sampling,
     /// Reporting enabled.
+    #[default]
     Reporting,
-}
-
-impl Default for MonitoringMode {
-    fn default() -> Self {
-        Self::Reporting
-    }
 }
 
 /// A monitored item instance.

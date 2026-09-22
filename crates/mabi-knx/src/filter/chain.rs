@@ -168,7 +168,7 @@ impl fmt::Display for FilterDirection {
 // ============================================================================
 
 /// Configuration for the complete filter chain.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FilterChainConfig {
     /// Whether the filter chain is enabled at all.
     /// When disabled, frames pass through with zero overhead.
@@ -186,17 +186,6 @@ pub struct FilterChainConfig {
     /// RetryFilter configuration (retry + circuit breaker).
     #[serde(default)]
     pub retry: RetryFilterConfig,
-}
-
-impl Default for FilterChainConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            pace: PaceFilterConfig::default(),
-            queue: QueueFilterConfig::default(),
-            retry: RetryFilterConfig::default(),
-        }
-    }
 }
 
 impl FilterChainConfig {
@@ -332,16 +321,13 @@ impl FilterChain {
         // Stage 2: PaceFilter — bus timing enforcement
         let pace_result = self.pace_filter.process_send(envelope);
         if !pace_result.should_continue() {
-            match &pace_result {
-                FilterResult::Dropped { reason } => {
-                    self.stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
-                    debug!(
-                        channel_id = envelope.channel_id,
-                        reason = %reason,
-                        "Frame dropped by PaceFilter"
-                    );
-                }
-                _ => {}
+            if let FilterResult::Dropped { reason } = &pace_result {
+                self.stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                debug!(
+                    channel_id = envelope.channel_id,
+                    reason = %reason,
+                    "Frame dropped by PaceFilter"
+                );
             }
             return pace_result;
         }
@@ -352,16 +338,13 @@ impl FilterChain {
         // Stage 3: RetryFilter — circuit breaker check
         let retry_result = self.retry_filter.process_send(envelope);
         if !retry_result.should_continue() {
-            match &retry_result {
-                FilterResult::Dropped { reason } => {
-                    self.stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
-                    debug!(
-                        channel_id = envelope.channel_id,
-                        reason = %reason,
-                        "Frame dropped by RetryFilter (circuit breaker)"
-                    );
-                }
-                _ => {}
+            if let FilterResult::Dropped { reason } = &retry_result {
+                self.stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                debug!(
+                    channel_id = envelope.channel_id,
+                    reason = %reason,
+                    "Frame dropped by RetryFilter (circuit breaker)"
+                );
             }
             return retry_result;
         }

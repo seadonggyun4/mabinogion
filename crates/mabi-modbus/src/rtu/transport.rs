@@ -487,7 +487,7 @@ impl TransportFactory {
                 #[cfg(unix)]
                 {
                     let serial = VirtualSerial::create(cfg.clone())
-                        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+                        .map_err(|error| io::Error::other(error.to_string()))?;
                     let io = serial.into_async_io()?;
                     Ok(Box::new(VirtualSerialTransport::new(io, cfg)))
                 }

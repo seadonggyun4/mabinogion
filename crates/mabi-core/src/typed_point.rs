@@ -524,8 +524,9 @@ mod tests {
 
         // Test f64
         assert_eq!(f64::data_type(), DataType::Float64);
-        assert_eq!(f64::from_value(&Value::F64(3.14)), Some(3.14));
-        assert_eq!(3.14f64.to_value(), Value::F64(3.14));
+        let sample = 2.5_f64;
+        assert_eq!(f64::from_value(&Value::F64(sample)), Some(sample));
+        assert_eq!(sample.to_value(), Value::F64(sample));
 
         // Test String
         assert_eq!(String::data_type(), DataType::String);

@@ -123,18 +123,13 @@ pub struct UserToken {
 }
 
 /// User token types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum UserTokenType {
+    #[default]
     Anonymous,
     UserName,
     Certificate,
     IssuedToken,
-}
-
-impl Default for UserTokenType {
-    fn default() -> Self {
-        Self::Anonymous
-    }
 }
 
 /// Authentication result.

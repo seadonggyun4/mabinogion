@@ -14,7 +14,7 @@
 //! - Individual dates
 //! - Date ranges (start..end)
 //! - Weekday/month patterns (using BACnet wildcard encoding)
-//! Present_Value is `true` when the current date matches any entry.
+//!   Present_Value is `true` when the current date matches any entry.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -271,7 +271,7 @@ fn time_to_seconds(t: &BACnetTime) -> u32 {
 /// Get the day-of-week index (0=Monday..6=Sunday) for BACnet weekly schedule.
 /// BACnet day_of_week: 1=Monday..7=Sunday.
 fn bacnet_day_of_week_to_index(day_of_week: u8) -> Option<usize> {
-    if day_of_week >= 1 && day_of_week <= 7 {
+    if (1..=7).contains(&day_of_week) {
         Some((day_of_week - 1) as usize)
     } else {
         None
@@ -361,7 +361,7 @@ impl Schedule {
 
     /// Builder: set priority for writing.
     pub fn with_priority(self, priority: u8) -> Self {
-        *self.priority_for_writing.write() = priority.min(16).max(1);
+        *self.priority_for_writing.write() = priority.clamp(1, 16);
         self
     }
 
@@ -536,8 +536,8 @@ impl BACnetObject for Schedule {
             )),
             PropertyId::EffectivePeriod => match &*self.effective_period.read() {
                 Some(range) => Ok(BACnetValue::Array(vec![
-                    BACnetValue::Date(range.start.clone()),
-                    BACnetValue::Date(range.end.clone()),
+                    BACnetValue::Date(range.start),
+                    BACnetValue::Date(range.end),
                 ])),
                 None => Ok(BACnetValue::Null),
             },
@@ -550,7 +550,7 @@ impl BACnetObject for Schedule {
                             .iter()
                             .map(|tv| {
                                 BACnetValue::Array(vec![
-                                    BACnetValue::Time(tv.time.clone()),
+                                    BACnetValue::Time(tv.time),
                                     tv.value.clone(),
                                 ])
                             })
@@ -623,7 +623,7 @@ impl BACnetObject for Schedule {
             }
             PropertyId::PriorityForWriting => {
                 if let BACnetValue::Unsigned(v) = value {
-                    let p = (v as u8).min(16).max(1);
+                    let p = (v as u8).clamp(1, 16);
                     *self.priority_for_writing.write() = p;
                     Ok(())
                 } else {
@@ -806,10 +806,10 @@ impl BACnetObject for Calendar {
                 let encoded: Vec<BACnetValue> = entries
                     .iter()
                     .map(|entry| match entry {
-                        CalendarEntry::Date(d) => BACnetValue::Date(d.clone()),
+                        CalendarEntry::Date(d) => BACnetValue::Date(*d),
                         CalendarEntry::DateRange(range) => BACnetValue::Array(vec![
-                            BACnetValue::Date(range.start.clone()),
-                            BACnetValue::Date(range.end.clone()),
+                            BACnetValue::Date(range.start),
+                            BACnetValue::Date(range.end),
                         ]),
                         CalendarEntry::WeekNDay {
                             month,

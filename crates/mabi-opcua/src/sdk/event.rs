@@ -481,22 +481,22 @@ impl EventManager {
             }
             FilterOperator::GreaterThan => {
                 self.evaluate_comparison(elements, element, event_data, |a, b| {
-                    compare_variants(a, b).map_or(false, |ord| ord == std::cmp::Ordering::Greater)
+                    compare_variants(a, b) == Some(std::cmp::Ordering::Greater)
                 })
             }
             FilterOperator::LessThan => {
                 self.evaluate_comparison(elements, element, event_data, |a, b| {
-                    compare_variants(a, b).map_or(false, |ord| ord == std::cmp::Ordering::Less)
+                    compare_variants(a, b) == Some(std::cmp::Ordering::Less)
                 })
             }
             FilterOperator::GreaterThanOrEqual => {
                 self.evaluate_comparison(elements, element, event_data, |a, b| {
-                    compare_variants(a, b).map_or(false, |ord| ord != std::cmp::Ordering::Less)
+                    compare_variants(a, b).is_some_and(|ord| ord != std::cmp::Ordering::Less)
                 })
             }
             FilterOperator::LessThanOrEqual => {
                 self.evaluate_comparison(elements, element, event_data, |a, b| {
-                    compare_variants(a, b).map_or(false, |ord| ord != std::cmp::Ordering::Greater)
+                    compare_variants(a, b).is_some_and(|ord| ord != std::cmp::Ordering::Greater)
                 })
             }
             FilterOperator::And => {

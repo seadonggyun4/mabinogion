@@ -563,11 +563,11 @@ fn glob_match(pattern: &str, text: &str) -> bool {
     if pattern == "*" {
         return true;
     }
-    if pattern.starts_with('*') {
-        return text.ends_with(&pattern[1..]);
+    if let Some(suffix) = pattern.strip_prefix('*') {
+        return text.ends_with(suffix);
     }
-    if pattern.ends_with('*') {
-        return text.starts_with(&pattern[..pattern.len() - 1]);
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        return text.starts_with(prefix);
     }
     pattern == text
 }

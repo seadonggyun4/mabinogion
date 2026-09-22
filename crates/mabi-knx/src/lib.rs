@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default, clippy::too_many_arguments)]
+
 //! # mabi-knx
 //!
 //! KNXnet/IP simulator for the industrial protocol simulator.

@@ -244,7 +244,7 @@ impl std::str::FromStr for WordOrder {
     type Err = WordOrderParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let normalized = s.to_lowercase().replace('-', "_").replace(' ', "_");
+        let normalized = s.to_lowercase().replace(['-', ' '], "_");
 
         match normalized.as_str() {
             "big_endian" | "be" | "big" | "ab_cd" | "abcd" => Ok(Self::BigEndian),

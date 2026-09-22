@@ -1246,7 +1246,7 @@ mod tests {
     #[test]
     fn test_latency_stats_percentiles() {
         // Create 100 samples for accurate percentile testing
-        let samples: Vec<Duration> = (1..=100).map(|i| Duration::from_micros(i)).collect();
+        let samples: Vec<Duration> = (1..=100).map(Duration::from_micros).collect();
 
         let stats = LatencyStats::from_samples(&samples);
         assert_eq!(stats.min_us, 1);
@@ -1260,7 +1260,7 @@ mod tests {
 
     #[test]
     fn test_latency_stats_is_latency_high() {
-        let samples: Vec<Duration> = (1..=100).map(|i| Duration::from_micros(i)).collect();
+        let samples: Vec<Duration> = (1..=100).map(Duration::from_micros).collect();
         let stats = LatencyStats::from_samples(&samples);
 
         assert!(stats.is_latency_high(50)); // p99 (99) > 50

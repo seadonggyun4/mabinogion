@@ -49,7 +49,7 @@ fn test_max_concurrent_units() {
     // Add maximum number of units (1-247, excluding 0 which is broadcast)
     for unit_id in 1..=247u8 {
         manager
-            .add_unit(unit_id, UnitConfig::new(&format!("Unit {}", unit_id)))
+            .add_unit(unit_id, UnitConfig::new(format!("Unit {}", unit_id)))
             .unwrap();
     }
 
@@ -520,7 +520,7 @@ fn test_concurrent_unit_access() {
     // Create 100 units
     for unit_id in 1..=100u8 {
         manager
-            .add_unit(unit_id, UnitConfig::new(&format!("Unit {}", unit_id)))
+            .add_unit(unit_id, UnitConfig::new(format!("Unit {}", unit_id)))
             .unwrap();
     }
 
@@ -603,7 +603,7 @@ fn test_broadcast_under_load() {
     // Create 50 units
     for unit_id in 1..=50u8 {
         manager
-            .add_unit(unit_id, UnitConfig::new(&format!("Unit {}", unit_id)))
+            .add_unit(unit_id, UnitConfig::new(format!("Unit {}", unit_id)))
             .unwrap();
     }
 
@@ -632,7 +632,7 @@ fn test_broadcast_under_load() {
 
     for i in 0..broadcast_count {
         manager
-            .broadcast_write_holding_register(i % 100, i as u16)
+            .broadcast_write_holding_register(i % 100, i)
             .unwrap();
     }
 
@@ -706,7 +706,7 @@ fn test_type_conversion_performance() {
         // i32 conversion
         let i32_start = Instant::now();
         for i in 0..iterations {
-            let value = i as i32;
+            let value = i;
             let regs = conv.i32_to_registers(value);
             let _ = conv.registers_to_i32(&regs);
         }

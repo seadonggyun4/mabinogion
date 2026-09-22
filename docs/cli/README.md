@@ -2,11 +2,11 @@
 
 This document describes `mabi`, the primary local runner and operator-facing
 interface for the Mabinogion protocol resilience engine. It supports direct
-local protocol simulator use and exposes machine-readable surfaces that Imugi
+local protocol simulator use and exposes machine-readable surfaces that external consumer
 and Trials can consume for Mabinogion trials.
 
 Legacy compatibility note: current implementation docs and tests may still
-refer to pre-Imugi runner surfaces until Imugi backend PHASE 10 is implemented.
+refer to pre-external consumer runner surfaces until external runner PHASE 10 is implemented.
 
 `mabinogion` owns protocol/session execution, runtime inspection, validation,
 version metadata, and evidence export. It does not define trial suites, score
@@ -38,7 +38,7 @@ The `mabi` CLI is built using Rust with the `clap` crate for argument parsing
 and the Tokio async runtime for concurrent operations. It serves two audiences:
 local operators who need to run Modbus, OPC UA, BACnet/IP, or KNXnet/IP
 sessions, and runner integrations that need stable JSON/YAML/compact contracts
-for Imugi and Trials.
+for external consumer and Trials.
 
 ## Installation
 
@@ -98,7 +98,7 @@ When `--quiet` is active, the server starts and awaits shutdown without producin
 
 Verify the installed binary and built-in protocol runtimes without external
 tools. This is the fastest local smoke path for operators and the first
-deploy-blocking runner check for Imugi and Trials.
+deploy-blocking runner check for external consumer and Trials.
 
 ```bash
 mabi doctor [--protocol all|modbus|opcua|bacnet|knx]
@@ -298,7 +298,7 @@ mabi serve knx --address 1.1.1 --groups 200 --tag location=building-c --tag ligh
 ### validate
 
 Validate configuration and scenario files. In machine-readable formats,
-validation output is part of the Local Runner Contract consumed by Imugi and
+validation output is part of the Local Runner Contract consumed by external consumer and
 Trials.
 
 ```bash
@@ -348,7 +348,7 @@ mabi validate config *.yaml --strict
 ### inspect
 
 Inspect runtime, protocol, schema, and config surfaces. In machine-readable
-formats, `inspect` returns runner-facing metadata for Imugi and Trials.
+formats, `inspect` returns runner-facing metadata for external consumer and Trials.
 
 ```bash
 mabi inspect <COMMAND> [OPTIONS]
@@ -405,7 +405,7 @@ Machine-readable `version` output uses `local-runner-contract-v1` and includes
 engine release version, registered protocols, protocol capability versions,
 feature flags, runtime contract version, snapshot metadata contract version,
 Unified Readiness Contract version, Run Evidence Schema version, Trial Artifact
-Contract version, and `version-metadata-contract-v1`. Imugi and Trials can use
+Contract version, and `version-metadata-contract-v1`. external consumer and Trials can use
 this metadata with `docs/release/compatibility-matrix.yaml` to make their own
 engine/trial-suite compatibility decisions.
 

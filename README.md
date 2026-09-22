@@ -52,6 +52,22 @@ machine-readable evidence surface.
 
 The name was inspired in part by [Mabinogi](https://mabinogi.nexon.com/page/main/index.asp)—and yes, I used to enjoy playing it.
 
+## Open-Source Commitment
+
+`mabinogion` is and will remain a publicly available open-source project.
+Its engine source, public contracts, CLI surface, and release documentation
+MUST remain publicly reviewable and usable under an OSI-approved open-source
+license. The current license is Apache License 2.0.
+
+The canonical engine MUST NOT be moved behind a private-only repository,
+replaced by a proprietary-only successor, or made dependent on unpublished
+contracts. Security embargoes and private customer data may remain private,
+but they do not change the public status of the engine itself. Published
+versions remain available under the license granted for those versions.
+
+See [Open-Source Continuity Policy](./docs/open-source-policy.md) for the
+normative repository and release rules.
+
 ---
 
 ## Quick Start
@@ -216,4 +232,6 @@ mabinogion/
 
 ## License
 
-Licensed under the Apache License, Version 2.0.
+Licensed under the Apache License, Version 2.0. The license and the
+[Open-Source Continuity Policy](./docs/open-source-policy.md) are release
+requirements, not temporary publication notes.

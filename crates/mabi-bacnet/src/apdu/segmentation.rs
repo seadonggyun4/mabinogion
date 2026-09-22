@@ -61,9 +61,10 @@ pub const DEFAULT_WINDOW_SIZE: u8 = 1;
 // ============================================================================
 
 /// Segmentation support level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SegmentationSupport {
     /// No segmentation supported.
+    #[default]
     None,
     /// Transmit segmentation only.
     TransmitOnly,
@@ -103,12 +104,6 @@ impl SegmentationSupport {
     /// Check if receive segmentation is supported.
     pub fn can_receive(&self) -> bool {
         matches!(self, Self::Both | Self::ReceiveOnly)
-    }
-}
-
-impl Default for SegmentationSupport {
-    fn default() -> Self {
-        Self::None
     }
 }
 
@@ -527,7 +522,7 @@ impl SegmentTransmitter {
         if data_len == 0 {
             return 1;
         }
-        (data_len + self.max_segment_size - 1) / self.max_segment_size
+        data_len.div_ceil(self.max_segment_size)
     }
 }
 

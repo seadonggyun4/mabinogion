@@ -848,8 +848,10 @@ mod tests {
 
     #[test]
     fn test_config_validation_invalid_log_level() {
-        let mut config = EngineConfig::default();
-        config.log_level = "invalid".to_string();
+        let config = EngineConfig {
+            log_level: "invalid".to_string(),
+            ..EngineConfig::default()
+        };
         let result = config.validate();
         assert!(result.is_err());
     }
@@ -890,7 +892,7 @@ mod tests {
         let overrides = EngineConfig::env_overrides();
         let docs = overrides.documentation();
 
-        assert!(docs.len() > 0);
+        assert!(!docs.is_empty());
         assert!(docs
             .iter()
             .any(|d| d.var_name == "TRAP_SIM_ENGINE_MAX_DEVICES"));

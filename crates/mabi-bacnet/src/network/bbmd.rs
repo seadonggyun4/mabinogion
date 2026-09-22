@@ -293,9 +293,8 @@ impl ForeignDeviceTable {
 
         let count = expired.len();
         for addr in expired {
-            if let Some((_, entry)) = self.entries.remove(&addr) {
+            if self.entries.remove(&addr).is_some() {
                 debug!(?addr, "Foreign device registration expired");
-                drop(entry);
             }
         }
 
@@ -548,14 +547,14 @@ impl Bbmd {
 
         // Add BDT entries
         for entry in self.bdt.entries() {
-            if exclude.map_or(true, |e| e != &entry.address) {
+            if exclude != Some(&entry.address) {
                 addresses.push(entry.address);
             }
         }
 
         // Add active foreign devices
         for entry in self.fdt.active_entries() {
-            if exclude.map_or(true, |e| e != &entry.address) {
+            if exclude != Some(&entry.address) {
                 addresses.push(entry.address);
             }
         }

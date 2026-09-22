@@ -350,9 +350,10 @@ mod tests {
 
     #[test]
     fn test_log_file_stats_human_readable() {
-        let mut stats = LogFileStats::default();
-
-        stats.total_size_bytes = 500;
+        let mut stats = LogFileStats {
+            total_size_bytes: 500,
+            ..LogFileStats::default()
+        };
         assert_eq!(stats.total_size_human_readable(), "500 bytes");
 
         stats.total_size_bytes = 1024 * 10;

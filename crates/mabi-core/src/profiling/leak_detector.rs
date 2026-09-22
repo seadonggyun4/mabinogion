@@ -501,7 +501,7 @@ fn analyze_growth(samples: &[MemorySample]) -> GrowthAnalysis {
     GrowthAnalysis {
         is_growing,
         growth_rate_per_minute: growth_percent_per_minute,
-        confidence: r_squared.max(0.0).min(1.0),
+        confidence: r_squared.clamp(0.0, 1.0),
     }
 }
 

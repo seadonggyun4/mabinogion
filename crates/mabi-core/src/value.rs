@@ -418,6 +418,6 @@ mod tests {
     fn test_value_display() {
         assert_eq!(Value::Bool(true).to_string(), "true");
         assert_eq!(Value::I32(42).to_string(), "42");
-        assert_eq!(Value::F64(3.14159).to_string(), "3.141590");
+        assert_eq!(Value::F64(1.23456).to_string(), "1.234560");
     }
 }

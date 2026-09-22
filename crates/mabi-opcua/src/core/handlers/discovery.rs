@@ -186,7 +186,7 @@ pub fn encode_application_description(
     buf: &mut BytesMut,
 ) -> OpcUaResult<()> {
     // ApplicationUri
-    format!("urn:mabinogion:opcua:server").encode(buf)?;
+    "urn:mabinogion:opcua:server".to_string().encode(buf)?;
     // ProductUri
     "urn:mabinogion:opcua".encode(buf)?;
     // ApplicationName (LocalizedText)

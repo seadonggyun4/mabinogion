@@ -854,7 +854,7 @@ impl KnxMetricsSnapshot {
             "Connections: {}/{}\n",
             self.active_connections, self.max_connections
         ));
-        out.push_str(&format!("\n--- Heartbeat ---\n"));
+        out.push_str("\n--- Heartbeat ---\n");
         out.push_str(&format!(
             "Requests: {}  Fault rate: {:.1}%\n",
             self.heartbeat_total_requests,
@@ -868,7 +868,7 @@ impl KnxMetricsSnapshot {
             self.heartbeat_delayed_reconnect_count,
             self.heartbeat_no_response_count,
         ));
-        out.push_str(&format!("\n--- Cache ---\n"));
+        out.push_str("\n--- Cache ---\n");
         out.push_str(&format!(
             "Hit rate: {:.1}%  Lookups: {}  Entries: {}\n",
             self.cache_hit_rate * 100.0,
@@ -882,7 +882,7 @@ impl KnxMetricsSnapshot {
             self.cache_evictions_total,
             self.cache_expirations_total
         ));
-        out.push_str(&format!("\n--- Error Tracker ---\n"));
+        out.push_str("\n--- Error Tracker ---\n");
         out.push_str(&format!(
             "Error rate: {:.1}%  Events: {}\n",
             self.error_tracker_error_rate * 100.0,
@@ -895,7 +895,7 @@ impl KnxMetricsSnapshot {
             self.error_tracker_consecutive_triggers,
             self.error_tracker_rate_triggers,
         ));
-        out.push_str(&format!("\n--- Filter Chain ---\n"));
+        out.push_str("\n--- Filter Chain ---\n");
         out.push_str(&format!(
             "Sent={} Received={} Dropped={} Queued={} Bypassed={}\n",
             self.filter_chain_frames_sent,
@@ -904,7 +904,7 @@ impl KnxMetricsSnapshot {
             self.filter_chain_frames_queued,
             self.filter_chain_bypass_count,
         ));
-        out.push_str(&format!("\n--- Tunnel ---\n"));
+        out.push_str("\n--- Tunnel ---\n");
         out.push_str(&format!(
             "Sent={} Received={} Dupes={} OoO={} Desyncs={}\n",
             self.tunnel_frames_sent_total,

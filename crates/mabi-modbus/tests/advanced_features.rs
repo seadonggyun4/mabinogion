@@ -201,8 +201,10 @@ fn test_broadcast_write_all() {
 
 #[test]
 fn test_broadcast_selective() {
-    let mut config = UnitManagerConfig::default();
-    config.broadcast_mode = BroadcastMode::SelectiveList(vec![1, 3]); // Only units 1 and 3
+    let config = UnitManagerConfig {
+        broadcast_mode: BroadcastMode::SelectiveList(vec![1, 3]),
+        ..UnitManagerConfig::default()
+    };
 
     let manager = MultiUnitManager::new(config);
 
@@ -252,8 +254,10 @@ fn test_broadcast_disabled_unit() {
 
 #[test]
 fn test_broadcast_mode_disabled() {
-    let mut config = UnitManagerConfig::default();
-    config.broadcast_mode = BroadcastMode::Disabled;
+    let config = UnitManagerConfig {
+        broadcast_mode: BroadcastMode::Disabled,
+        ..UnitManagerConfig::default()
+    };
 
     let manager = MultiUnitManager::new(config);
 

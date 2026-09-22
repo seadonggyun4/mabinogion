@@ -157,8 +157,10 @@ impl Default for RegisterRangeConfig {
 /// Default value for uninitialized registers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum DefaultValue {
     /// Zero for words, false for bits.
+    #[default]
     Zero,
     /// Specific value (as u16, converted to bool for bit types).
     Value(u16),
@@ -191,15 +193,10 @@ impl DefaultValue {
     }
 }
 
-impl Default for DefaultValue {
-    fn default() -> Self {
-        Self::Zero
-    }
-}
-
 /// Initialization mode for the register store.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum InitializationMode {
     /// Initialize all registers in range to default values on creation.
     ///
@@ -210,6 +207,7 @@ pub enum InitializationMode {
     /// Initialize registers lazily on first access.
     ///
     /// This is the default mode, providing memory efficiency for sparse access patterns.
+    #[default]
     Lazy,
 
     /// Pre-initialize with a repeating byte pattern.
@@ -221,12 +219,6 @@ pub enum InitializationMode {
     ///
     /// Useful for loading saved state or starting from a known configuration.
     Snapshot(RegisterSnapshot),
-}
-
-impl Default for InitializationMode {
-    fn default() -> Self {
-        Self::Lazy
-    }
 }
 
 /// Snapshot of register values for initialization or persistence.

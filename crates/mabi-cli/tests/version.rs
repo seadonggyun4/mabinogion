@@ -80,7 +80,7 @@ fn version_command_reports_runner_contract_metadata_as_json() {
     );
     assert_eq!(
         envelope["data"]["trial_compatible_metadata"]["compatibility_decision_owner"],
-        "mabinogion-trials-or-imugi"
+        "mabinogion-trials-or-external-consumer"
     );
     assert_eq!(
         envelope["data"]["registered_protocols"]

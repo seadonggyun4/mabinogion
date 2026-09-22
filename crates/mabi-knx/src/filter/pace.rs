@@ -296,15 +296,9 @@ pub struct PaceFilter {
 impl PaceFilter {
     /// Create a new PaceFilter with the given configuration.
     pub fn new(config: PaceFilterConfig) -> Self {
-        let initial_state = if config.enabled {
-            PaceState::Down
-        } else {
-            PaceState::Down
-        };
-
         Self {
             config,
-            state: RwLock::new(initial_state),
+            state: RwLock::new(PaceState::Down),
             stats: PaceFilterStats::default(),
         }
     }

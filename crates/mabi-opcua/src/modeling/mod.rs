@@ -2264,7 +2264,7 @@ fn import_embedded_nodeset(
                 GeneratedNodeDefinition::Object {
                     node_id: NodeId::string(1, format!("embedded/{}", alias)),
                     browse_name: QualifiedName::new(1, format!("Embedded{}", alias)),
-                    display_name: localized_text(&format!("Embedded {}", alias)),
+                    display_name: localized_text(format!("Embedded {}", alias)),
                     description: Some(localized_text("Embedded NodeSet2 alias")),
                     event_notifier: 0,
                     folder_like: false,

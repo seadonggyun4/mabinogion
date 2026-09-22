@@ -3,16 +3,19 @@
 Mabinogion is a protocol resilience engine for Mabinogion trials and local
 industrial protocol sessions. These docs are organized around the product
 family boundary: `mabinogion` executes protocol sessions and exports evidence;
-Imugi and Trials own trial definitions, scoring, proof publication, and any
-certification decision.
-
-Legacy compatibility note: older docs and contract fields may still mention
-Forge. After the Imugi rebrand, those references mean the current legacy
-backend baseline or a field retained until contract v2.
+`mabinogion-trials` owns trial definitions, scoring, and report projection.
+Any external orchestration, presentation, publication, or certification
+decision remains outside this repository and requires an explicit integration.
 
 Mabinogion does not replace official certification programs. It provides local
 execution evidence and proof/report inputs that other parts of the product
 family can evaluate.
+
+## Project Policy
+
+- [Open-Source Continuity Policy](./open-source-policy.md) — normative rule
+  requiring the canonical engine and future releases to remain public
+  open-source.
 
 ## Product-Family Map
 

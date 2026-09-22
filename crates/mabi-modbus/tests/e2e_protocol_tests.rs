@@ -131,15 +131,15 @@ fn test_pdu_function_code_positions() {
     // Function code is always the first byte of PDU
 
     // FC01 Read Coils
-    let fc01_pdu = vec![0x01, 0x00, 0x00, 0x00, 0x10];
+    let fc01_pdu = [0x01, 0x00, 0x00, 0x00, 0x10];
     assert_eq!(fc01_pdu[0], 0x01);
 
     // FC03 Read Holding Registers
-    let fc03_pdu = vec![0x03, 0x00, 0x00, 0x00, 0x0A];
+    let fc03_pdu = [0x03, 0x00, 0x00, 0x00, 0x0A];
     assert_eq!(fc03_pdu[0], 0x03);
 
     // FC06 Write Single Register
-    let fc06_pdu = vec![0x06, 0x00, 0x64, 0x00, 0x0A];
+    let fc06_pdu = [0x06, 0x00, 0x64, 0x00, 0x0A];
     assert_eq!(fc06_pdu[0], 0x06);
 
     // FC16 Write Multiple Registers
@@ -161,7 +161,7 @@ fn test_pdu_exception_response_format() {
     assert_eq!(exception_fc, 0x83);
 
     // Create exception PDU
-    let exception_pdu = vec![exception_fc, 0x02]; // Illegal Data Address
+    let exception_pdu = [exception_fc, 0x02]; // Illegal Data Address
 
     assert_eq!(exception_pdu.len(), 2);
     assert!(exception_pdu[0] & 0x80 != 0, "Exception bit must be set");

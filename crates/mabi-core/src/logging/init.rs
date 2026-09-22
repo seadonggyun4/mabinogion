@@ -277,9 +277,9 @@ fn init_multi_with_reload(
 
     let registry = tracing_subscriber::registry().with(filter_layer);
 
-    if has_console && file_target.is_some() {
-        let (directory, filename_prefix, rotation_config) = file_target.unwrap();
-
+    if let (true, Some((directory, filename_prefix, rotation_config))) =
+        (has_console, file_target.clone())
+    {
         let rotation = match rotation_config.strategy {
             RotationStrategy::Daily => Rotation::DAILY,
             RotationStrategy::Hourly => Rotation::HOURLY,

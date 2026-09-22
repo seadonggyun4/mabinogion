@@ -164,7 +164,7 @@ impl ChecksumFault {
     }
 
     /// Corrupt checksum in data.
-    pub fn corrupt_checksum(&mut self, data: &mut Vec<u8>) {
+    pub fn corrupt_checksum(&mut self, data: &mut [u8]) {
         if data.len() < self.config.checksum_offset + self.config.checksum_length {
             return;
         }

@@ -101,10 +101,7 @@ fn bacnet_datetime_to_epoch(date: &BACnetDate, time: &BACnetTime) -> i64 {
     let m = if month <= 2 { month + 9 } else { month - 3 };
     let days = 365 * y + y / 4 - y / 100 + y / 400 + (m * 306 + 5) / 10 + day - 1 - 719468;
 
-    let secs =
-        days * 86400 + time.hour as i64 * 3600 + time.minute as i64 * 60 + time.second as i64;
-
-    secs
+    days * 86400 + time.hour as i64 * 3600 + time.minute as i64 * 60 + time.second as i64
 }
 
 /// Handler for BACnet TimeSynchronization (Unconfirmed Service 6).
@@ -112,6 +109,12 @@ fn bacnet_datetime_to_epoch(date: &BACnetDate, time: &BACnetTime) -> i64 {
 /// Updates the DeviceObject's time offset so that subsequent LocalDate/LocalTime
 /// reads reflect the synchronized time.
 pub struct TimeSynchronizationHandler;
+
+impl Default for TimeSynchronizationHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TimeSynchronizationHandler {
     pub fn new() -> Self {
@@ -162,6 +165,12 @@ impl UnconfirmedServiceHandler for TimeSynchronizationHandler {
 ///
 /// Same as TimeSynchronization but the provided time is in UTC.
 pub struct UtcTimeSynchronizationHandler;
+
+impl Default for UtcTimeSynchronizationHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl UtcTimeSynchronizationHandler {
     pub fn new() -> Self {
@@ -300,6 +309,12 @@ pub fn decode_dcc_request(data: &[u8]) -> Result<DeviceCommunicationControlReque
 /// Changes the device's communication state. Optionally validates a password.
 pub struct DeviceCommunicationControlHandler {
     password: Option<String>,
+}
+
+impl Default for DeviceCommunicationControlHandler {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DeviceCommunicationControlHandler {
@@ -453,13 +468,18 @@ pub fn decode_reinitialize_request(data: &[u8]) -> Result<ReinitializeDeviceRequ
 
 /// Encode a ReinitializeDevice-ACK (simple ack — no data).
 /// Per ASHRAE 135, the response is just a SimpleAck.
-
 /// Handler for BACnet ReinitializeDevice (Confirmed Service 20).
 ///
 /// Processes Coldstart/Warmstart requests and updates device status.
 /// For a simulator, this resets the device system status to Operational.
 pub struct ReinitializeDeviceHandler {
     password: Option<String>,
+}
+
+impl Default for ReinitializeDeviceHandler {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReinitializeDeviceHandler {

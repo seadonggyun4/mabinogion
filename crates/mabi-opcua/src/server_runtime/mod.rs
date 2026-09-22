@@ -39,16 +39,11 @@ use crate::transport::tcp_reverse_connector::{TcpReverseConnectConfig, TcpRevers
 use self::methods::build_method_registry;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum MethodRegistryPreset {
+    #[default]
     Default,
     Empty,
-}
-
-impl Default for MethodRegistryPreset {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 #[derive(Debug, Clone)]

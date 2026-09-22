@@ -53,7 +53,8 @@ fn benchmark_read_write_hot_paths(c: &mut Criterion) {
                 let mut value = 0u16;
                 b.iter(|| {
                     value = value.wrapping_add(1);
-                    black_box(store.write_holding_register(100, value).unwrap());
+                    let _: () = store.write_holding_register(100, value).unwrap();
+                    black_box(());
                 })
             },
         );

@@ -356,8 +356,9 @@ impl From<Vec<u8>> for DptValue {
 // ============================================================================
 
 /// HVAC operation mode (DPT 20.102).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum HvacMode {
+    #[default]
     Auto = 0,
     Comfort = 1,
     Standby = 2,
@@ -381,12 +382,6 @@ impl HvacMode {
     /// Convert to raw value.
     pub fn to_raw(self) -> u8 {
         self as u8
-    }
-}
-
-impl Default for HvacMode {
-    fn default() -> Self {
-        Self::Auto
     }
 }
 

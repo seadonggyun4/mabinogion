@@ -198,10 +198,8 @@ impl NodeCache {
         let mut cache = self.cache.lock();
 
         // Check if we need to evict
-        if cache.len() >= self.config.max_size {
-            if cache.pop_lru().is_some() {
-                self.evictions.fetch_add(1, Ordering::Relaxed);
-            }
+        if cache.len() >= self.config.max_size && cache.pop_lru().is_some() {
+            self.evictions.fetch_add(1, Ordering::Relaxed);
         }
 
         trace!(node_id = %node.node_id, "Cache put");

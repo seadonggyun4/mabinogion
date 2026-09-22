@@ -1,3 +1,5 @@
+#![allow(clippy::await_holding_lock)] // Serializes the ignored release-only latency suite.
+
 mod support;
 
 use std::sync::Mutex;

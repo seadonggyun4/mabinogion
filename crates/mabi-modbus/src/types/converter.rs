@@ -313,7 +313,7 @@ impl RegisterConverter {
 
     /// Convert bytes to registers.
     pub fn bytes_to_registers(&self, bytes: &[u8]) -> Vec<u16> {
-        let mut result = Vec::with_capacity((bytes.len() + 1) / 2);
+        let mut result = Vec::with_capacity(bytes.len().div_ceil(2));
 
         for chunk in bytes.chunks(2) {
             let hi = chunk[0];
@@ -434,8 +434,8 @@ impl<'a> TypedValue<'a> {
             Self::Int64(_) => RegisterDataType::Int64,
             Self::UInt64(_) => RegisterDataType::UInt64,
             Self::Float64(_) => RegisterDataType::Float64,
-            Self::String(s) => RegisterDataType::String(((s.len() + 1) / 2) as u16),
-            Self::Bytes(b) => RegisterDataType::Bytes(((b.len() + 1) / 2) as u16),
+            Self::String(s) => RegisterDataType::String(s.len().div_ceil(2) as u16),
+            Self::Bytes(b) => RegisterDataType::Bytes(b.len().div_ceil(2) as u16),
         }
     }
 

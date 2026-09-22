@@ -46,8 +46,10 @@ pub type SharedAddressSpace = Arc<dyn AddressSpace>;
 /// Canonical broadcast handling policy for the Modbus canonical stack.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum BroadcastPolicy {
     /// Broadcast writes are fanned out to all registered units.
+    #[default]
     WriteAll,
 
     /// Broadcast handling is disabled.
@@ -59,12 +61,6 @@ pub enum BroadcastPolicy {
 
     /// Broadcast writes are routed to one designated unit.
     EchoToUnit(u8),
-}
-
-impl Default for BroadcastPolicy {
-    fn default() -> Self {
-        Self::WriteAll
-    }
 }
 
 impl fmt::Display for BroadcastPolicy {

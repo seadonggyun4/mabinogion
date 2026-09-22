@@ -60,19 +60,10 @@ pub struct LogRecord {
 }
 
 /// Timestamp for a log record.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub struct LogTimestamp {
     pub date: BACnetDate,
     pub time: BACnetTime,
-}
-
-impl Default for LogTimestamp {
-    fn default() -> Self {
-        Self {
-            date: BACnetDate::default(),
-            time: BACnetTime::default(),
-        }
-    }
 }
 
 impl LogTimestamp {

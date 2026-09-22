@@ -152,9 +152,10 @@ pub type BoxedFault = Box<dyn Fault>;
 // =============================================================================
 
 /// Behavior to take after fault application.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum FaultBehavior {
     /// Continue with the operation normally.
+    #[default]
     Continue,
 
     /// Skip the operation entirely.
@@ -174,12 +175,6 @@ pub enum FaultBehavior {
 
     /// Return a specific response.
     ReturnError { error_code: i32, message: String },
-}
-
-impl Default for FaultBehavior {
-    fn default() -> Self {
-        Self::Continue
-    }
 }
 
 impl FaultBehavior {
@@ -304,10 +299,10 @@ impl FaultMetadata {
                 if parts.len() == 2 {
                     let (prefix, suffix) = (parts[0], parts[1]);
                     target.starts_with(prefix) && target.ends_with(suffix)
-                } else if pattern.starts_with('*') {
-                    target.ends_with(&pattern[1..])
-                } else if pattern.ends_with('*') {
-                    target.starts_with(&pattern[..pattern.len() - 1])
+                } else if let Some(suffix) = pattern.strip_prefix('*') {
+                    target.ends_with(suffix)
+                } else if let Some(prefix) = pattern.strip_suffix('*') {
+                    target.starts_with(prefix)
                 } else {
                     target == pattern
                 }

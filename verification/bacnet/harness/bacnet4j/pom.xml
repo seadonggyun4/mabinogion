@@ -7,18 +7,12 @@
   <artifactId>bacnet4j-harness</artifactId>
   <version>1.0.0</version>
 
-  <repositories>
-    <repository>
-      <id>ias-releases</id>
-      <url>https://maven.mangoautomation.net/repository/ias-release/</url>
-    </repository>
-  </repositories>
-
   <dependencies>
     <dependency>
-      <groupId>com.infiniteautomation</groupId>
-      <artifactId>bacnet4j</artifactId>
-      <version>6.0.2</version>
+      <!-- Public Maven Central mirror of the BACnet4J 6.x API. -->
+      <groupId>net.solarnetwork.external</groupId>
+      <artifactId>net.solarnetwork.external.bacnet4j</artifactId>
+      <version>6.0.1.SN01</version>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>

@@ -203,20 +203,18 @@ impl Command for ModbusCommand {
         let is_verbose = ctx.is_verbose();
         let is_debug = ctx.is_debug();
 
-        if !is_quiet {
-            if matches!(format, OutputFormat::Table) {
-                let output = ctx.output();
-                if self.rtu_mode {
-                    output.header("Modbus RTU Simulator");
-                    output.kv("Serial Port", self.serial_port.as_deref().unwrap_or("N/A"));
-                } else {
-                    output.header("Modbus TCP Simulator");
-                    output.kv("Bind Address", self.bind_addr);
-                }
-                output.kv("Devices", self.devices);
-                output.kv("Points per Device", self.points_per_device);
-                output.kv("Total Points", self.devices * self.points_per_device);
+        if !is_quiet && matches!(format, OutputFormat::Table) {
+            let output = ctx.output();
+            if self.rtu_mode {
+                output.header("Modbus RTU Simulator");
+                output.kv("Serial Port", self.serial_port.as_deref().unwrap_or("N/A"));
+            } else {
+                output.header("Modbus TCP Simulator");
+                output.kv("Bind Address", self.bind_addr);
             }
+            output.kv("Devices", self.devices);
+            output.kv("Points per Device", self.points_per_device);
+            output.kv("Total Points", self.devices * self.points_per_device);
         }
 
         // Verbose: show extra configuration details
@@ -527,25 +525,23 @@ impl Command for OpcuaCommand {
         let is_verbose = ctx.is_verbose();
         let is_debug = ctx.is_debug();
 
-        if !is_quiet {
-            if matches!(format, OutputFormat::Table) {
-                let output = ctx.output();
-                output.header("OPC UA Simulator");
-                output.kv(
-                    "Endpoint",
-                    format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path),
-                );
-                output.kv("Nodes", self.nodes);
-                output.kv("Security Mode", &self.security_mode);
-            }
+        if !is_quiet && matches!(format, OutputFormat::Table) {
+            let output = ctx.output();
+            output.header("OPC UA Simulator");
+            output.kv(
+                "Endpoint",
+                format!("opc.tcp://{}{}", self.bind_addr, self.endpoint_path),
+            );
+            output.kv("Nodes", self.nodes);
+            output.kv("Security Mode", &self.security_mode);
         }
 
         // Verbose: show extra details
         if is_verbose {
             ctx.vprintln(format!("  Bind Address: {}", self.bind_addr));
             ctx.vprintln(format!("  Endpoint Path: {}", self.endpoint_path));
-            ctx.vprintln(format!("  Max Subscriptions: 1000"));
-            ctx.vprintln(format!("  Max Monitored Items: 10000"));
+            ctx.vprintln("  Max Subscriptions: 1000");
+            ctx.vprintln("  Max Monitored Items: 10000");
         }
 
         // Debug: dump full configuration
@@ -797,22 +793,20 @@ impl Command for BacnetCommand {
         let is_verbose = ctx.is_verbose();
         let is_debug = ctx.is_debug();
 
-        if !is_quiet {
-            if matches!(format, OutputFormat::Table) {
-                let output = ctx.output();
-                output.header("BACnet/IP Simulator");
-                output.kv("Bind Address", self.bind_addr);
-                output.kv("Device Instance", self.device_instance);
-                output.kv("Objects", self.objects);
-                output.kv(
-                    "BBMD",
-                    if self.bbmd_enabled {
-                        "Enabled"
-                    } else {
-                        "Disabled"
-                    },
-                );
-            }
+        if !is_quiet && matches!(format, OutputFormat::Table) {
+            let output = ctx.output();
+            output.header("BACnet/IP Simulator");
+            output.kv("Bind Address", self.bind_addr);
+            output.kv("Device Instance", self.device_instance);
+            output.kv("Objects", self.objects);
+            output.kv(
+                "BBMD",
+                if self.bbmd_enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                },
+            );
         }
 
         // Verbose: show extra details
@@ -830,7 +824,7 @@ impl Command for BacnetCommand {
                     per_type, per_type, per_type, per_type, per_type
                 ));
             }
-            ctx.vprintln(format!("  Device Name: Mabinogion BACnet Simulator"));
+            ctx.vprintln("  Device Name: Mabinogion BACnet Simulator");
         }
 
         // Debug: dump full configuration
@@ -1112,20 +1106,18 @@ impl Command for KnxCommand {
         let is_verbose = ctx.is_verbose();
         let is_debug = ctx.is_debug();
 
-        if !is_quiet {
-            if matches!(format, OutputFormat::Table) {
-                let output = ctx.output();
-                output.header("KNXnet/IP Simulator");
-                output.kv("Bind Address", self.bind_addr);
-                output.kv("Individual Address", &self.individual_address);
-                output.kv("Group Objects", self.group_objects);
-            }
+        if !is_quiet && matches!(format, OutputFormat::Table) {
+            let output = ctx.output();
+            output.header("KNXnet/IP Simulator");
+            output.kv("Bind Address", self.bind_addr);
+            output.kv("Individual Address", &self.individual_address);
+            output.kv("Group Objects", self.group_objects);
         }
 
         // Verbose: show extra details
         if is_verbose {
-            ctx.vprintln(format!("  Max Connections: 10"));
-            ctx.vprintln(format!("  Services: Core, Device Management, Tunneling"));
+            ctx.vprintln("  Max Connections: 10");
+            ctx.vprintln("  Services: Core, Device Management, Tunneling");
         }
 
         // Debug: dump full configuration

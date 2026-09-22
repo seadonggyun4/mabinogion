@@ -180,7 +180,7 @@ impl Fault for ReorderFault {
             this.calculate_hold_delay()
         };
 
-        ctx.set_metadata("reorder_delay_ms", &delay.to_string());
+        ctx.set_metadata("reorder_delay_ms", delay.to_string());
         ctx.record_applied_fault(self.id(), "reorder");
 
         tracing::debug!(

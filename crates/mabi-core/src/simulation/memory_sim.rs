@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use crate::profiling::Profiler;
 
 /// Memory allocation pattern for simulation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum MemoryPattern {
     /// Steady state - no significant changes.
+    #[default]
     Steady,
 
     /// Continuous memory growth (simulates leak).
@@ -32,12 +33,6 @@ pub enum MemoryPattern {
     Custom(Arc<dyn CustomMemoryPattern>),
 }
 
-impl Default for MemoryPattern {
-    fn default() -> Self {
-        Self::Steady
-    }
-}
-
 impl MemoryPattern {
     /// Get a description of this pattern.
     pub fn description(&self) -> &str {
@@ -53,9 +48,8 @@ impl MemoryPattern {
 
     /// Apply the pattern to the profiler.
     pub fn apply(&self, profiler: &Profiler, elapsed: Duration) {
-        match self {
-            Self::Custom(pattern) => pattern.apply(profiler, elapsed),
-            _ => {} // Handled in Simulator
+        if let Self::Custom(pattern) = self {
+            pattern.apply(profiler, elapsed);
         }
     }
 }

@@ -128,7 +128,7 @@ fn bench_subscription_manager(c: &mut Criterion) {
 
     // Create subscriptions
     for _ in 0..1000 {
-        manager.create(SubscriptionConfig::default());
+        let _ = manager.create(SubscriptionConfig::default());
     }
 
     group.bench_function("create_subscription", |b| {

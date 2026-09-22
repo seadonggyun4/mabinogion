@@ -230,6 +230,10 @@ impl TraceStore {
         self.state.lock().entries.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.state.lock().entries.is_empty()
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<TraceEntry> {
         self.tx.subscribe()
     }

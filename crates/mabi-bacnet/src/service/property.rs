@@ -166,7 +166,7 @@ impl PropertyService {
 
         object
             .read_property_at(request.property_identifier, request.property_array_index)
-            .map_err(|e| property_error_to_bacnet(e))
+            .map_err(property_error_to_bacnet)
     }
 
     /// Handle a WriteProperty request.
@@ -185,7 +185,7 @@ impl PropertyService {
                 request.property_array_index,
                 request.priority,
             )
-            .map_err(|e| property_error_to_bacnet(e))
+            .map_err(property_error_to_bacnet)
     }
 }
 

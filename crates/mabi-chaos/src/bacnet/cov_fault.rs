@@ -384,7 +384,7 @@ impl CovFault {
                         data[0] = (data[0] & 0x0F) | 0x10; // type=1 (UnconfirmedRequest)
                     } else if apdu_type == 1 {
                         // UnconfirmedRequest → make it look like Confirmed
-                        data[0] = (data[0] & 0x0F) | 0x00; // type=0 (ConfirmedRequest)
+                        data[0] &= 0x0F; // type=0 (ConfirmedRequest)
                     }
                 }
             }
@@ -430,15 +430,12 @@ impl Fault for CovFault {
         }
 
         // Check confirmation filter
-        if self.config.confirmed_only {
-            if ctx.get_metadata("bacnet_cov_confirmed") != Some("true") {
-                return Ok(false);
-            }
+        if self.config.confirmed_only && ctx.get_metadata("bacnet_cov_confirmed") != Some("true") {
+            return Ok(false);
         }
-        if self.config.unconfirmed_only {
-            if ctx.get_metadata("bacnet_cov_confirmed") == Some("true") {
-                return Ok(false);
-            }
+        if self.config.unconfirmed_only && ctx.get_metadata("bacnet_cov_confirmed") == Some("true")
+        {
+            return Ok(false);
         }
 
         Ok(true)
@@ -449,7 +446,7 @@ impl Fault for CovFault {
             return Ok(FaultBehavior::Continue);
         }
 
-        ctx.set_metadata("bacnet_cov_fault", &format!("{:?}", self.config.fault_type));
+        ctx.set_metadata("bacnet_cov_fault", format!("{:?}", self.config.fault_type));
         ctx.record_applied_fault(self.id(), "cov_fault");
 
         tracing::debug!(

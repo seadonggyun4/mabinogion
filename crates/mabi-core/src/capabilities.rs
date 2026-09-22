@@ -324,6 +324,7 @@ impl CapabilitySetBuilder {
     }
 
     /// Add a capability.
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, cap: Capability) -> Self {
         self.set.add(cap);
         self

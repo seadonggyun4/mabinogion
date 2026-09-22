@@ -482,8 +482,8 @@ impl ProtocolDriver for ModbusDriver {
             ModbusTransportLaunch::Rtu { config } => {
                 let mut server = ModbusRtuServer::new(config.clone());
                 server.set_broadcast_enabled(profile.broadcast_enabled);
-                for unit in profile.units.iter().cloned() {
-                    let device = ModbusDevice::from_profile(&unit).map_err(|error| {
+                for unit in profile.units.iter() {
+                    let device = ModbusDevice::from_profile(unit).map_err(|error| {
                         config_error(format!("failed to build modbus rtu device: {}", error))
                     })?;
                     server.add_device(device);

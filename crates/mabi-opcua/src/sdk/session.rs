@@ -92,9 +92,10 @@ impl Session {
 }
 
 /// User identity type.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum UserIdentity {
     /// Anonymous user.
+    #[default]
     Anonymous,
     /// Username/password authentication.
     UserName {
@@ -105,12 +106,6 @@ pub enum UserIdentity {
     Certificate { thumbprint: String, subject: String },
     /// Issued token (e.g., JWT).
     IssuedToken { token_type: String },
-}
-
-impl Default for UserIdentity {
-    fn default() -> Self {
-        Self::Anonymous
-    }
 }
 
 /// Session state.

@@ -224,11 +224,11 @@ impl ApduEncoder {
     /// Encode signed integer.
     pub fn encode_signed(&mut self, value: i32) {
         let bytes = value.to_be_bytes();
-        let len = if value >= -128 && value < 128 {
+        let len = if (-128..128).contains(&value) {
             1
-        } else if value >= -32768 && value < 32768 {
+        } else if (-32768..32768).contains(&value) {
             2
-        } else if value >= -8388608 && value < 8388608 {
+        } else if (-8388608..8388608).contains(&value) {
             3
         } else {
             4
@@ -281,7 +281,7 @@ impl ApduEncoder {
 
     /// Encode bit string.
     pub fn encode_bit_string(&mut self, bits: &[bool]) {
-        let num_bytes = (bits.len() + 7) / 8;
+        let num_bytes = bits.len().div_ceil(8);
         let unused_bits = (8 - (bits.len() % 8)) % 8;
 
         self.encode_application_tag(TagNumber::BitString, num_bytes + 1);
@@ -301,7 +301,7 @@ impl ApduEncoder {
 
     /// Encode context bit string.
     pub fn encode_context_bit_string(&mut self, tag_number: u8, bits: &[bool]) {
-        let num_bytes = (bits.len() + 7) / 8;
+        let num_bytes = bits.len().div_ceil(8);
         let unused_bits = (8 - (bits.len() % 8)) % 8;
 
         self.encode_context_tag(tag_number, num_bytes + 1);

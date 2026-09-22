@@ -77,7 +77,7 @@ pub(crate) fn decode_read_request(request_body: &[u8]) -> OpcUaResult<ReadReques
         let node_id = NodeId::decode(&mut buf)?;
         let attribute_id_val = u32::decode(&mut buf)?;
         let _index_range = String::decode(&mut buf)?;
-        let _data_encoding_name = {
+        {
             let _ns = u16::decode(&mut buf)?;
             let _name = String::decode(&mut buf)?;
         };

@@ -18,7 +18,7 @@ use crate::scheduler::{ChaosEntry, ChaosSchedule, ChaosType};
 // =============================================================================
 
 /// Global chaos engineering configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChaosConfig {
     /// Global settings.
     #[serde(default)]
@@ -39,18 +39,6 @@ pub struct ChaosConfig {
     /// Schedules.
     #[serde(default)]
     pub schedules: Vec<ScheduleConfig>,
-}
-
-impl Default for ChaosConfig {
-    fn default() -> Self {
-        Self {
-            global: GlobalConfig::default(),
-            session: None,
-            scenario: None,
-            faults: HashMap::new(),
-            schedules: Vec::new(),
-        }
-    }
 }
 
 impl ChaosConfig {

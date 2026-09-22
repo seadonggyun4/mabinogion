@@ -6,17 +6,13 @@ use std::path::PathBuf;
 /// Transport protocol for OPC UA endpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TransportProtocol {
     /// UA-TCP binary protocol.
+    #[default]
     OpcTcp,
     /// HTTPS transport for request/response service dispatch.
     Https,
-}
-
-impl Default for TransportProtocol {
-    fn default() -> Self {
-        Self::OpcTcp
-    }
 }
 
 impl TransportProtocol {
@@ -32,17 +28,13 @@ impl TransportProtocol {
 /// Connection initiation mode for an OPC UA transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TransportConnectionMode {
     /// The server listens for inbound client connections.
+    #[default]
     Listener,
     /// The server establishes an outbound UA-TCP connection to a remote listener.
     ReverseConnect,
-}
-
-impl Default for TransportConnectionMode {
-    fn default() -> Self {
-        Self::Listener
-    }
 }
 
 impl TransportConnectionMode {
@@ -56,9 +48,10 @@ impl TransportConnectionMode {
 }
 
 /// Security policy for OPC UA.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum SecurityPolicy {
     /// No security.
+    #[default]
     None,
     /// Basic128Rsa15.
     Basic128Rsa15,
@@ -70,12 +63,6 @@ pub enum SecurityPolicy {
     Aes128Sha256RsaOaep,
     /// Aes256Sha256RsaPss.
     Aes256Sha256RsaPss,
-}
-
-impl Default for SecurityPolicy {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl SecurityPolicy {
@@ -97,22 +84,17 @@ impl SecurityPolicy {
 }
 
 /// Message security mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MessageSecurityMode {
     /// Invalid mode.
     Invalid,
     /// No security.
+    #[default]
     None,
     /// Messages are signed.
     Sign,
     /// Messages are signed and encrypted.
     SignAndEncrypt,
-}
-
-impl Default for MessageSecurityMode {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// User token configuration.
@@ -143,9 +125,10 @@ impl Default for UserTokenConfig {
 }
 
 /// User token types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum UserTokenType {
     /// Anonymous token.
+    #[default]
     Anonymous,
     /// Username/password token.
     UserName,
@@ -153,12 +136,6 @@ pub enum UserTokenType {
     Certificate,
     /// Issued token (e.g., JWT).
     IssuedToken,
-}
-
-impl Default for UserTokenType {
-    fn default() -> Self {
-        Self::Anonymous
-    }
 }
 
 /// Endpoint configuration.

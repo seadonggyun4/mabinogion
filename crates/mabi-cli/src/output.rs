@@ -231,7 +231,7 @@ impl TableBuilder {
         status: StatusType,
     ) -> Self {
         let values: Vec<String> = values.into_iter().map(|v| v.to_string()).collect();
-        let mut cells: Vec<Cell> = values.iter().map(|v| Cell::new(v)).collect();
+        let mut cells: Vec<Cell> = values.iter().map(Cell::new).collect();
 
         if self.colors && !cells.is_empty() {
             let color = match status {

@@ -703,13 +703,13 @@ impl ReferenceIndex {
     pub(crate) fn add_reference(&self, reference: Reference) {
         self.forward_references
             .entry(reference.source_node_id.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(reference.clone());
 
         let inverse = reference.inverse_ref();
         self.inverse_references
             .entry(inverse.source_node_id.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(inverse);
     }
 
@@ -1142,14 +1142,13 @@ impl AddressSpaceRuntime {
 
         for reference in references {
             if let Some(filter) = reference_type_filter {
-                if reference.reference_type_id != filter {
-                    if !include_subtypes
+                if reference.reference_type_id != filter
+                    && (!include_subtypes
                         || !self
                             .type_tree
-                            .is_reference_subtype(&reference.reference_type_id, &filter)
-                    {
-                        continue;
-                    }
+                            .is_reference_subtype(&reference.reference_type_id, &filter))
+                {
+                    continue;
                 }
             }
 
@@ -1235,14 +1234,14 @@ impl AddressSpaceRuntime {
                         if let Some(filter) =
                             ReferenceTypeId::from_node_id(&element.reference_type_id)
                         {
-                            if reference.reference_type_id != filter {
-                                if !element.include_subtypes
-                                    || !self
-                                        .type_tree
-                                        .is_reference_subtype(&reference.reference_type_id, &filter)
-                                {
-                                    continue;
-                                }
+                            if reference.reference_type_id != filter
+                                && (!element.include_subtypes
+                                    || !self.type_tree.is_reference_subtype(
+                                        &reference.reference_type_id,
+                                        &filter,
+                                    ))
+                            {
+                                continue;
                             }
                         }
                     }

@@ -350,7 +350,7 @@ impl Fault for SegmentationFault {
 
         ctx.set_metadata(
             "bacnet_segmentation_fault",
-            &format!("{:?}", self.config.fault_type),
+            format!("{:?}", self.config.fault_type),
         );
         ctx.record_applied_fault(self.id(), "segmentation_fault");
 

@@ -215,7 +215,7 @@ impl CliContextBuilder {
         Ok(CliContext {
             engine: Arc::new(RwLock::new(None)),
             engine_config: self.engine_config.unwrap_or_default(),
-            log_config: self.log_config.unwrap_or_else(|| LogConfig::development()),
+            log_config: self.log_config.unwrap_or_else(LogConfig::development),
             metrics: Arc::new(MetricsCollector::new()),
             output: OutputWriter::new(self.output_format, self.colors),
             working_dir,

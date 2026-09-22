@@ -409,34 +409,17 @@ impl KnxDiagnostics {
 
     /// Analyze a metrics snapshot with custom diagnostic thresholds.
     pub fn analyze_with_config(snapshot: &KnxMetricsSnapshot, config: &DiagnosticConfig) -> Self {
-        let mut results = Vec::with_capacity(9);
-
-        // Rule 1: Cache Hit Rate
-        results.push(Self::check_cache_hit_rate(snapshot, config));
-
-        // Rule 2: ACK Retry Rate
-        results.push(Self::check_ack_retry_rate(snapshot, config));
-
-        // Rule 3: Sequence Errors
-        results.push(Self::check_sequence_errors(snapshot));
-
-        // Rule 4: Heartbeat Faults
-        results.push(Self::check_heartbeat_faults(snapshot, config));
-
-        // Rule 5: Filter Drop Rate
-        results.push(Self::check_filter_drop_rate(snapshot, config));
-
-        // Rule 6: Circuit Breaker Trips
-        results.push(Self::check_circuit_breaker_trips(snapshot));
-
-        // Rule 7: Error Tracker Thresholds
-        results.push(Self::check_error_tracker_thresholds(snapshot));
-
-        // Rule 8: Connection Capacity
-        results.push(Self::check_connection_capacity(snapshot, config));
-
-        // Rule 9: Queue Backpressure
-        results.push(Self::check_queue_backpressure(snapshot, config));
+        let mut results = vec![
+            Self::check_cache_hit_rate(snapshot, config),
+            Self::check_ack_retry_rate(snapshot, config),
+            Self::check_sequence_errors(snapshot),
+            Self::check_heartbeat_faults(snapshot, config),
+            Self::check_filter_drop_rate(snapshot, config),
+            Self::check_circuit_breaker_trips(snapshot),
+            Self::check_error_tracker_thresholds(snapshot),
+            Self::check_connection_capacity(snapshot, config),
+            Self::check_queue_backpressure(snapshot, config),
+        ];
 
         // Sort by severity (Critical → Warning → Info → Ok)
         results.sort_by(|a, b| b.severity.cmp(&a.severity));

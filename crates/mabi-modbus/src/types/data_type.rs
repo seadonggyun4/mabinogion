@@ -202,12 +202,12 @@ impl RegisterDataType {
     /// assert_eq!(str_type.register_count(), 10);
     /// ```
     pub fn string_with_chars(chars: u16) -> Self {
-        Self::String((chars + 1) / 2) // Round up to account for 2 bytes per register
+        Self::String(chars.div_ceil(2)) // Round up to account for 2 bytes per register
     }
 
     /// Create a Bytes type with the given byte capacity.
     pub fn bytes_with_capacity(bytes: u16) -> Self {
-        Self::Bytes((bytes + 1) / 2)
+        Self::Bytes(bytes.div_ceil(2))
     }
 
     /// Get a human-readable name for this type.
@@ -273,7 +273,7 @@ impl std::str::FromStr for RegisterDataType {
             let bytes: u16 = len_str
                 .parse()
                 .map_err(|_| DataTypeParseError(s.to_string()))?;
-            return Ok(Self::String((bytes + 1) / 2));
+            return Ok(Self::String(bytes.div_ceil(2)));
         }
 
         if normalized.starts_with("bytes[") && normalized.ends_with(']') {
@@ -281,7 +281,7 @@ impl std::str::FromStr for RegisterDataType {
             let bytes: u16 = len_str
                 .parse()
                 .map_err(|_| DataTypeParseError(s.to_string()))?;
-            return Ok(Self::Bytes((bytes + 1) / 2));
+            return Ok(Self::Bytes(bytes.div_ceil(2)));
         }
 
         match normalized.as_str() {

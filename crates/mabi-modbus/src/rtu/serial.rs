@@ -97,17 +97,13 @@ impl StopBits {
 /// Serial port data bits configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DataBits {
     Five = 5,
     Six = 6,
     Seven = 7,
+    #[default]
     Eight = 8,
-}
-
-impl Default for DataBits {
-    fn default() -> Self {
-        Self::Eight
-    }
 }
 
 impl DataBits {

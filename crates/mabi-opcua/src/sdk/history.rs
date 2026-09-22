@@ -12,9 +12,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::types::{data_value::DataValueBuilder, DataValue, NodeId, StatusCode, Variant};
 
 /// Aggregate type for processed history.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum AggregateType {
     /// No aggregation (raw data).
+    #[default]
     None,
     /// Interpolated value at timestamps.
     Interpolative,
@@ -58,12 +59,6 @@ pub enum AggregateType {
     WorstQuality,
     /// Annotations count.
     AnnotationCount,
-}
-
-impl Default for AggregateType {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Configuration for history store.
@@ -672,7 +667,7 @@ impl HistoryStore {
         }
 
         match aggregate_type {
-            AggregateType::None => values.first().map(|v| v.value.value().cloned()).flatten(),
+            AggregateType::None => values.first().and_then(|v| v.value.value().cloned()),
 
             AggregateType::Average | AggregateType::TimeAverage => {
                 if numeric_values.is_empty() {
@@ -742,9 +737,9 @@ impl HistoryStore {
                 Some(Variant::Double(variance))
             }
 
-            AggregateType::Start => values.first().map(|v| v.value.value().cloned()).flatten(),
+            AggregateType::Start => values.first().and_then(|v| v.value.value().cloned()),
 
-            AggregateType::End => values.last().map(|v| v.value.value().cloned()).flatten(),
+            AggregateType::End => values.last().and_then(|v| v.value.value().cloned()),
 
             AggregateType::Delta => {
                 let start = values

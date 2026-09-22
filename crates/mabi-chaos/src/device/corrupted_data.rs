@@ -382,10 +382,7 @@ impl Fault for CorruptedDataFault {
         }
 
         ctx.record_applied_fault(self.id(), "corrupt");
-        ctx.set_metadata(
-            "corruption_strategy",
-            &format!("{:?}", self.config.strategy),
-        );
+        ctx.set_metadata("corruption_strategy", format!("{:?}", self.config.strategy));
 
         if self.config.mark_bad_quality {
             ctx.set_metadata("mark_bad_quality", "true");

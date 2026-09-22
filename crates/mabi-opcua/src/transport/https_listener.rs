@@ -168,9 +168,9 @@ impl HttpsTransportConfig {
     pub(crate) fn validate(&self) -> OpcUaResult<()> {
         #[cfg(not(feature = "https"))]
         {
-            return Err(OpcUaError::Config(
+            Err(OpcUaError::Config(
                 "HTTPS transport requires the mabi-opcua `https` feature".to_string(),
-            ));
+            ))
         }
 
         #[cfg(feature = "https")]

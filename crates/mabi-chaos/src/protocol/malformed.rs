@@ -218,9 +218,9 @@ impl MalformedPacketFault {
 
             MalformationType::InvalidHeader => {
                 // Corrupt first few bytes (header)
-                let header_len = (data.len() / 4).max(1).min(8);
-                for i in 0..header_len {
-                    data[i] = self.rng.gen();
+                let header_len = (data.len() / 4).clamp(1, 8);
+                for byte in data.iter_mut().take(header_len) {
+                    *byte = self.rng.gen();
                 }
             }
 
@@ -327,7 +327,7 @@ impl Fault for MalformedPacketFault {
         // Mark for modification in after_operation
         ctx.set_metadata(
             "malform_type",
-            &format!("{:?}", self.config.malformation_type),
+            format!("{:?}", self.config.malformation_type),
         );
         ctx.record_applied_fault(self.id(), "malform");
 

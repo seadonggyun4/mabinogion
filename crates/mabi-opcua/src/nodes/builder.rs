@@ -126,7 +126,7 @@ impl VariableBuilder {
     /// Enable historizing.
     pub fn historizing(mut self) -> Self {
         self.historizing = true;
-        self.access_level = self.access_level | AccessLevel::HISTORY_READ;
+        self.access_level |= AccessLevel::HISTORY_READ;
         self
     }
 

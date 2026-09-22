@@ -89,7 +89,6 @@ pub struct NodeStoreStats {
 ///     &NodeId::objects_folder(),
 /// );
 /// ```
-
 /// Result of a browse path resolution.
 pub struct BrowsePathResult {
     /// Status of the resolution.

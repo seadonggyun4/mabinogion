@@ -182,8 +182,8 @@ impl VariableNode {
     pub fn with_historizing(mut self, historizing: bool) -> Self {
         self.historizing = historizing;
         if historizing {
-            self.access_level = self.access_level | AccessLevel::HISTORY_READ;
-            self.user_access_level = self.user_access_level | AccessLevel::HISTORY_READ;
+            self.access_level |= AccessLevel::HISTORY_READ;
+            self.user_access_level |= AccessLevel::HISTORY_READ;
         }
         self
     }

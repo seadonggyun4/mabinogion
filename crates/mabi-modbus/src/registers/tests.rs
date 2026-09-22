@@ -202,7 +202,7 @@ mod sparse_store_tests {
 
         // Memory should grow proportionally
         let entry_overhead = (after_memory - initial_memory) / 1000;
-        assert!(entry_overhead >= 20 && entry_overhead <= 50); // Reasonable per-entry overhead
+        assert!((20..=50).contains(&entry_overhead)); // Reasonable per-entry overhead
     }
 
     #[test]

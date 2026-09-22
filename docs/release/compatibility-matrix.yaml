@@ -11,7 +11,7 @@ compatible_trial_suite_range: ">=0.1.0 <1.0.0"
 runner_policy_document: docs/release/release-checklist.md
 release_policy_document: docs/release/release-checklist.md
 changelog_policy_document: docs/release/changelog-policy.md
-compatibility_decision_owner: mabinogion-trials-or-imugi
+compatibility_decision_owner: mabinogion-trials-or-external-consumer
 supported_contract_versions:
   - local-runner-contract-v1
   - cli-output-envelope-v1

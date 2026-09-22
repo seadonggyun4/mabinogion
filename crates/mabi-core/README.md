@@ -12,12 +12,8 @@ Shared domain kernel for the Mabinogion protocol resilience engine.
 
 `mabi-core` is the protocol-agnostic foundation underneath runtime drivers,
 scenario execution, chaos orchestration, and Mabinogion trials. It supports
-local protocol simulator use while keeping shared types stable for Imugi and
-Trials consumers.
-
-After the Imugi rebrand, the primary platform consumer is Imugi. `Forge` is a
-legacy consumer name retained only for current implementation compatibility
-until the backend contract is renamed.
+local protocol simulator use while keeping shared types stable for Trials and
+other external consumers.
 
 ## Versioning / contracts
 

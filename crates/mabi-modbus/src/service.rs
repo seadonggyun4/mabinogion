@@ -609,10 +609,7 @@ impl ModbusService for StandardModbusService {
     }
 
     fn call_view(&self, request: ServiceRequestView<'_>) -> ServiceOutcome {
-        let targets = match request.targets {
-            ServiceTargetsRef::Unicast(target) => ServiceTargetsRef::Unicast(target),
-            ServiceTargetsRef::Broadcast(targets) => ServiceTargetsRef::Broadcast(targets),
-        };
+        let targets = request.targets;
 
         self.dispatch_request(
             request.unit_id(),

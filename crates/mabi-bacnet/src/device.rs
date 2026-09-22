@@ -307,7 +307,7 @@ impl Device for BacnetDevice {
         let bacnet_value = self
             .objects
             .read_property(&object_id, PropertyId::PresentValue)
-            .map_err(|e| Error::point_not_found(&self.info.id, &e.to_string()))?;
+            .map_err(|e| Error::point_not_found(&self.info.id, e.to_string()))?;
 
         let value = Self::bacnet_to_core_value(&bacnet_value)
             .ok_or_else(|| Error::point_not_found(&self.info.id, "Cannot convert BACnet value"))?;
@@ -345,7 +345,7 @@ impl Device for BacnetDevice {
 
         self.objects
             .write_property(&object_id, PropertyId::PresentValue, bacnet_value)
-            .map_err(|e| Error::point_not_found(&self.info.id, &e.to_string()))?;
+            .map_err(|e| Error::point_not_found(&self.info.id, e.to_string()))?;
 
         self.stats.write().record_write();
 

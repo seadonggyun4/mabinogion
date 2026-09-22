@@ -185,6 +185,12 @@ impl AtomicReadFileRequest {
 /// AtomicReadFile service handler.
 pub struct AtomicReadFileHandler;
 
+impl Default for AtomicReadFileHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AtomicReadFileHandler {
     pub fn new() -> Self {
         Self
@@ -419,6 +425,12 @@ impl AtomicWriteFileRequest {
 /// AtomicWriteFile service handler.
 pub struct AtomicWriteFileHandler;
 
+impl Default for AtomicWriteFileHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AtomicWriteFileHandler {
     pub fn new() -> Self {
         Self
@@ -647,11 +659,11 @@ fn encode_signed_context(encoder: &mut ApduEncoder, tag_number: u8, value: i32) 
 fn signed_to_bytes(value: i32) -> Vec<u8> {
     let bytes = value.to_be_bytes();
     // Find minimal encoding
-    if value >= -128 && value <= 127 {
+    if (-128..=127).contains(&value) {
         vec![bytes[3]]
-    } else if value >= -32768 && value <= 32767 {
+    } else if (-32768..=32767).contains(&value) {
         vec![bytes[2], bytes[3]]
-    } else if value >= -8_388_608 && value <= 8_388_607 {
+    } else if (-8_388_608..=8_388_607).contains(&value) {
         vec![bytes[1], bytes[2], bytes[3]]
     } else {
         bytes.to_vec()

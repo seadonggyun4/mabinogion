@@ -191,20 +191,15 @@ pub enum ReferenceDirection {
 }
 
 /// Browse direction for browsing operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum BrowseDirection {
     /// Browse forward references only.
+    #[default]
     Forward,
     /// Browse inverse references only.
     Inverse,
     /// Browse both directions.
     Both,
-}
-
-impl Default for BrowseDirection {
-    fn default() -> Self {
-        Self::Forward
-    }
 }
 
 /// A reference between two nodes.

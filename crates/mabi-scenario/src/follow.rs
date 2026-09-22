@@ -439,7 +439,7 @@ mod tests {
         assert!(value.is_some());
         // Should be around 20 (value at 50ms)
         let v = value.unwrap();
-        assert!(v >= 15.0 && v <= 25.0);
+        assert!((15.0..=25.0).contains(&v));
     }
 
     #[test]

@@ -1,3 +1,5 @@
+#![allow(clippy::assertions_on_constants)]
+
 #[test]
 #[ignore]
 fn transport_perf_contracts_are_release_only() {

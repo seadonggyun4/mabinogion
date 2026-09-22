@@ -142,10 +142,7 @@ impl ConfigUpdate {
 
     /// Check if this update requires a restart to take effect.
     pub fn requires_restart(&self) -> bool {
-        match self {
-            Self::TcpNoDelay(_) | Self::KeepaliveInterval(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::TcpNoDelay(_) | Self::KeepaliveInterval(_))
     }
 }
 

@@ -440,7 +440,7 @@ impl WritableObject for AnalogOutput {
         value: BACnetValue,
         priority: u8,
     ) -> Result<(), PropertyError> {
-        if priority < 1 || priority > 16 {
+        if !(1..=16).contains(&priority) {
             return Err(PropertyError::ValueOutOfRange(PropertyId::PresentValue));
         }
 
@@ -467,7 +467,7 @@ impl WritableObject for AnalogOutput {
     }
 
     fn relinquish(&self, priority: u8) -> Result<(), PropertyError> {
-        if priority < 1 || priority > 16 {
+        if !(1..=16).contains(&priority) {
             return Err(PropertyError::ValueOutOfRange(PropertyId::PriorityArray));
         }
 

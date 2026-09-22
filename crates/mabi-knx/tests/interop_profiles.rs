@@ -198,7 +198,7 @@ async fn run_peer_profile(profile: PeerProfile) -> TestResult {
 
         let output = run_peer_command(
             profile.program,
-            &[profile.script.clone()],
+            std::slice::from_ref(&profile.script),
             &envs,
             PEER_TIMEOUT,
         )

@@ -142,8 +142,10 @@ impl fmt::Display for HeartbeatAction {
 /// incoming connection state request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Default)]
 pub enum HeartbeatSchedule {
     /// Always return the default action (Continue).
+    #[default]
     Normal,
 
     /// Static override — always return the specified action.
@@ -178,12 +180,6 @@ pub enum HeartbeatSchedule {
         /// Number of normal heartbeats before failure.
         countdown: u32,
     },
-}
-
-impl Default for HeartbeatSchedule {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl HeartbeatSchedule {
@@ -458,7 +454,7 @@ impl fmt::Debug for HeartbeatScheduler {
 /// Configuration for the heartbeat scheduler.
 ///
 /// This is used in `TunnelBehaviorConfig` and supports YAML/JSON deserialization.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HeartbeatSchedulerConfig {
     /// Whether the scheduler is enabled.
     /// When disabled, normal heartbeat behavior is used.
@@ -472,15 +468,6 @@ pub struct HeartbeatSchedulerConfig {
 
 fn default_false() -> bool {
     false
-}
-
-impl Default for HeartbeatSchedulerConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            schedule: HeartbeatSchedule::default(),
-        }
-    }
 }
 
 impl HeartbeatSchedulerConfig {
@@ -503,7 +490,7 @@ impl HeartbeatSchedulerConfig {
 fn heartbeat_rand() -> f64 {
     use std::cell::Cell;
     thread_local! {
-        static STATE: Cell<u64> = Cell::new(0xDEAD_BEEF_CAFE_BABEu64);
+        static STATE: Cell<u64> = const { Cell::new(0xDEAD_BEEF_CAFE_BABEu64) };
     }
     STATE.with(|s| {
         let mut x = s.get();

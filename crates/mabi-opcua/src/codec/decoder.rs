@@ -258,10 +258,10 @@ mod tests {
     #[test]
     fn test_bool_roundtrip() {
         let mut data = roundtrip_encode(&true);
-        assert_eq!(bool::decode(&mut data).unwrap(), true);
+        assert!(bool::decode(&mut data).unwrap());
 
         let mut data = roundtrip_encode(&false);
-        assert_eq!(bool::decode(&mut data).unwrap(), false);
+        assert!(!bool::decode(&mut data).unwrap());
     }
 
     #[test]

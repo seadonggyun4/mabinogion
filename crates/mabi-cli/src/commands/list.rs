@@ -314,10 +314,7 @@ impl ListCommand {
             let mut entries = tokio::fs::read_dir(&scenarios_dir).await?;
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
-                if path
-                    .extension()
-                    .map_or(false, |e| e == "yaml" || e == "yml")
-                {
+                if path.extension().is_some_and(|e| e == "yaml" || e == "yml") {
                     if let Ok(content) = tokio::fs::read_to_string(&path).await {
                         if let Ok(scenario) = serde_yaml::from_str::<Scenario>(&content) {
                             scenarios.push(ScenarioInfo {

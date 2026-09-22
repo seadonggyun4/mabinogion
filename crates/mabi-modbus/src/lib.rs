@@ -1,3 +1,12 @@
+#![allow(
+    clippy::approx_constant,
+    clippy::field_reassign_with_default,
+    clippy::large_enum_variant,
+    clippy::new_ret_no_self,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)] // Stable public/runtime shapes are retained for compatibility.
+
 //! # mabi-modbus
 //!
 //! Modbus TCP/RTU runtime driver for the Mabinogion protocol resilience engine.

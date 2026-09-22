@@ -329,10 +329,12 @@ mod tests {
 
     #[test]
     fn test_level_change_stats() {
-        let mut stats = LevelChangeStats::default();
-        stats.total_changes = 5;
-        stats.global_changes = 2;
-        stats.module_changes = 3;
+        let stats = LevelChangeStats {
+            total_changes: 5,
+            global_changes: 2,
+            module_changes: 3,
+            ..LevelChangeStats::default()
+        };
 
         assert_eq!(stats.total_changes, 5);
         assert_eq!(stats.global_changes + stats.module_changes, 5);

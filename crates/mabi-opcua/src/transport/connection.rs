@@ -60,7 +60,7 @@ pub async fn handle_connection(
     metrics: Arc<TransportMetrics>,
     shutdown: Arc<AtomicBool>,
 ) -> OpcUaResult<()> {
-    let peer = stream.peer_addr().map_err(|e| OpcUaError::Io(e))?;
+    let peer = stream.peer_addr().map_err(OpcUaError::Io)?;
     info!(peer = %peer, "New OPC UA connection");
 
     let mut framed = Framed::new(stream, OpcUaTransportCodec::new());
@@ -101,12 +101,10 @@ pub async fn handle_connection(
     let mut ack_body = BytesMut::new();
     ack.encode(&mut ack_body)?;
     let ack_msg = build_response(MessageType::Acknowledge, ack_body.to_vec());
-    framed.send(ack_msg).await.map_err(|e| {
-        OpcUaError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        ))
-    })?;
+    framed
+        .send(ack_msg)
+        .await
+        .map_err(|e| OpcUaError::Io(std::io::Error::other(e.to_string())))?;
     metrics.record_message_sent(20 + MessageHeader::SIZE);
 
     debug!(peer = %peer, "Sent Acknowledge");
@@ -145,12 +143,10 @@ pub async fn handle_connection(
             );
 
             let response_msg = build_response(MessageType::OpenSecureChannel, opn_response);
-            framed.send(response_msg).await.map_err(|e| {
-                OpcUaError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))
-            })?;
+            framed
+                .send(response_msg)
+                .await
+                .map_err(|e| OpcUaError::Io(std::io::Error::other(e.to_string())))?;
             metrics.record_message_sent(0);
 
             debug!(peer = %peer, channel_id = channel.channel_id(), "Secure channel opened");

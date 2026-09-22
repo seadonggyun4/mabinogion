@@ -60,7 +60,7 @@
 //! }
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -446,7 +446,7 @@ impl HotReloadManager {
     }
 
     /// Remove a path from watching.
-    pub fn unwatch(&self, path: &PathBuf) -> Result<()> {
+    pub fn unwatch(&self, path: &Path) -> Result<()> {
         if let Some(ref file_watcher) = self.file_watcher {
             file_watcher.unwatch(path)?;
         }

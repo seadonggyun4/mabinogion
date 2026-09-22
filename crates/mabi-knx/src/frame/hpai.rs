@@ -146,7 +146,7 @@ impl Hpai {
 
     /// Decode from buffer with remaining.
     pub fn decode_from(buf: &mut &[u8]) -> KnxResult<Self> {
-        let hpai = Self::decode(*buf)?;
+        let hpai = Self::decode(buf)?;
         *buf = &buf[HPAI_SIZE as usize..];
         Ok(hpai)
     }

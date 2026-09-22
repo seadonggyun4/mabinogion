@@ -309,7 +309,7 @@ impl CryptoProvider {
         let decrypted = simulate_aes_cbc_decrypt(ciphertext, key, iv);
 
         // Remove PKCS7 padding
-        let plaintext = pkcs7_unpad(&decrypted).map_err(|e| CryptoError::DecryptionFailed(e))?;
+        let plaintext = pkcs7_unpad(&decrypted).map_err(CryptoError::DecryptionFailed)?;
 
         trace!(
             ciphertext_len = ciphertext.len(),

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 /// - 1 character time ≈ 1.042ms (11 bits per character)
 /// - 1.5 character times ≈ 1.563ms (inter-char timeout)
 /// - 3.5 character times ≈ 3.646ms (inter-frame delay)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RtuTimingFaultConfig {
     /// Respond faster than the required 3.5 character time inter-frame delay.
     /// If set, the response will be sent after this delay instead of the
@@ -47,17 +47,6 @@ pub struct RtuTimingFaultConfig {
     /// Adds random delay between individual bytes.
     #[serde(default)]
     pub byte_jitter: Option<ByteJitterConfig>,
-}
-
-impl Default for RtuTimingFaultConfig {
-    fn default() -> Self {
-        Self {
-            violate_interframe_delay: None,
-            inject_interchar_gap: None,
-            bus_collision: None,
-            byte_jitter: None,
-        }
-    }
 }
 
 impl RtuTimingFaultConfig {

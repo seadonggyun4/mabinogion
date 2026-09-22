@@ -1,3 +1,5 @@
+#![allow(clippy::assertions_on_constants)]
+
 mod support;
 
 use support::contract::contract;

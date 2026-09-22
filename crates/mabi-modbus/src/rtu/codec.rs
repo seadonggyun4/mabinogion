@@ -97,9 +97,10 @@ impl Default for RtuTiming {
 }
 
 /// Frame detection state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 enum DecodeState {
     /// Waiting for first byte of a new frame.
+    #[default]
     Idle,
 
     /// Receiving frame data.
@@ -114,12 +115,6 @@ enum DecodeState {
     #[allow(dead_code)]
     /// Frame complete, ready to emit.
     Complete,
-}
-
-impl Default for DecodeState {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 /// Modbus RTU codec.
@@ -282,7 +277,7 @@ impl RtuCodec {
 
         match function_code {
             // Read requests and single writes (fixed 8 bytes)
-            0x01 | 0x02 | 0x03 | 0x04 | 0x05 | 0x06 => Some(8),
+            0x01..=0x06 => Some(8),
 
             // Mask Write Register (fixed 10 bytes)
             // Unit + FC + Addr(2) + And_Mask(2) + Or_Mask(2) + CRC(2)
@@ -645,6 +640,6 @@ mod tests {
         // 8 bytes at 9600 baud ≈ 9.16ms
         let time = timing.transmission_time(8);
         let time_ms = time.as_millis();
-        assert!(time_ms >= 8 && time_ms <= 10);
+        assert!((8..=10).contains(&time_ms));
     }
 }

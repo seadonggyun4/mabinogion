@@ -507,6 +507,12 @@ pub struct CreateObjectHandler {
     factory: ObjectFactory,
 }
 
+impl Default for CreateObjectHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CreateObjectHandler {
     /// Create a new handler with the default object factory.
     pub fn new() -> Self {
@@ -549,7 +555,7 @@ impl CreateObjectHandler {
             // Auto-assign
             registry
                 .next_available_instance(request.object_type)
-                .ok_or_else(|| ServiceResult::Error {
+                .ok_or(ServiceResult::Error {
                     error_class: ErrorClass::Resources,
                     error_code: ErrorCode::NoSpaceForObject,
                 })?
@@ -575,7 +581,7 @@ impl CreateObjectHandler {
         let object = self
             .factory
             .create(request.object_type, instance, name)
-            .ok_or_else(|| ServiceResult::Error {
+            .ok_or(ServiceResult::Error {
                 error_class: ErrorClass::Object,
                 error_code: ErrorCode::UnsupportedObjectType,
             })?;
@@ -638,6 +644,12 @@ const NON_DELETABLE_TYPES: &[ObjectType] = &[ObjectType::Device];
 /// - Returns SimpleAck on success.
 /// - Returns ERROR(object, objectDeletionNotPermitted) for protected types.
 pub struct DeleteObjectHandler;
+
+impl Default for DeleteObjectHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl DeleteObjectHandler {
     pub fn new() -> Self {

@@ -159,20 +159,15 @@ pub struct BACnetDateTime {
 }
 
 /// Communication control state per DeviceCommunicationControl service.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CommunicationControlState {
     /// Normal operation.
+    #[default]
     Enabled,
     /// All communication disabled except I-Am and DCC.
     Disabled,
     /// Device will not initiate messages (responds only).
     DisabledInitiation,
-}
-
-impl Default for CommunicationControlState {
-    fn default() -> Self {
-        Self::Enabled
-    }
 }
 
 impl DeviceObject {

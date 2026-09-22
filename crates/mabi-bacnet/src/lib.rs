@@ -1,3 +1,5 @@
+#![allow(clippy::approx_constant)] // Protocol codec tests use familiar sample values.
+
 //! # mabi-bacnet
 //!
 //! BACnet/IP simulator for the OTSIM protocol simulator.
@@ -187,18 +189,10 @@ pub type Error = BacnetError;
 pub type Result<T> = BacnetResult<T>;
 
 /// Canonical BACnet server builder.
+#[derive(Default)]
 pub struct Builder {
     config: Config,
     objects: crate::object::registry::ObjectRegistry,
-}
-
-impl Default for Builder {
-    fn default() -> Self {
-        Self {
-            config: Config::default(),
-            objects: crate::object::registry::ObjectRegistry::new(),
-        }
-    }
 }
 
 impl Builder {

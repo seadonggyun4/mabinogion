@@ -113,6 +113,12 @@ impl AcknowledgeAlarmRequest {
 /// AcknowledgeAlarm service handler.
 pub struct AcknowledgeAlarmHandler;
 
+impl Default for AcknowledgeAlarmHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AcknowledgeAlarmHandler {
     pub fn new() -> Self {
         Self
@@ -181,6 +187,12 @@ pub struct AlarmSummaryEntry {
 ///
 /// Returns a list of all objects currently in alarm state.
 pub struct GetAlarmSummaryHandler;
+
+impl Default for GetAlarmSummaryHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GetAlarmSummaryHandler {
     pub fn new() -> Self {
@@ -264,6 +276,12 @@ pub enum AcknowledgmentFilter {
 /// Returns a filtered list of EventEnrollment objects.
 pub struct GetEnrollmentSummaryHandler;
 
+impl Default for GetEnrollmentSummaryHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GetEnrollmentSummaryHandler {
     pub fn new() -> Self {
         Self
@@ -345,6 +363,12 @@ impl ConfirmedServiceHandler for GetEnrollmentSummaryHandler {
 ///
 /// Returns detailed event state information for objects in non-normal states.
 pub struct GetEventInformationHandler;
+
+impl Default for GetEventInformationHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GetEventInformationHandler {
     pub fn new() -> Self {
@@ -491,6 +515,12 @@ impl ConfirmedServiceHandler for GetEventInformationHandler {
 /// Receives event notifications from other devices (for forwarding/logging).
 /// In a simulator, this primarily acknowledges receipt.
 pub struct ConfirmedEventNotificationHandler;
+
+impl Default for ConfirmedEventNotificationHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ConfirmedEventNotificationHandler {
     pub fn new() -> Self {

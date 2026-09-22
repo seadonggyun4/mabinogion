@@ -595,7 +595,7 @@ pub enum DatastoreInitialization {
 }
 
 /// Reusable named datastore definitions for simulator device bundles.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DatastoreDefinition {
     #[serde(flatten)]
     pub kind: DatastoreKind,
@@ -611,20 +611,6 @@ pub struct DatastoreDefinition {
     pub repeat: Option<DatastoreRepeatPolicy>,
     #[serde(default)]
     pub initialization: Option<DatastoreInitialization>,
-}
-
-impl Default for DatastoreDefinition {
-    fn default() -> Self {
-        Self {
-            kind: DatastoreKind::default(),
-            invalid_ranges: Vec::new(),
-            readonly_ranges: Vec::new(),
-            typed_blocks: Vec::new(),
-            default_value: None,
-            repeat: None,
-            initialization: None,
-        }
-    }
 }
 
 impl From<DatastoreKind> for DatastoreDefinition {

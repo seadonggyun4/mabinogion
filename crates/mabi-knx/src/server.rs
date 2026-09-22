@@ -360,11 +360,11 @@ impl KnxServer {
     /// Create a new KNX server.
     pub fn new(config: KnxServerConfig) -> Self {
         let (event_tx, _) = broadcast::channel(1000);
-        let desync_threshold = config
-            .tunnel_behavior
-            .sequence_validation_enabled
-            .then_some(5u8)
-            .unwrap_or(255); // 255 effectively disables desync detection
+        let desync_threshold = if config.tunnel_behavior.sequence_validation_enabled {
+            5u8
+        } else {
+            255
+        }; // 255 effectively disables desync detection
 
         let filter_chain = FilterChain::new(config.tunnel_behavior.flow_control.clone());
 
@@ -2027,7 +2027,7 @@ impl KnxServer {
 fn rand_simple() -> f64 {
     use std::cell::Cell;
     thread_local! {
-        static STATE: Cell<u64> = Cell::new(0x12345678_9ABCDEF0);
+        static STATE: Cell<u64> = const { Cell::new(0x12345678_9ABCDEF0) };
     }
     STATE.with(|s| {
         let mut x = s.get();
@@ -2189,7 +2189,7 @@ mod tests {
     fn test_rand_simple_range() {
         for _ in 0..100 {
             let v = rand_simple();
-            assert!(v >= 0.0 && v <= 1.0);
+            assert!((0.0..=1.0).contains(&v));
         }
     }
 

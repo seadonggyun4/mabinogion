@@ -1,3 +1,5 @@
+#![allow(clippy::should_implement_trait)] // Existing helpers return compatibility-specific types.
+
 //! # mabi-scenario
 //!
 //! Scenario engine for the OTSIM protocol simulator.

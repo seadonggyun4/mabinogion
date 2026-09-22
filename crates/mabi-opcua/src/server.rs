@@ -36,9 +36,10 @@ use crate::server_runtime::{
 use crate::types::{DataValue, NodeId, Variant};
 
 /// Server state enumeration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ServerState {
     /// Server is not yet initialized.
+    #[default]
     Uninitialized,
     /// Server is starting up.
     Starting,
@@ -50,12 +51,6 @@ pub enum ServerState {
     Stopped,
     /// Server encountered an error.
     Error,
-}
-
-impl Default for ServerState {
-    fn default() -> Self {
-        Self::Uninitialized
-    }
 }
 
 /// Server statistics.

@@ -510,19 +510,13 @@ impl CemiFrame {
     /// - 0x04: Timestamp Relative (2 bytes, ms since last frame)
     /// - 0x06: Extended Timestamp (4 bytes, microseconds)
     pub fn bus_monitor_indication(raw_frame: &[u8], status: u8, timestamp_ms: u16) -> Self {
-        let mut additional_info = Vec::new();
-
-        // Bus Monitor Info (type 0x03): 1 byte status
-        additional_info.push(AdditionalInfo::new(
-            AdditionalInfoType::BusMonitorInfo as u8,
-            vec![status],
-        ));
-
-        // Timestamp Relative (type 0x04): 2 bytes, milliseconds since last frame
-        additional_info.push(AdditionalInfo::new(
-            AdditionalInfoType::TimestampRelative as u8,
-            timestamp_ms.to_be_bytes().to_vec(),
-        ));
+        let additional_info = vec![
+            AdditionalInfo::new(AdditionalInfoType::BusMonitorInfo as u8, vec![status]),
+            AdditionalInfo::new(
+                AdditionalInfoType::TimestampRelative as u8,
+                timestamp_ms.to_be_bytes().to_vec(),
+            ),
+        ];
 
         Self {
             message_code: MessageCode::LBusmonInd,

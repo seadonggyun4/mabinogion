@@ -314,10 +314,8 @@ impl ScenarioExecutor {
         let mut missing = Vec::new();
 
         for point in &self.scenario.points {
-            if !self.devices.contains(&point.device_id) {
-                if !missing.contains(&point.device_id) {
-                    missing.push(point.device_id.clone());
-                }
+            if !self.devices.contains(&point.device_id) && !missing.contains(&point.device_id) {
+                missing.push(point.device_id.clone());
             }
         }
 
@@ -495,7 +493,7 @@ impl ScenarioExecutor {
                     device
                         .write(point_id, update.value.clone())
                         .await
-                        .map_err(|e| crate::ScenarioError::Core(e))
+                        .map_err(crate::ScenarioError::Core)
                 })
                 .await;
 

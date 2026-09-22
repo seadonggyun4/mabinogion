@@ -173,7 +173,7 @@ impl LoadPattern {
 
                 // Peak around 0.5 (noon), low at 0.0 and 1.0 (midnight)
                 let hour = day_progress * 24.0;
-                let traffic_factor = if hour >= 8.0 && hour <= 20.0 {
+                let traffic_factor = if (8.0..=20.0).contains(&hour) {
                     // Business hours
                     let peak_at_noon = 1.0 - ((hour - 14.0).abs() / 6.0);
                     0.5 + 0.5 * peak_at_noon
@@ -410,7 +410,7 @@ mod tests {
 
         for i in 0..10 {
             let ops = pattern.ops_for_elapsed(Duration::from_secs(i));
-            assert!(ops >= 100 && ops <= 1000);
+            assert!((100..=1000).contains(&ops));
         }
     }
 

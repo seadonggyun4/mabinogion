@@ -1,3 +1,11 @@
+#![allow(dead_code)] // Legacy/experimental OPC UA surfaces are retained for compatibility.
+#![allow(
+    clippy::approx_constant,
+    clippy::field_reassign_with_default,
+    clippy::large_enum_variant,
+    clippy::too_many_arguments
+)]
+
 //! # mabi-opcua
 //!
 //! OPC UA runtime driver for the Mabinogion protocol resilience engine.

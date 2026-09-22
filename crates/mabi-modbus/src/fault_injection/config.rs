@@ -123,6 +123,7 @@ pub enum FaultType {
 /// for each fault type, with sane defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct FaultTypeConfig {
     // === CRC Corruption ===
     /// CRC corruption mode.
@@ -179,32 +180,6 @@ pub struct FaultTypeConfig {
     pub partial_bytes: Option<usize>,
     /// Percentage of frame to send for Percentage mode.
     pub partial_percentage: Option<f64>,
-}
-
-impl Default for FaultTypeConfig {
-    fn default() -> Self {
-        Self {
-            crc_mode: None,
-            unit_id_mode: None,
-            fixed_unit_id: None,
-            fc_mode: None,
-            fixed_fc: None,
-            tid_mode: None,
-            fixed_tid: None,
-            truncation_mode: None,
-            truncation_bytes: None,
-            truncation_percentage: None,
-            extra_data_mode: None,
-            extra_bytes: None,
-            extra_count: None,
-            delay_ms: None,
-            jitter_ms: None,
-            exception_code: None,
-            partial_mode: None,
-            partial_bytes: None,
-            partial_percentage: None,
-        }
-    }
 }
 
 // === Mode Enums ===

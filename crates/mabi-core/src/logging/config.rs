@@ -145,10 +145,11 @@ impl LogFormat {
 }
 
 /// Log output target.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum LogTarget {
     /// Write to stdout.
+    #[default]
     Stdout,
     /// Write to stderr.
     Stderr,
@@ -169,12 +170,6 @@ pub enum LogTarget {
 
 fn default_filename_prefix() -> String {
     "trap-simulator".to_string()
-}
-
-impl Default for LogTarget {
-    fn default() -> Self {
-        Self::Stdout
-    }
 }
 
 impl LogTarget {
@@ -418,7 +413,7 @@ impl LogConfig {
         }
 
         // Validate module names in module_levels
-        for (module, _) in &self.module_levels {
+        for module in self.module_levels.keys() {
             if module.is_empty() {
                 return Err(Error::Config("Module name cannot be empty".to_string()));
             }

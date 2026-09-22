@@ -13,20 +13,15 @@ use super::{RegisterType, RegisterValue};
 /// Priority for callback execution.
 ///
 /// Higher priority callbacks are executed first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum CallbackPriority {
     /// Low priority - executed last (e.g., logging).
     Low = 0,
     /// Normal priority - default.
+    #[default]
     Normal = 50,
     /// High priority - executed first (e.g., validation).
     High = 100,
-}
-
-impl Default for CallbackPriority {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 /// Read callback context.

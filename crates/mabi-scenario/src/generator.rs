@@ -232,7 +232,7 @@ mod tests {
 
         for _ in 0..100 {
             let value = gen.generate();
-            assert!(value >= 0.0 && value <= 100.0);
+            assert!((0.0..=100.0).contains(&value));
         }
     }
 }

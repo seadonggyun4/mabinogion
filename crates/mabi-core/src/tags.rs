@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn test_parse_tags() {
         let tags =
-            parse_tags(&["location=building-a", "floor=3", "critical", "production"]).unwrap();
+            parse_tags(["location=building-a", "floor=3", "critical", "production"]).unwrap();
 
         assert_eq!(tags.get("location"), Some("building-a"));
         assert_eq!(tags.get("floor"), Some("3"));

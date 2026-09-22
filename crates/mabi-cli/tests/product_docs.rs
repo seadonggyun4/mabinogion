@@ -66,8 +66,8 @@ fn root_readme_does_not_reintroduce_product_family_ownership_table() {
     for forbidden in [
         "## Product Family Role",
         "| `mabinogion-trials` |",
-        "| `imugi-back` |",
-        "| `imugi-front` |",
+        "| `external-runner` |",
+        "| `external-presentation` |",
         "The boundary is intentional",
     ] {
         assert!(

@@ -1,3 +1,5 @@
+#![allow(clippy::ptr_arg, clippy::should_implement_trait)] // Preserve existing CLI helper APIs.
+
 //! # mabi-cli
 //!
 //! Installed command surface for the Mabinogion protocol resilience engine.
@@ -7,7 +9,7 @@
 //! - Installed binary smoke checks through `mabi doctor`
 //! - Runtime, schema, and version inspection
 //! - Scenario/config validation with machine-readable envelopes
-//! - Stable Imugi and Trials integration metadata
+//! - Stable Trials and external consumers integration metadata
 
 pub mod commands;
 pub mod context;

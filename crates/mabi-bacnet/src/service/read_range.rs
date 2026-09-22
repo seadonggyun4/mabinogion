@@ -248,6 +248,12 @@ fn decode_time_from_decoder(decoder: &mut ApduDecoder) -> Result<BACnetTime, Ser
 /// position, sequence number, or timestamp.
 pub struct ReadRangeHandler;
 
+impl Default for ReadRangeHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReadRangeHandler {
     pub fn new() -> Self {
         Self

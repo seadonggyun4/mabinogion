@@ -413,7 +413,7 @@ fn estimate_frame_length(data: &[u8]) -> Option<usize> {
 
     match function_code {
         // Read Coils / Read Discrete Inputs / Read Holding Regs / Read Input Regs
-        0x01 | 0x02 | 0x03 | 0x04 => {
+        0x01..=0x04 => {
             // Request: Unit + FC + Start(2) + Qty(2) + CRC(2) = 8 bytes
             // Response: Unit + FC + ByteCount(1) + Data(N) + CRC(2)
             if data.len() >= 3 {
@@ -492,7 +492,7 @@ pub fn unpack_bits(bytes: &[u8], count: usize) -> Vec<bool> {
 
 /// Pack boolean values into bytes for coil/discrete input response.
 pub fn pack_bits(bits: &[bool]) -> Vec<u8> {
-    let byte_count = (bits.len() + 7) / 8;
+    let byte_count = bits.len().div_ceil(8);
     let mut result = vec![0u8; byte_count];
 
     for (i, &bit) in bits.iter().enumerate() {
