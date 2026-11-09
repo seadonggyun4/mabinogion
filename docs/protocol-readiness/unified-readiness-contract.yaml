@@ -1,13 +1,11 @@
 schema_version: 1
-contract_id: unified-readiness-contract-v1
+contract_id: unified-readiness-contract-v2
 status: active
 owner: mabinogion
 purpose: >
-  Normalize protocol capability and profile metadata so mabinogion-trials can
-  bind MVP corpus entries to stable engine readiness surfaces.
+  Normalize protocol capability and profile metadata for local runners and
+  external consumers using stable engine readiness surfaces.
 non_goals:
-  - define trial suites
-  - score trial results
   - publish proof reports
   - issue certifications
 profile_required_fields:
@@ -16,8 +14,6 @@ profile_required_fields:
   - lane
   - coverage_status
   - optional_interop_policy
-  - trial_profile_id
-  - trial_level
   - required_evidence
   - engine_requirement
   - forge_display_label
@@ -40,13 +36,6 @@ enums:
     - release_only
     - capture_only
     - future
-trial_profile_id:
-  format: protocol.lN.capability
-  examples:
-    - opcua.l1.session_lifecycle
-    - bacnet.l3.segmentation
-    - modbus.l2.multi_unit
-    - knx.l2.sequence_validation
 evidence_types:
   - runtime_snapshot
   - protocol_exchange
@@ -85,13 +74,12 @@ maintenance_policy:
     Profile IDs are stable contract identifiers. Rename only through a
     readiness-contract version bump and a compatibility note.
   capability_id_stability: >
-    Capability IDs are stable semantic anchors for Trials MVP corpus mapping.
+    Capability IDs are stable semantic anchors for protocol scenario mapping.
     Split or merge only through an explicit contract update.
   lane_policy: >
     The lane describes how evidence can be collected, not whether the feature
     is valuable. Heavy interop, perf, and capture paths stay out of the
     default deterministic lane.
   ownership_boundary: >
-    mabinogion exports protocol/session readiness metadata. Trial definitions,
-    scoring, proof report publication, and certification issuance remain
-    outside this repository.
+    mabinogion exports protocol/session readiness metadata. Proof report
+    publication and certification issuance remain outside this repository.

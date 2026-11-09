@@ -9,7 +9,7 @@
 //! - Installed binary smoke checks through `mabi doctor`
 //! - Runtime, schema, and version inspection
 //! - Scenario/config validation with machine-readable envelopes
-//! - Stable Trials and external consumers integration metadata
+//! - Stable integration metadata for external consumers
 
 pub mod commands;
 pub mod context;

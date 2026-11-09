@@ -11,7 +11,7 @@ Modbus TCP/RTU runtime driver for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-modbus` provides Modbus protocol execution for local simulator use and
-for Mabinogion trials that target Modbus function codes, register maps,
+for resilience scenarios that target Modbus function codes, register maps,
 multi-unit behavior, exceptions, timeout behavior, partial responses, and slow
 device lanes.
 
@@ -22,11 +22,11 @@ device lanes.
 mabi-modbus = "1.7.1"
 ```
 
-The crate follows the workspace release version. Trial-facing capability
+The crate follows the workspace release version. Protocol capability
 metadata is reported through `mabi --format json version` and documented in
 `docs/protocol-readiness/`.
 
 ## Not owned here
 
-`mabi-modbus` does not define trial suites, score trial results, publish proof
+`mabi-modbus` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

@@ -5,7 +5,7 @@ This baseline records the PHASE 2 readiness contract for `mabi-modbus`.
 The Modbus simulator already has deterministic coverage for core protocol
 behavior, register maps, multi-unit addressing, exception responses, malformed
 frames, and transport behavior. PHASE 2 turns those existing surfaces into a
-stable profile contract that `mabinogion-trials` can reference later.
+stable profile contract for local runners and external consumers.
 
 ## Contract Files
 
@@ -17,23 +17,23 @@ stable profile contract that `mabinogion-trials` can reference later.
 
 ## Unified Profiles
 
-| Profile | Level | Coverage | Lane |
-| --- | --- | --- | --- |
-| `function_code_core` | 1 | Implemented | Deterministic |
-| `register_map` | 1 | Implemented | Deterministic |
-| `exception_response` | 1 | Implemented | Deterministic |
-| `multi_unit` | 2 | Implemented | Deterministic |
-| `timeout` | 2 | Partial | Deterministic |
-| `partial_response` | 2 | Partial | Deterministic |
-| `slow_device` | 2 | Partial | Deterministic with release-only optional perf evidence |
+| Profile | Coverage | Lane |
+| --- | --- | --- |
+| `function_code_core` | Implemented | Deterministic |
+| `register_map` | Implemented | Deterministic |
+| `exception_response` | Implemented | Deterministic |
+| `multi_unit` | Implemented | Deterministic |
+| `timeout` | Partial | Deterministic |
+| `partial_response` | Partial | Deterministic |
+| `slow_device` | Partial | Deterministic with release-only optional perf evidence |
 
 ## Current Gaps
 
 - No external Modbus interop plane is contract-present in PHASE 2.
 - Slow-device evidence is readiness metadata, not a default performance gate.
-- Partial-response and timeout profiles are intentionally marked `partial`
-  until a future trial corpus fixes exact pass criteria.
+- Partial-response and timeout profiles are marked `partial` because their
+  deterministic coverage is incomplete.
 
 `mabinogion` owns protocol/session execution and readiness evidence export. It
-does not own trial definitions, scoring policy, proof publication, or
+does not own scoring policy, proof publication, or
 certification issuance.

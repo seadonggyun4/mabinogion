@@ -65,7 +65,6 @@ fn root_readme_does_not_reintroduce_product_family_ownership_table() {
     assert_no_stale_phrases("README.md", &root_readme);
     for forbidden in [
         "## Product Family Role",
-        "| `mabinogion-trials` |",
         "| `external-runner` |",
         "| `external-presentation` |",
         "The boundary is intentional",

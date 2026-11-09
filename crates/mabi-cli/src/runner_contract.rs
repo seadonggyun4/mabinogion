@@ -1,4 +1,4 @@
-//! Machine-readable CLI contracts for local Trials and external consumers runners.
+//! Machine-readable CLI contracts for local and external runners.
 
 use std::io;
 
@@ -6,21 +6,20 @@ use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 
 use mabi_runtime::{
-    ProtocolCatalogEntry, RUNTIME_CONTRACT_VERSION, RUN_EVIDENCE_SCHEMA_VERSION,
-    SNAPSHOT_METADATA_VERSION, TRIAL_ARTIFACT_CONTRACT_VERSION,
+    ProtocolCatalogEntry, REPLAY_ARTIFACT_CONTRACT_VERSION, RUNTIME_CONTRACT_VERSION,
+    RUN_EVIDENCE_SCHEMA_VERSION, SNAPSHOT_METADATA_VERSION,
 };
 
 use crate::output::{OutputFormat, OutputWriter};
 
 pub const LOCAL_RUNNER_CONTRACT_VERSION: &str = "local-runner-contract-v1";
 pub const CLI_OUTPUT_ENVELOPE_VERSION: &str = "cli-output-envelope-v1";
-pub const UNIFIED_READINESS_CONTRACT_VERSION: &str = "unified-readiness-contract-v1";
-pub const VERSION_METADATA_CONTRACT_VERSION: &str = "version-metadata-contract-v1";
-pub const COMPATIBILITY_MATRIX_VERSION: &str = "compatibility-matrix-v1";
-pub const PROTOCOL_READINESS_MATRIX_VERSION: &str = "protocol-readiness-matrix-v1";
+pub const UNIFIED_READINESS_CONTRACT_VERSION: &str = "unified-readiness-contract-v2";
+pub const VERSION_METADATA_CONTRACT_VERSION: &str = "version-metadata-contract-v2";
+pub const COMPATIBILITY_MATRIX_VERSION: &str = "compatibility-matrix-v2";
+pub const PROTOCOL_READINESS_MATRIX_VERSION: &str = "protocol-readiness-matrix-v2";
 pub const RELEASE_CHANNEL: &str = "source-build";
-pub const COMPATIBLE_TRIAL_SUITE_RANGE: &str = ">=0.1.0 <1.0.0";
-pub const COMPATIBILITY_DECISION_OWNER: &str = "mabinogion-trials-or-external-consumer";
+pub const COMPATIBILITY_DECISION_OWNER: &str = "external-consumer";
 pub const COMPATIBILITY_MATRIX_DOCUMENT: &str = "docs/release/compatibility-matrix.yaml";
 pub const RELEASE_POLICY_DOCUMENT: &str = "docs/release/release-checklist.md";
 pub const CHANGELOG_POLICY_DOCUMENT: &str = "docs/release/changelog-policy.md";
@@ -136,7 +135,7 @@ pub struct VersionReport {
     pub contract_versions: VersionContracts,
     pub feature_flags: Vec<String>,
     pub release_metadata: ReleaseMetadata,
-    pub trial_compatible_metadata: TrialCompatibleMetadata,
+    pub runner_metadata: RunnerMetadata,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -155,7 +154,7 @@ pub struct ProtocolCapabilityVersion {
     pub capability_version: &'static str,
     pub readiness_matrix_version: &'static str,
     pub readiness_contract_version: &'static str,
-    pub trial_profile_ids: Vec<&'static str>,
+    pub profile_ids: Vec<&'static str>,
     pub breaking_change_scope: Vec<&'static str>,
 }
 
@@ -167,7 +166,7 @@ pub struct VersionContracts {
     pub snapshot_metadata_contract: &'static str,
     pub unified_readiness_contract: &'static str,
     pub run_evidence_schema: &'static str,
-    pub trial_artifact_contract: &'static str,
+    pub replay_artifact_contract: &'static str,
     pub version_metadata_contract: &'static str,
 }
 
@@ -183,19 +182,15 @@ pub struct ReleaseMetadata {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct TrialCompatibleMetadata {
-    pub trial_definition_owner: &'static str,
-    pub scoring_owner: &'static str,
+pub struct RunnerMetadata {
     pub supported_machine_formats: Vec<&'static str>,
     pub runner_facing_commands: Vec<&'static str>,
-    pub future_trial_run_contract_documented: bool,
     #[serde(flatten)]
     pub runner_compatibility: RunnerCompatibilityPolicy,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerCompatibilityPolicy {
-    pub compatible_trial_suite_range: &'static str,
     pub compatibility_decision_owner: &'static str,
     pub runner_policy_document: &'static str,
 }
@@ -252,7 +247,7 @@ pub fn version_report(
             snapshot_metadata_contract: SNAPSHOT_METADATA_VERSION,
             unified_readiness_contract: UNIFIED_READINESS_CONTRACT_VERSION,
             run_evidence_schema: RUN_EVIDENCE_SCHEMA_VERSION,
-            trial_artifact_contract: TRIAL_ARTIFACT_CONTRACT_VERSION,
+            replay_artifact_contract: REPLAY_ARTIFACT_CONTRACT_VERSION,
             version_metadata_contract: VERSION_METADATA_CONTRACT_VERSION,
         },
         feature_flags: feature_flags(),
@@ -265,14 +260,10 @@ pub fn version_report(
             release_policy_document: RELEASE_POLICY_DOCUMENT,
             changelog_policy_document: CHANGELOG_POLICY_DOCUMENT,
         },
-        trial_compatible_metadata: TrialCompatibleMetadata {
-            trial_definition_owner: "mabinogion-trials",
-            scoring_owner: "mabinogion-trials",
+        runner_metadata: RunnerMetadata {
             supported_machine_formats: vec!["json", "yaml", "compact"],
             runner_facing_commands: vec!["doctor", "inspect", "validate", "version"],
-            future_trial_run_contract_documented: true,
             runner_compatibility: RunnerCompatibilityPolicy {
-                compatible_trial_suite_range: COMPATIBLE_TRIAL_SUITE_RANGE,
                 compatibility_decision_owner: COMPATIBILITY_DECISION_OWNER,
                 runner_policy_document: RELEASE_POLICY_DOCUMENT,
             },
@@ -286,14 +277,14 @@ pub fn protocol_capability_version(protocol_key: &str) -> ProtocolCapabilityVers
             capability_version: "modbus-capabilities-v1",
             readiness_matrix_version: PROTOCOL_READINESS_MATRIX_VERSION,
             readiness_contract_version: UNIFIED_READINESS_CONTRACT_VERSION,
-            trial_profile_ids: vec![
-                "modbus.l1.function_code",
-                "modbus.l1.register_map",
-                "modbus.l1.exception_response",
-                "modbus.l2.multi_unit",
-                "modbus.l2.timeout",
-                "modbus.l2.partial_response",
-                "modbus.l2.slow_device",
+            profile_ids: vec![
+                "function_code_core",
+                "register_map",
+                "exception_response",
+                "multi_unit",
+                "timeout",
+                "partial_response",
+                "slow_device",
             ],
             breaking_change_scope: version_breaking_change_scope(),
         },
@@ -301,14 +292,14 @@ pub fn protocol_capability_version(protocol_key: &str) -> ProtocolCapabilityVers
             capability_version: "opcua-capabilities-v1",
             readiness_matrix_version: PROTOCOL_READINESS_MATRIX_VERSION,
             readiness_contract_version: UNIFIED_READINESS_CONTRACT_VERSION,
-            trial_profile_ids: vec![
-                "opcua.l1.session_lifecycle",
-                "opcua.l2.secure_channel_renewal",
-                "opcua.l3.reconnect",
-                "opcua.l2.subscription",
-                "opcua.l3.timeout",
-                "opcua.l3.malformed_service_response",
-                "opcua.l2.operation_limit",
+            profile_ids: vec![
+                "session_lifecycle",
+                "secure_channel_renewal",
+                "reconnect",
+                "subscription",
+                "timeout",
+                "malformed_service_response",
+                "operation_limit",
             ],
             breaking_change_scope: version_breaking_change_scope(),
         },
@@ -316,13 +307,13 @@ pub fn protocol_capability_version(protocol_key: &str) -> ProtocolCapabilityVers
             capability_version: "bacnet-capabilities-v1",
             readiness_matrix_version: PROTOCOL_READINESS_MATRIX_VERSION,
             readiness_contract_version: UNIFIED_READINESS_CONTRACT_VERSION,
-            trial_profile_ids: vec![
-                "bacnet.l1.discovery",
-                "bacnet.l1.property_io",
-                "bacnet.l2.cov",
-                "bacnet.l3.segmentation",
-                "bacnet.l3.bbmd_fdr",
-                "bacnet.l3.duplicate_handling",
+            profile_ids: vec![
+                "basic_ip",
+                "property_io",
+                "cov_flow",
+                "segmentation",
+                "bbmd_fdr",
+                "tsm_resilience",
             ],
             breaking_change_scope: version_breaking_change_scope(),
         },
@@ -330,13 +321,13 @@ pub fn protocol_capability_version(protocol_key: &str) -> ProtocolCapabilityVers
             capability_version: "knx-capabilities-v1",
             readiness_matrix_version: PROTOCOL_READINESS_MATRIX_VERSION,
             readiness_contract_version: UNIFIED_READINESS_CONTRACT_VERSION,
-            trial_profile_ids: vec![
-                "knx.l1.discovery",
-                "knx.l1.tunneling_lifecycle",
-                "knx.l1.group_value_io",
-                "knx.l2.dpt_codec",
-                "knx.l2.sequence_validation",
-                "knx.l2.heartbeat_connection_state",
+            profile_ids: vec![
+                "basic_discovery",
+                "tunnel_lifecycle",
+                "group_io",
+                "dpt_matrix",
+                "tunnel_resilience",
+                "heartbeat_timeout",
             ],
             breaking_change_scope: version_breaking_change_scope(),
         },
@@ -344,7 +335,7 @@ pub fn protocol_capability_version(protocol_key: &str) -> ProtocolCapabilityVers
             capability_version: "unknown-capabilities-v1",
             readiness_matrix_version: PROTOCOL_READINESS_MATRIX_VERSION,
             readiness_contract_version: UNIFIED_READINESS_CONTRACT_VERSION,
-            trial_profile_ids: Vec::new(),
+            profile_ids: Vec::new(),
             breaking_change_scope: version_breaking_change_scope(),
         },
     }

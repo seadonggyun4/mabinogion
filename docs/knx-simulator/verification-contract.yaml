@@ -360,7 +360,7 @@ interop_targets:
       - secure_future
 
 unified_readiness:
-  contract_id: unified-readiness-contract-v1
+  contract_id: unified-readiness-contract-v2
   protocol: knx
   baseline: docs/knx-simulator/verification-baseline.md
   matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
@@ -370,8 +370,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: knx.l1.discovery
-      trial_level: 1
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -389,8 +387,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: knx.l1.tunneling_lifecycle
-      trial_level: 1
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -408,8 +404,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: knx.l1.group_value_io
-      trial_level: 1
       required_evidence:
         - protocol_exchange
         - report_field
@@ -426,8 +420,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: knx.l2.dpt_codec
-      trial_level: 2
       required_evidence:
         - protocol_exchange
         - report_field
@@ -444,8 +436,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: knx.l2.sequence_validation
-      trial_level: 2
       required_evidence:
         - protocol_exchange
         - log
@@ -463,8 +453,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: knx.l2.heartbeat_connection_state
-      trial_level: 2
       required_evidence:
         - runtime_snapshot
         - log

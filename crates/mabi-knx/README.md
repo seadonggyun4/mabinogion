@@ -11,7 +11,7 @@ KNXnet/IP runtime driver for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-knx` provides KNXnet/IP protocol execution for local simulator use and for
-Mabinogion trials that need stable group value and tunnel lifecycle behavior.
+resilience scenarios that need stable group value and tunnel lifecycle behavior.
 
 ## Versioning / contracts
 
@@ -26,5 +26,5 @@ reported through `mabi --format json version` and documented in
 
 ## Not owned here
 
-`mabi-knx` does not define trial suites, score trial results, publish proof
+`mabi-knx` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

@@ -3,8 +3,7 @@
 This document freezes the PHASE 1 runtime contract for `mabinogion`.
 
 `mabinogion` owns runtime lifecycle, protocol/session execution, structured
-runtime errors, and service snapshot metadata export. It does not own trial
-definitions, scoring, certification issuance, or public proof publication.
+runtime errors, and service snapshot metadata export. It does not own scoring, certification issuance, or public proof publication.
 
 The machine-readable source is `runtime-contract.yaml`.
 
@@ -83,7 +82,7 @@ and compact machine output preserve those keys.
 runner and health checks. `RuntimeSessionSnapshot` wraps normalized
 `ServiceSnapshot` values into a session-level envelope.
 
-Both include `runtime-contract-v1` so external consumer and Trials can reject incompatible
+Both include `runtime-contract-v1` so external consumers can reject incompatible
 future contracts deliberately.
 
 ## Breaking Change Policy

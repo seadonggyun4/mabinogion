@@ -1,15 +1,12 @@
 # Mabinogion Documentation
 
-Mabinogion is a protocol resilience engine for Mabinogion trials and local
-industrial protocol sessions. These docs are organized around the product
-family boundary: `mabinogion` executes protocol sessions and exports evidence;
-`mabinogion-trials` owns trial definitions, scoring, and report projection.
+Mabinogion is a protocol resilience engine for local industrial protocol
+sessions. It executes protocol sessions and exports machine-readable evidence.
 Any external orchestration, presentation, publication, or certification
 decision remains outside this repository and requires an explicit integration.
 
 Mabinogion does not replace official certification programs. It provides local
-execution evidence and proof/report inputs that other parts of the product
-family can evaluate.
+execution evidence that external consumers can evaluate.
 
 ## Project Policy
 
@@ -17,13 +14,13 @@ family can evaluate.
   requiring the canonical engine and future releases to remain public
   open-source.
 
-## Product-Family Map
+## Documentation Map
 
 | Area | Purpose |
 | --- | --- |
 | [baseline](./baseline/README.md) | Current implementation baseline and ownership boundary. |
 | [runtime](./runtime/runtime-contract.md) | Shared runtime lifecycle, error, readiness, and snapshot contracts. |
-| [protocol readiness](./protocol-readiness/README.md) | Protocol capability/profile/lane mapping for Mabinogion trials. |
+| [protocol readiness](./protocol-readiness/README.md) | Protocol capability/profile/lane mapping for local runners. |
 | [cli](./cli/README.md) | `mabi` local runner and operator-facing interface. |
 | [evidence](./evidence/README.md) | Run evidence and artifact metadata used as proof report inputs. |
 | [release](./release/release-checklist.md) | Release/version metadata and compatibility discipline. |

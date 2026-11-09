@@ -1,8 +1,7 @@
 # Release Checklist
 
-PHASE 5 release discipline keeps the installed `mabi` binary usable by
-mabinogion-trials and external-runner without moving trial decisions into
-this repository.
+Release discipline keeps the installed `mabi` binary usable by local and
+external runners.
 
 Before a release candidate is accepted:
 
@@ -10,7 +9,7 @@ Before a release candidate is accepted:
   accessible and the release carries an OSI-approved license, as required by
   the [Open-Source Continuity Policy](../open-source-policy.md).
 - `mabi --format json version` reports the workspace engine version,
-  `version-metadata-contract-v1`, protocol capability versions, and all
+  `version-metadata-contract-v2`, protocol capability versions, and all
   runner-facing contract versions.
 - `docs/release/compatibility-matrix.yaml` has the same engine version as the
   workspace root `Cargo.toml`.
@@ -19,7 +18,7 @@ Before a release candidate is accepted:
 - The changelog classifies breaking changes against CLI output, config,
   runtime contract, readiness contract, run evidence schema, and version
   metadata contract surfaces.
-- external consumer and Trials own allow/deny admission for engine and trial-suite pairs.
+- External consumers own runner admission decisions.
   Mabinogion only exports the metadata required for that decision.
 
 Deploy-blocking operational checks should prove that the release artifact can

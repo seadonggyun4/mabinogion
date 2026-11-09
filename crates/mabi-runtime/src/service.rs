@@ -18,7 +18,7 @@ use crate::device::DeviceRegistry;
 /// Runtime-level result type.
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
-/// Stable runtime contract version consumed by Trials and external consumers.
+/// Stable runtime contract version consumed by external consumers.
 pub const RUNTIME_CONTRACT_VERSION: &str = "runtime-contract-v1";
 
 /// Stable service snapshot metadata contract version.

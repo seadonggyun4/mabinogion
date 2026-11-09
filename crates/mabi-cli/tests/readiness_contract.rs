@@ -45,8 +45,6 @@ struct MatrixProtocol {
 struct MatrixProfile {
     capability_id: String,
     profile_id: String,
-    trial_profile_id: String,
-    trial_level: u8,
     lane: String,
     coverage_status: String,
     optional_interop_policy: String,
@@ -94,8 +92,6 @@ struct ReadinessProfile {
     lane: String,
     coverage_status: String,
     optional_interop_policy: String,
-    trial_profile_id: String,
-    trial_level: u8,
     required_evidence: Vec<String>,
     engine_requirement: String,
     forge_display_label: String,
@@ -130,28 +126,6 @@ fn assert_existing_refs(root: &Path, refs: &[String], context: &str) {
     }
 }
 
-fn assert_trial_profile_id(protocol: &str, profile: &ReadinessProfile) {
-    let parts = profile.trial_profile_id.split('.').collect::<Vec<_>>();
-    assert_eq!(
-        parts.len(),
-        3,
-        "{} trial_profile_id should use protocol.lN.capability format",
-        profile.profile_id
-    );
-    assert_eq!(parts[0], protocol);
-    assert_eq!(parts[1], format!("l{}", profile.trial_level));
-    assert!(
-        (1..=5).contains(&profile.trial_level),
-        "{} trial_level should be in the public MVP level range",
-        profile.profile_id
-    );
-    assert!(
-        !parts[2].trim().is_empty(),
-        "{} trial_profile_id capability suffix must not be empty",
-        profile.profile_id
-    );
-}
-
 #[test]
 fn unified_readiness_contract_declares_required_fields_and_protocols() {
     let root = repo_root();
@@ -161,7 +135,7 @@ fn unified_readiness_contract_declares_required_fields_and_protocols() {
     );
 
     assert_eq!(contract.schema_version, 1);
-    assert_eq!(contract.contract_id, "unified-readiness-contract-v1");
+    assert_eq!(contract.contract_id, "unified-readiness-contract-v2");
 
     for field in [
         "capability_id",
@@ -169,8 +143,6 @@ fn unified_readiness_contract_declares_required_fields_and_protocols() {
         "lane",
         "coverage_status",
         "optional_interop_policy",
-        "trial_profile_id",
-        "trial_level",
         "required_evidence",
         "engine_requirement",
         "forge_display_label",
@@ -366,7 +338,6 @@ fn protocol_contracts_follow_unified_readiness_shape() {
                 profile.profile_id,
                 profile.optional_interop_policy
             );
-            assert_trial_profile_id(&protocol_ref.id, profile);
             assert!(
                 !profile.required_evidence.is_empty(),
                 "{} profile {} must require evidence",
@@ -381,7 +352,7 @@ fn protocol_contracts_follow_unified_readiness_shape() {
             );
             assert!(
                 !profile.forge_display_label.trim().is_empty(),
-                "{} profile {} must have a legacy Forge display label retained until contract v2",
+                "{} profile {} must have a legacy Forge display label for external consumers",
                 protocol_ref.id,
                 profile.profile_id
             );
@@ -449,11 +420,6 @@ fn readiness_matrix_matches_protocol_contract_profiles() {
                     )
                 });
             assert_eq!(matrix_profile.capability_id, protocol_profile.capability_id);
-            assert_eq!(
-                matrix_profile.trial_profile_id,
-                protocol_profile.trial_profile_id
-            );
-            assert_eq!(matrix_profile.trial_level, protocol_profile.trial_level);
             assert_eq!(matrix_profile.lane, protocol_profile.lane);
             assert_eq!(
                 matrix_profile.coverage_status,

@@ -71,11 +71,11 @@ const LOGO: &str = "\x1b[38;5;236m\
 #[command(
     name = "mabi",
     version,
-    about = "Protocol resilience engine for Mabinogion trials",
-    long_about = "Mabinogion is a protocol resilience engine for Mabinogion trials. It runs local \
+    about = "Protocol resilience engine for industrial protocol sessions",
+    long_about = "Mabinogion is a protocol resilience engine for industrial protocol sessions. It runs local \
                   Modbus, OPC UA, BACnet/IP, and KNXnet/IP protocol sessions through a shared \
                   runtime. The installed CLI also exposes stable doctor, inspect, validate, \
-                  version, and evidence-oriented contracts that Trials and external consumers can use as \
+                  version, and evidence-oriented contracts that external consumers can use as \
                   runner surfaces.",
     before_help = LOGO
 )]
@@ -183,7 +183,7 @@ enum Commands {
     /// Verify the installed CLI and built-in protocol runtimes
     Doctor(DoctorArgs),
 
-    /// Show engine, protocol, contract, and trial compatibility metadata
+    /// Show engine, protocol, contract, and runner compatibility metadata
     Version,
 }
 
@@ -2458,7 +2458,7 @@ async fn inspect_protocols(ctx: &mut CliContext) -> CliResult<CommandOutput> {
         let payload = json!({
             "protocols": catalog,
             "contract_versions": report.contract_versions,
-            "trial_compatible_metadata": report.trial_compatible_metadata,
+            "runner_metadata": report.runner_metadata,
         });
         write_success(ctx.output(), "inspect protocols", &payload)?;
         return Ok(CommandOutput::quiet_success());

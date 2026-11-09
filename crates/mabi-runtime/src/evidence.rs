@@ -1,17 +1,16 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 
 use crate::service::{RUNTIME_CONTRACT_VERSION, SNAPSHOT_METADATA_VERSION};
 use crate::session::RuntimeSessionSnapshot;
 
-/// Stable run evidence schema version consumed by Trials and external consumers.
-pub const RUN_EVIDENCE_SCHEMA_VERSION: &str = "run-evidence-schema-v1";
+/// Stable run evidence schema version consumed by external consumers.
+pub const RUN_EVIDENCE_SCHEMA_VERSION: &str = "run-evidence-schema-v2";
 
-/// Stable trial artifact contract version consumed by Trials and external consumers.
-pub const TRIAL_ARTIFACT_CONTRACT_VERSION: &str = "trial-artifact-contract-v1";
+/// Stable replay artifact contract version consumed by external consumers.
+pub const REPLAY_ARTIFACT_CONTRACT_VERSION: &str = "replay-artifact-contract-v1";
 
-/// Protocol profile identity carried through from Unified Readiness and Trials.
+/// Protocol profile identity carried through from Unified Readiness.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProtocolProfileEvidence {
     pub protocol: String,
@@ -47,37 +46,6 @@ impl ProtocolProfileEvidence {
 
     pub fn with_coverage_status(mut self, coverage_status: impl Into<String>) -> Self {
         self.coverage_status = Some(coverage_status.into());
-        self
-    }
-}
-
-/// Trial-owned pass criteria carried through without scoring it in mabinogion.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PassCriteriaEvidence {
-    pub owner: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub criteria_id: Option<String>,
-    pub summary: String,
-    pub machine_conditions: Vec<JsonValue>,
-}
-
-impl PassCriteriaEvidence {
-    pub fn new(summary: impl Into<String>) -> Self {
-        Self {
-            owner: "mabinogion-trials".to_string(),
-            criteria_id: None,
-            summary: summary.into(),
-            machine_conditions: Vec::new(),
-        }
-    }
-
-    pub fn with_criteria_id(mut self, criteria_id: impl Into<String>) -> Self {
-        self.criteria_id = Some(criteria_id.into());
-        self
-    }
-
-    pub fn with_machine_condition(mut self, condition: JsonValue) -> Self {
-        self.machine_conditions.push(condition);
         self
     }
 }
@@ -266,11 +234,9 @@ impl Default for PublicPrivateBoundary {
                 "run_id".to_string(),
                 "engine_version".to_string(),
                 "protocol_profile".to_string(),
-                "trial_suite_version".to_string(),
                 "started_at".to_string(),
                 "ended_at".to_string(),
                 "feature_flags".to_string(),
-                "pass_criteria".to_string(),
                 "failure_replay_artifacts.public_summary".to_string(),
                 "metrics".to_string(),
             ],
@@ -285,21 +251,19 @@ impl Default for PublicPrivateBoundary {
     }
 }
 
-/// Full run evidence exported by mabinogion for Trials and external consumers consumers.
+/// Full run evidence exported by mabinogion for external consumers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunEvidence {
     pub run_evidence_schema_version: String,
-    pub trial_artifact_contract_version: String,
+    pub replay_artifact_contract_version: String,
     pub runtime_contract_version: String,
     pub snapshot_metadata_version: String,
     pub run_id: String,
     pub engine_version: String,
     pub protocol_profile: ProtocolProfileEvidence,
-    pub trial_suite_version: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub feature_flags: Vec<String>,
-    pub pass_criteria: PassCriteriaEvidence,
     pub failure_replay_artifacts: Vec<FailureReplayArtifact>,
     pub public_private_boundary: PublicPrivateBoundary,
     pub runtime_snapshot: RuntimeSessionSnapshot,
@@ -315,11 +279,9 @@ impl RunEvidence {
             run_id: self.run_id.clone(),
             engine_version: self.engine_version.clone(),
             protocol_profile: self.protocol_profile.clone(),
-            trial_suite_version: self.trial_suite_version.clone(),
             started_at: self.started_at,
             ended_at: self.ended_at,
             feature_flags: self.feature_flags.clone(),
-            pass_criteria: self.pass_criteria.clone(),
             failure_replay_artifacts: self
                 .failure_replay_artifacts
                 .iter()
@@ -338,18 +300,16 @@ pub struct PublicRunEvidenceSummary {
     pub run_id: String,
     pub engine_version: String,
     pub protocol_profile: ProtocolProfileEvidence,
-    pub trial_suite_version: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub feature_flags: Vec<String>,
-    pub pass_criteria: PassCriteriaEvidence,
     pub failure_replay_artifacts: Vec<PublicFailureReplayArtifact>,
     pub public_private_boundary: PublicPrivateBoundary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<RunEvidenceMetrics>,
 }
 
-/// Builder used by Trials/external-consumer runners to assemble evidence from runtime output.
+/// Builder used by local runners to assemble evidence from runtime output.
 #[derive(Debug, Clone)]
 pub struct RunEvidenceBuilder {
     evidence: RunEvidence,
@@ -358,26 +318,22 @@ pub struct RunEvidenceBuilder {
 impl RunEvidenceBuilder {
     pub fn new(
         run_id: impl Into<String>,
-        trial_suite_version: impl Into<String>,
         protocol_profile: ProtocolProfileEvidence,
-        pass_criteria: PassCriteriaEvidence,
         runtime_snapshot: RuntimeSessionSnapshot,
     ) -> Self {
         let now = Utc::now();
         Self {
             evidence: RunEvidence {
                 run_evidence_schema_version: RUN_EVIDENCE_SCHEMA_VERSION.to_string(),
-                trial_artifact_contract_version: TRIAL_ARTIFACT_CONTRACT_VERSION.to_string(),
+                replay_artifact_contract_version: REPLAY_ARTIFACT_CONTRACT_VERSION.to_string(),
                 runtime_contract_version: RUNTIME_CONTRACT_VERSION.to_string(),
                 snapshot_metadata_version: SNAPSHOT_METADATA_VERSION.to_string(),
                 run_id: run_id.into(),
                 engine_version: mabi_core::RELEASE_VERSION.to_string(),
                 protocol_profile,
-                trial_suite_version: trial_suite_version.into(),
                 started_at: now,
                 ended_at: now,
                 feature_flags: Vec::new(),
-                pass_criteria,
                 failure_replay_artifacts: Vec::new(),
                 public_private_boundary: PublicPrivateBoundary::default(),
                 runtime_snapshot,
@@ -433,12 +389,12 @@ impl RunEvidenceBuilder {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{json, Value as JsonValue};
+    use serde_json::Value as JsonValue;
 
     use crate::evidence::{
-        ArtifactVisibility, FailureReplayArtifact, PassCriteriaEvidence, ProtocolProfileEvidence,
-        PublicPrivateBoundary, RecoveryEvent, ResourceUsageSummary, RunEvidenceBuilder,
-        RunEvidenceMetrics, RUN_EVIDENCE_SCHEMA_VERSION, TRIAL_ARTIFACT_CONTRACT_VERSION,
+        ArtifactVisibility, FailureReplayArtifact, ProtocolProfileEvidence, PublicPrivateBoundary,
+        RecoveryEvent, ResourceUsageSummary, RunEvidenceBuilder, RunEvidenceMetrics,
+        REPLAY_ARTIFACT_CONTRACT_VERSION, RUN_EVIDENCE_SCHEMA_VERSION,
     };
     use crate::service::{ServiceSnapshot, ServiceState, RUNTIME_CONTRACT_VERSION};
     use crate::session::RuntimeSessionSnapshot;
@@ -454,13 +410,9 @@ mod tests {
     fn evidence() -> crate::evidence::RunEvidence {
         RunEvidenceBuilder::new(
             "run-001",
-            "trials-2026.05",
-            ProtocolProfileEvidence::new("modbus", "modbus.l1.function_code")
-                .with_capability_id("modbus.function_code")
+            ProtocolProfileEvidence::new("modbus", "function_code_core")
+                .with_capability_id("function_code")
                 .with_lane("deterministic"),
-            PassCriteriaEvidence::new("All required Modbus function code checks pass")
-                .with_criteria_id("modbus-l1-pass")
-                .with_machine_condition(json!({"kind": "all_required_checks_pass"})),
             snapshot(),
         )
         .engine_version("1.2.3")
@@ -509,11 +461,9 @@ mod tests {
             "run_id",
             "engine_version",
             "protocol_profile",
-            "trial_suite_version",
             "started_at",
             "ended_at",
             "feature_flags",
-            "pass_criteria",
             "failure_replay_artifacts",
             "public_private_boundary",
         ] {
@@ -524,8 +474,8 @@ mod tests {
             RUN_EVIDENCE_SCHEMA_VERSION
         );
         assert_eq!(
-            value["trial_artifact_contract_version"],
-            TRIAL_ARTIFACT_CONTRACT_VERSION
+            value["replay_artifact_contract_version"],
+            REPLAY_ARTIFACT_CONTRACT_VERSION
         );
         assert_eq!(value["runtime_contract_version"], RUNTIME_CONTRACT_VERSION);
         assert!(value.get("scoring_result").is_none());
@@ -536,7 +486,6 @@ mod tests {
         let evidence = evidence();
 
         assert_eq!(evidence.run_id, "run-001");
-        assert_eq!(evidence.trial_suite_version, "trials-2026.05");
         assert_eq!(evidence.protocol_profile.protocol, "modbus");
         assert_eq!(evidence.runtime_snapshot.services.len(), 1);
         assert!(evidence.runtime_snapshot.services[0]

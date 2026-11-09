@@ -12,8 +12,7 @@ resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-scenario` helps local users and runner integrations drive protocol
-sessions over time. It supports Mabinogion trials execution mechanics, but it
-does not own the trial corpus or scoring rules.
+sessions over time with declarative execution mechanics and validation.
 
 ## Versioning / contracts
 
@@ -27,6 +26,6 @@ validation output is exposed through `mabi-cli` and the Local Runner Contract.
 
 ## Not owned here
 
-`mabi-scenario` does not define official trial suites, score trial results,
+`mabi-scenario` does not score results,
 publish proof reports, issue certification, or replace official certification
 programs.

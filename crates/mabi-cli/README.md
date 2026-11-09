@@ -1,19 +1,18 @@
 # mabi-cli
 
-Installed `mabi` command for local operators, external consumer runners, and Mabinogion
-trials integration.
+Installed `mabi` command for local operators and external runners.
 
 ## What this crate owns
 
 - The installed CLI surface: `doctor`, `serve`, `inspect`, `validate`, `scenario`, `chaos`, `control`, `generate`, and `version`.
-- Machine-readable runner envelopes for external consumer and Trials.
-- Version metadata that reports engine release, protocol capabilities, contracts, and trial compatibility hints.
+- Machine-readable runner envelopes for external consumers.
+- Version metadata that reports engine release, protocol capabilities, contracts, and runner integration metadata.
 
 ## How it fits in Mabinogion
 
 `mabi-cli` is the user-facing and runner-facing entrypoint for the protocol
 resilience engine. Local users can start protocol simulators directly, while
-external consumer and Trials can parse JSON/YAML/compact output from stable runner-facing
+external consumers can parse JSON/YAML/compact output from stable runner-facing
 commands.
 
 Legacy compatibility note: current implementation docs and tests may still
@@ -35,5 +34,5 @@ evidence, artifact, and version metadata contract versions.
 
 ## Not owned here
 
-`mabi-cli` does not define trial suites, score trial results, publish proof
+`mabi-cli` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

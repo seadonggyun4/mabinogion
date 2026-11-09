@@ -44,19 +44,19 @@ fn version_command_reports_runner_contract_metadata_as_json() {
     );
     assert_eq!(
         envelope["data"]["contract_versions"]["unified_readiness_contract"],
-        "unified-readiness-contract-v1"
+        "unified-readiness-contract-v2"
     );
     assert_eq!(
         envelope["data"]["contract_versions"]["run_evidence_schema"],
-        "run-evidence-schema-v1"
+        "run-evidence-schema-v2"
     );
     assert_eq!(
-        envelope["data"]["contract_versions"]["trial_artifact_contract"],
-        "trial-artifact-contract-v1"
+        envelope["data"]["contract_versions"]["replay_artifact_contract"],
+        "replay-artifact-contract-v1"
     );
     assert_eq!(
         envelope["data"]["contract_versions"]["version_metadata_contract"],
-        "version-metadata-contract-v1"
+        "version-metadata-contract-v2"
     );
     assert_eq!(
         envelope["data"]["release_metadata"]["engine_version"],
@@ -68,19 +68,11 @@ fn version_command_reports_runner_contract_metadata_as_json() {
     );
     assert_eq!(
         envelope["data"]["release_metadata"]["compatibility_matrix_version"],
-        "compatibility-matrix-v1"
+        "compatibility-matrix-v2"
     );
     assert_eq!(
-        envelope["data"]["trial_compatible_metadata"]["trial_definition_owner"],
-        "mabinogion-trials"
-    );
-    assert_eq!(
-        envelope["data"]["trial_compatible_metadata"]["compatible_trial_suite_range"],
-        ">=0.1.0 <1.0.0"
-    );
-    assert_eq!(
-        envelope["data"]["trial_compatible_metadata"]["compatibility_decision_owner"],
-        "mabinogion-trials-or-external-consumer"
+        envelope["data"]["runner_metadata"]["compatibility_decision_owner"],
+        "external-consumer"
     );
     assert_eq!(
         envelope["data"]["registered_protocols"]
@@ -103,18 +95,18 @@ fn version_command_reports_runner_contract_metadata_as_json() {
         );
         assert_eq!(
             protocol["readiness_matrix_version"],
-            "protocol-readiness-matrix-v1"
+            "protocol-readiness-matrix-v2"
         );
         assert_eq!(
             protocol["readiness_contract_version"],
-            "unified-readiness-contract-v1"
+            "unified-readiness-contract-v2"
         );
         assert!(
-            !protocol["trial_profile_ids"]
+            !protocol["profile_ids"]
                 .as_array()
-                .expect("trial profile ids should be an array")
+                .expect("profile ids should be an array")
                 .is_empty(),
-            "protocol should expose trial profile ids"
+            "protocol should expose profile ids"
         );
     }
 }

@@ -1,20 +1,20 @@
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use mabi_runtime::{
-    PassCriteriaEvidence, ProtocolProfileEvidence, RunEvidenceBuilder, RuntimeSessionSnapshot,
-    ServiceSnapshot, RUN_EVIDENCE_SCHEMA_VERSION, TRIAL_ARTIFACT_CONTRACT_VERSION,
+    ProtocolProfileEvidence, RunEvidenceBuilder, RuntimeSessionSnapshot, ServiceSnapshot,
+    REPLAY_ARTIFACT_CONTRACT_VERSION, RUN_EVIDENCE_SCHEMA_VERSION,
 };
 
 #[derive(Debug, Deserialize)]
 struct RunEvidenceContract {
     schema_version: u16,
     contract_version: String,
-    trial_artifact_contract_version: String,
+    replay_artifact_contract_version: String,
     required_fields: Vec<String>,
     version_fields: Vec<String>,
     embedded_runtime_fields: Vec<String>,
@@ -79,18 +79,16 @@ fn run_evidence_contract_yaml_declares_required_fields() {
     assert_eq!(contract.schema_version, 1);
     assert_eq!(contract.contract_version, RUN_EVIDENCE_SCHEMA_VERSION);
     assert_eq!(
-        contract.trial_artifact_contract_version,
-        TRIAL_ARTIFACT_CONTRACT_VERSION
+        contract.replay_artifact_contract_version,
+        REPLAY_ARTIFACT_CONTRACT_VERSION
     );
     for field in [
         "run_id",
         "engine_version",
         "protocol_profile",
-        "trial_suite_version",
         "started_at",
         "ended_at",
         "feature_flags",
-        "pass_criteria",
         "failure_replay_artifacts",
         "public_private_boundary",
     ] {
@@ -101,7 +99,7 @@ fn run_evidence_contract_yaml_declares_required_fields() {
     }
     for field in [
         "run_evidence_schema_version",
-        "trial_artifact_contract_version",
+        "replay_artifact_contract_version",
         "runtime_contract_version",
         "snapshot_metadata_version",
     ] {
@@ -131,13 +129,13 @@ fn run_evidence_contract_yaml_declares_required_fields() {
 }
 
 #[test]
-fn trial_artifact_contract_yaml_declares_metadata_and_visibility() {
+fn replay_artifact_contract_yaml_declares_metadata_and_visibility() {
     let root = repo_root();
     let contract: ArtifactContract =
-        read_yaml(root.join("docs/evidence/trial-artifact-contract.yaml"));
+        read_yaml(root.join("docs/evidence/replay-artifact-contract.yaml"));
 
     assert_eq!(contract.schema_version, 1);
-    assert_eq!(contract.contract_version, TRIAL_ARTIFACT_CONTRACT_VERSION);
+    assert_eq!(contract.contract_version, REPLAY_ARTIFACT_CONTRACT_VERSION);
     for field in ["artifact_id", "kind", "visibility"] {
         assert!(
             contract
@@ -196,8 +194,8 @@ fn sample_run_evidence_json_contains_contract_required_fields() {
         RUN_EVIDENCE_SCHEMA_VERSION
     );
     assert_eq!(
-        sample["trial_artifact_contract_version"],
-        TRIAL_ARTIFACT_CONTRACT_VERSION
+        sample["replay_artifact_contract_version"],
+        REPLAY_ARTIFACT_CONTRACT_VERSION
     );
     assert_eq!(
         sample["runtime_snapshot"]["services"][0]["metadata"]["_runtime"]["contract_version"],
@@ -212,10 +210,7 @@ fn rust_run_evidence_serialization_matches_contract_required_fields() {
     let snapshot = RuntimeSessionSnapshot::new(vec![service]);
     let evidence = RunEvidenceBuilder::new(
         "run-from-rust",
-        "trials-2026.05",
-        ProtocolProfileEvidence::new("modbus", "modbus.l1.function_code"),
-        PassCriteriaEvidence::new("all required checks pass")
-            .with_machine_condition(json!({"kind": "all_required_checks_pass"})),
+        ProtocolProfileEvidence::new("modbus", "function_code_core"),
         snapshot,
     )
     .add_feature_flag("opcua-https-disabled")
@@ -242,7 +237,7 @@ fn version_reports_run_evidence_contract_versions() {
         RUN_EVIDENCE_SCHEMA_VERSION
     );
     assert_eq!(
-        envelope["data"]["contract_versions"]["trial_artifact_contract"],
-        TRIAL_ARTIFACT_CONTRACT_VERSION
+        envelope["data"]["contract_versions"]["replay_artifact_contract"],
+        REPLAY_ARTIFACT_CONTRACT_VERSION
     );
 }

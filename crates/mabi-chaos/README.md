@@ -11,8 +11,8 @@ Fault orchestration support for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-chaos` lets local users and future runner integrations exercise protocol
-behavior under controlled fault conditions. It complements Mabinogion trials by
-providing execution mechanics, not scoring policy.
+behavior under controlled fault conditions and capture the resulting runtime
+evidence.
 
 ## Versioning / contracts
 
@@ -26,5 +26,5 @@ is mediated through `mabi-cli` and runtime evidence export.
 
 ## Not owned here
 
-`mabi-chaos` does not define trial suites, score trial results, publish proof
+`mabi-chaos` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

@@ -67,7 +67,7 @@ profiles:
     lane: deterministic
     capabilities:
       - session_lifecycle
-    notes: Covers the core session lifecycle for Trials Level 1.
+    notes: Covers the core session lifecycle for deterministic local verification.
   - id: secure_channel_renewal
     lane: deterministic
     capabilities:
@@ -121,7 +121,7 @@ peers:
       - secure_channel_renewal
 
 unified_readiness:
-  contract_id: unified-readiness-contract-v1
+  contract_id: unified-readiness-contract-v2
   protocol: opcua
   baseline: docs/opcua-simulator/verification-baseline.md
   matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
@@ -131,8 +131,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: opcua.l1.session_lifecycle
-      trial_level: 1
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -150,8 +148,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: opcua.l2.secure_channel_renewal
-      trial_level: 2
       required_evidence:
         - protocol_exchange
         - log
@@ -169,8 +165,6 @@ unified_readiness:
       lane: ignored_interop
       coverage_status: partial
       optional_interop_policy: nightly
-      trial_profile_id: opcua.l3.reconnect
-      trial_level: 3
       required_evidence:
         - log
         - metric
@@ -188,8 +182,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: opcua.l2.subscription
-      trial_level: 2
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -207,8 +199,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: partial
       optional_interop_policy: nightly
-      trial_profile_id: opcua.l3.timeout
-      trial_level: 3
       required_evidence:
         - log
         - metric
@@ -226,8 +216,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: partial
       optional_interop_policy: none
-      trial_profile_id: opcua.l3.malformed_service_response
-      trial_level: 3
       required_evidence:
         - protocol_exchange
         - replay
@@ -245,8 +233,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: none
-      trial_profile_id: opcua.l2.operation_limit
-      trial_level: 2
       required_evidence:
         - runtime_snapshot
         - report_field

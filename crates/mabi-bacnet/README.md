@@ -11,7 +11,7 @@ BACnet/IP runtime driver for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-bacnet` provides BACnet/IP protocol execution for local simulator use and
-for Mabinogion trials that need deterministic readiness lanes and optional
+for resilience scenarios that need deterministic readiness lanes and optional
 interop verification.
 
 ## Versioning / contracts
@@ -27,5 +27,5 @@ reported through `mabi --format json version` and documented in
 
 ## Not owned here
 
-`mabi-bacnet` does not define trial suites, score trial results, publish proof
+`mabi-bacnet` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

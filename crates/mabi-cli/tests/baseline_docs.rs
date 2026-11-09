@@ -212,15 +212,8 @@ fn runtime_contract_refs_existing_symbols() {
             "baseline lifecycle should include {required_step}"
         );
     }
-    assert!(
-        baseline
-            .runtime_contract
-            .next_phase_gaps
-            .iter()
-            .any(|gap| gap.contains("trial run")),
-        "runtime baseline should point remaining execution work at future trial run"
-    );
 
+    assert!(baseline.runtime_contract.next_phase_gaps.is_empty());
     for source_ref in &baseline.runtime_contract.source_refs {
         let path = root.join(&source_ref.path);
         let contents = fs::read_to_string(&path)
@@ -243,7 +236,7 @@ fn evidence_contract_refs_existing_docs_and_symbols() {
 
     assert_eq!(
         baseline.evidence_contract.contract_status,
-        "run_evidence_schema_v1"
+        "run_evidence_schema_v2"
     );
     for contract_doc in &baseline.evidence_contract.contract_docs {
         assert!(
@@ -290,7 +283,7 @@ fn release_version_contract_refs_existing_docs_and_symbols() {
 
     assert_eq!(
         baseline.release_version_contract.contract_status,
-        "version_metadata_contract_v1"
+        "version_metadata_contract_v2"
     );
     for contract_doc in &baseline.release_version_contract.contract_docs {
         assert!(
@@ -303,7 +296,7 @@ fn release_version_contract_refs_existing_docs_and_symbols() {
             .release_version_contract
             .compatibility_matrix
             .matrix_version,
-        "compatibility-matrix-v1"
+        "compatibility-matrix-v2"
     );
     assert!(
         baseline
@@ -318,7 +311,7 @@ fn release_version_contract_refs_existing_docs_and_symbols() {
             .release_version_contract
             .compatibility_matrix
             .decision_owner,
-        "mabinogion-trials-or-external-consumer"
+        "external-consumer"
     );
     assert!(
         baseline
@@ -333,7 +326,7 @@ fn release_version_contract_refs_existing_docs_and_symbols() {
             .release_version_contract
             .ownership_boundary
             .iter()
-            .any(|entry| entry.contains("allow deny")),
+            .any(|entry| entry.contains("runner admission")),
         "release baseline should exclude compatibility decisions"
     );
 
@@ -362,14 +355,7 @@ fn cli_surface_refs_current_command_variants() {
         baseline.cli_surface.output_contract_status,
         "local_runner_contract_v1"
     );
-    assert!(
-        baseline
-            .cli_surface
-            .next_phase_gaps
-            .iter()
-            .any(|gap| gap.contains("trial run implementation")),
-        "CLI baseline should record future trial run implementation as a gap"
-    );
+    assert!(baseline.cli_surface.next_phase_gaps.is_empty());
     for contract_doc in &baseline.cli_surface.contract_docs {
         assert!(
             root.join(contract_doc).is_file(),
@@ -437,7 +423,7 @@ fn protocol_verification_baseline_tracks_unified_readiness_contracts() {
         baseline
             .protocol_verification
             .unified_readiness_contract_status,
-        "unified_readiness_contract_v1"
+        "unified_readiness_contract_v2"
     );
     let required_unified_fields = [
         "capability_id",
@@ -445,8 +431,6 @@ fn protocol_verification_baseline_tracks_unified_readiness_contracts() {
         "lane",
         "coverage_status",
         "optional_interop_policy",
-        "trial_profile_id",
-        "trial_level",
         "required_evidence",
         "engine_requirement",
         "forge_display_label",
@@ -537,11 +521,7 @@ fn ownership_boundary_keeps_scoring_and_certification_out_of_mabinogion() {
         );
     }
 
-    for excluded in [
-        "trial_definition_authoring",
-        "scoring_policy",
-        "certification_issuance",
-    ] {
+    for excluded in ["scoring_policy", "certification_issuance"] {
         assert!(
             baseline
                 .ownership_boundaries

@@ -12,7 +12,7 @@ struct VersionMetadataContract {
     required_contract_versions: Vec<String>,
     release_metadata_required_fields: Vec<String>,
     registered_protocol_required_fields: Vec<String>,
-    trial_compatible_metadata_required_fields: Vec<String>,
+    runner_metadata_required_fields: Vec<String>,
     compatibility_policy: CompatibilityPolicy,
 }
 
@@ -30,7 +30,6 @@ struct CompatibilityMatrix {
     release_channel: String,
     version_metadata_contract: String,
     readiness_matrix_version: String,
-    compatible_trial_suite_range: String,
     runner_policy_document: String,
     release_policy_document: String,
     changelog_policy_document: String,
@@ -46,7 +45,7 @@ struct ProtocolCapability {
     capability_version: String,
     readiness_matrix_version: String,
     readiness_contract_version: String,
-    trial_profile_ids: Vec<String>,
+    profile_ids: Vec<String>,
     breaking_change_scope: Vec<String>,
 }
 
@@ -70,7 +69,7 @@ struct ReadinessProtocol {
 
 #[derive(Debug, Deserialize)]
 struct ReadinessProfile {
-    trial_profile_id: String,
+    profile_id: String,
 }
 
 fn repo_root() -> PathBuf {
@@ -119,14 +118,14 @@ fn version_metadata_contract_docs_define_required_release_fields() {
     let contract: VersionMetadataContract =
         read_yaml(&root, "docs/release/version-metadata-contract.yaml");
 
-    assert_eq!(contract.contract_version, "version-metadata-contract-v1");
+    assert_eq!(contract.contract_version, "version-metadata-contract-v2");
     for field in [
         "engine_version",
         "rust_version",
         "registered_protocols",
         "contract_versions",
         "feature_flags",
-        "trial_compatible_metadata",
+        "runner_metadata",
         "release_metadata",
     ] {
         assert!(
@@ -159,7 +158,7 @@ fn version_metadata_contract_docs_define_required_release_fields() {
         "capability_version",
         "readiness_matrix_version",
         "readiness_contract_version",
-        "trial_profile_ids",
+        "profile_ids",
         "breaking_change_scope",
     ] {
         assert!(
@@ -170,22 +169,18 @@ fn version_metadata_contract_docs_define_required_release_fields() {
             "registered protocol metadata should require {field}"
         );
     }
-    for field in [
-        "compatible_trial_suite_range",
-        "compatibility_decision_owner",
-        "runner_policy_document",
-    ] {
+    for field in ["compatibility_decision_owner", "runner_policy_document"] {
         assert!(
             contract
-                .trial_compatible_metadata_required_fields
+                .runner_metadata_required_fields
                 .iter()
                 .any(|documented| documented == field),
-            "trial compatibility metadata should require {field}"
+            "runner metadata should require {field}"
         );
     }
     assert_eq!(
         contract.compatibility_policy.decision_owner,
-        "mabinogion-trials-or-external-consumer"
+        "external-consumer"
     );
     assert!(
         contract
@@ -207,7 +202,7 @@ fn compatibility_matrix_matches_workspace_version_and_contract_versions() {
         .parse()
         .expect("Cargo.toml should parse");
 
-    assert_eq!(matrix.matrix_version, "compatibility-matrix-v1");
+    assert_eq!(matrix.matrix_version, "compatibility-matrix-v2");
     assert_eq!(matrix.current_engine_version, mabi_core::RELEASE_VERSION);
     assert_eq!(
         matrix.workspace_rust_version,
@@ -217,11 +212,11 @@ fn compatibility_matrix_matches_workspace_version_and_contract_versions() {
     );
     assert_eq!(
         matrix.version_metadata_contract,
-        "version-metadata-contract-v1"
+        "version-metadata-contract-v2"
     );
     assert_eq!(
         matrix.readiness_matrix_version,
-        "protocol-readiness-matrix-v1"
+        "protocol-readiness-matrix-v2"
     );
     assert_eq!(matrix.release_channel, "source-build");
 
@@ -243,10 +238,7 @@ fn compatibility_matrix_matches_workspace_version_and_contract_versions() {
             "release policy path should exist: {path}"
         );
     }
-    assert_eq!(
-        matrix.compatibility_decision_owner,
-        "mabinogion-trials-or-external-consumer"
-    );
+    assert_eq!(matrix.compatibility_decision_owner, "external-consumer");
     assert!(matrix
         .ownership_boundary
         .mabinogion_owns
@@ -256,7 +248,7 @@ fn compatibility_matrix_matches_workspace_version_and_contract_versions() {
         .ownership_boundary
         .not_owned_by_mabinogion
         .iter()
-        .any(|entry| entry == "trial_suite_allow_deny_decision"));
+        .any(|entry| entry == "runner_admission_decision"));
 }
 
 #[test]
@@ -291,15 +283,11 @@ fn version_output_matches_release_compatibility_matrix() {
         "docs/release/compatibility-matrix.yaml"
     );
     assert_eq!(
-        data["trial_compatible_metadata"]["compatible_trial_suite_range"],
-        matrix.compatible_trial_suite_range.as_str()
-    );
-    assert_eq!(
-        data["trial_compatible_metadata"]["compatibility_decision_owner"],
+        data["runner_metadata"]["compatibility_decision_owner"],
         matrix.compatibility_decision_owner.as_str()
     );
     assert_eq!(
-        data["trial_compatible_metadata"]["runner_policy_document"],
+        data["runner_metadata"]["runner_policy_document"],
         matrix.runner_policy_document.as_str()
     );
 
@@ -337,7 +325,7 @@ fn protocol_capability_metadata_matches_readiness_matrix() {
                 protocol
                     .profiles
                     .iter()
-                    .map(|profile| profile.trial_profile_id.as_str())
+                    .map(|profile| profile.profile_id.as_str())
                     .collect::<HashSet<_>>(),
             )
         })
@@ -367,7 +355,7 @@ fn protocol_capability_metadata_matches_readiness_matrix() {
                     capability.protocol_key
                 )
             });
-        let capability_profiles = string_set(&capability.trial_profile_ids);
+        let capability_profiles = string_set(&capability.profile_ids);
         assert_eq!(
             capability_profiles,
             readiness_ids.clone(),
@@ -376,7 +364,7 @@ fn protocol_capability_metadata_matches_readiness_matrix() {
         );
         assert_eq!(
             capability.readiness_contract_version,
-            "unified-readiness-contract-v1"
+            "unified-readiness-contract-v2"
         );
         assert!(
             capability
@@ -407,15 +395,15 @@ fn protocol_capability_metadata_matches_readiness_matrix() {
             cli["readiness_contract_version"],
             capability.readiness_contract_version.as_str()
         );
-        let cli_profiles = cli["trial_profile_ids"]
+        let cli_profiles = cli["profile_ids"]
             .as_array()
-            .expect("trial_profile_ids should be an array")
+            .expect("profile_ids should be an array")
             .iter()
-            .map(|value| value.as_str().expect("trial_profile_id should be a string"))
+            .map(|value| value.as_str().expect("profile_id should be a string"))
             .collect::<HashSet<_>>();
         assert_eq!(
             cli_profiles,
-            string_set(&capability.trial_profile_ids),
+            string_set(&capability.profile_ids),
             "CLI protocol metadata should match release matrix for {}",
             capability.protocol_key
         );
@@ -423,24 +411,21 @@ fn protocol_capability_metadata_matches_readiness_matrix() {
 }
 
 #[test]
-fn external_consumers_and_trials_remain_compatibility_decision_owners() {
+fn external_consumers_remain_compatibility_decision_owners() {
     let root = repo_root();
     let matrix: CompatibilityMatrix = read_yaml(&root, "docs/release/compatibility-matrix.yaml");
     let envelope = mabi_version_json();
 
+    assert_eq!(matrix.compatibility_decision_owner, "external-consumer");
     assert_eq!(
-        matrix.compatibility_decision_owner,
-        "mabinogion-trials-or-external-consumer"
-    );
-    assert_eq!(
-        envelope["data"]["trial_compatible_metadata"]["compatibility_decision_owner"],
-        "mabinogion-trials-or-external-consumer"
+        envelope["data"]["runner_metadata"]["compatibility_decision_owner"],
+        "external-consumer"
     );
     assert!(matrix
         .ownership_boundary
         .not_owned_by_mabinogion
         .iter()
-        .any(|entry| entry == "trial_suite_allow_deny_decision"));
+        .any(|entry| entry == "runner_admission_decision"));
     assert!(matrix
         .ownership_boundary
         .not_owned_by_mabinogion

@@ -4,7 +4,7 @@ This directory records the PHASE 0 baseline for `mabinogion`.
 
 The goal is not to add simulator behavior. The goal is to make the current
 runtime, CLI, and protocol verification surface explicit before later phases
-freeze external consumer and Trials contracts on top of it.
+freeze external consumer contracts on top of it.
 
 `current-baseline.yaml` is the machine-readable source of truth. This README is
 the human-facing map for maintainers.
@@ -14,9 +14,8 @@ the human-facing map for maintainers.
 `mabinogion` owns protocol/session execution, the shared runtime contract, the
 installed CLI surface, and the primitives needed to export run evidence.
 
-`mabinogion` does not own trial definition authoring, scoring policy, proof
-report publication, or certification issuance. Those belong to the surrounding
-Trials and external consumer repos.
+`mabinogion` does not own scoring policy, proof report publication, or
+certification issuance. Those decisions remain outside this repository.
 
 ## Workspace Responsibility Map
 
@@ -55,37 +54,35 @@ The current lifecycle baseline is:
 PHASE 1 froze this contract rather than recreating it. Runtime errors now expose
 `protocol_error`, `config_error`, `bind_error`, `timeout`, and `internal_error`
 through `RuntimeError::kind()` and `RuntimeError::info()`. Service snapshots
-returned through runtime handles include stable `_runtime` metadata for external consumer and
-Trials consumers.
+returned through runtime handles include stable `_runtime` metadata for external consumers.
 
 ## Run Evidence Baseline
 
-PHASE 4 adds `run-evidence-schema-v1` and `trial-artifact-contract-v1` as the
+PHASE 4 adds `run-evidence-schema-v2` and `replay-artifact-contract-v1` as the
 execution evidence layer on top of `runtime-contract-v1`.
 
 | Artifact | Purpose |
 | --- | --- |
 | `docs/evidence/run-evidence-schema.yaml` | Machine-readable Run Evidence Schema. |
-| `docs/evidence/trial-artifact-contract.yaml` | Failure replay artifact metadata and visibility policy. |
-| `docs/evidence/sample-run-evidence.json` | external-consumer/Trials Proof Report input sample. |
+| `docs/evidence/replay-artifact-contract.yaml` | Failure replay artifact metadata and visibility policy. |
+| `docs/evidence/sample-run-evidence.json` | external-consumer Proof Report input sample. |
 
 `mabinogion` owns evidence serialization and runtime snapshot export. It still
 does not own scoring, public proof publication, or certification issuance.
 
 ## Release Version Baseline
 
-PHASE 5 adds `version-metadata-contract-v1` so external consumer and Trials can evaluate an
+PHASE 5 adds `version-metadata-contract-v2` so external consumers can evaluate an
 installed engine without scraping human output.
 
 | Artifact | Purpose |
 | --- | --- |
 | `docs/release/version-metadata-contract.yaml` | Machine-readable version output contract. |
-| `docs/release/compatibility-matrix.yaml` | Engine, protocol capability, contract, and trial-suite compatibility metadata. |
+| `docs/release/compatibility-matrix.yaml` | Engine, protocol capability, contract, and runner compatibility metadata. |
 | `docs/release/release-checklist.md` | Release-candidate metadata checklist. |
 | `docs/release/changelog-policy.md` | Breaking-change categories for runner compatibility. |
 
-`mabinogion` owns release metadata export. external consumer and Trials own engine/trial
-suite allow or deny decisions.
+`mabinogion` owns release metadata export. External consumers own runner admission decisions.
 
 ## CLI Baseline
 
@@ -107,14 +104,12 @@ and backed by `crates/mabi-cli/src/runtime_registry.rs`.
 PHASE 3 freezes the local runner contract around existing CLI commands in
 `docs/cli/local-runner-contract.yaml` and `docs/cli/local-runner-contract.md`.
 Runner-facing machine output for `doctor`, `inspect`, `validate`, and `version`
-uses `local-runner-contract-v1`. `mabi trial run` is still future work and
-should consume execution specs owned by `mabinogion-trials`; it should not own
-trial definition.
+uses `local-runner-contract-v1`.
 
 ## Protocol Verification Baseline
 
 PHASE 2 normalized all four protocol verification surfaces around
-`unified-readiness-contract-v1`. The shared contract lives in
+`unified-readiness-contract-v2`. The shared contract lives in
 `docs/protocol-readiness/`, while each protocol keeps its own
 `verification-contract.yaml` and `verification-baseline.md`.
 
@@ -132,11 +127,9 @@ Every protocol readiness profile now provides:
 - lane
 - coverage status
 - optional interop policy
-- trial profile id
-- trial level
 - required evidence
 - engine requirement
-- `forge_display_label`, retained as a legacy field until contract v2
+- `forge_display_label`, retained as a legacy field for external consumers
 
 ## Test And Verification Policy
 
@@ -164,7 +157,7 @@ cargo test -p mabi-cli --test readiness_contract
 
 That test parses the Unified Readiness Contract and each protocol contract,
 then verifies required fields, enum values, profile IDs, capability references,
-trial profile IDs, and documented source/test refs.
+and documented source/test refs.
 
 PHASE 3 adds a third drift guard:
 
@@ -173,7 +166,7 @@ cargo test -p mabi-cli --test local_runner_contract
 ```
 
 That test parses the Local Runner Contract and checks the envelope fields, exit
-code categories, runner-facing commands, future `trial run` execution spec, and
+code categories, runner-facing commands, and
 key CLI smoke outputs.
 
 PHASE 4 adds a fourth drift guard:
@@ -207,6 +200,6 @@ the documented protocol readiness profiles.
   together when run evidence fields are added, removed, or renamed.
 - Update `docs/release/compatibility-matrix.yaml`, `docs/release/version-metadata-contract.yaml`,
   and the CLI version metadata together when release, contract, protocol
-  capability, or trial-suite compatibility fields change.
+  capability, or runner metadata fields change.
 - Do not use this baseline to define scoring, certification, or public proof
   publication policy.

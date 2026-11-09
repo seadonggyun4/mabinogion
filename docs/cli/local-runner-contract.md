@@ -1,10 +1,10 @@
 # Local Runner Contract
 
 `local-runner-contract-v1` freezes the installed `mabi` CLI surfaces consumed by
-`mabinogion-trials` and `external-runner`.
+local and external runners.
 
-The contract is about reliable local invocation. It does not define trial
-suites, score results, publish proof reports, or issue certifications.
+The contract is about reliable local invocation. It does not score results,
+publish proof reports, or issue certifications.
 
 ## Machine Output Envelope
 
@@ -43,8 +43,8 @@ Table output remains human-facing and is not part of the parsing contract.
 | `validate opcua-config` | Typed OPC UA config validation report. |
 | `version` | Engine, protocol, feature flag, and contract version metadata. |
 
-`version` reports `run-evidence-schema-v1`, `trial-artifact-contract-v1`, and
-`version-metadata-contract-v1` so external consumer and Trials can reject incompatible
+`version` reports `run-evidence-schema-v2`, `replay-artifact-contract-v1`, and
+`version-metadata-contract-v2` so external consumers can reject incompatible
 engines or evidence exporters before launching a runner.
 
 Validation commands emit an envelope for both success and validation failure.
@@ -64,29 +64,3 @@ Validation failure exits with code `6`.
 
 Existing CLI-specific detailed exit codes may remain, but runner envelopes expose
 one of these categories.
-
-## Future Trial Run
-
-`mabi trial run` is documented here as a future execution contract only. This
-phase does not add the subcommand.
-
-Future `trial run` output must follow `run-evidence-schema-v1` and reference
-artifacts using `trial-artifact-contract-v1`.
-
-Future execution specs must include:
-
-- `execution_spec_version`
-- `run_id`
-- `trial_suite_version`
-- `protocol`
-- `profile_id`
-- `config_path`
-- `session`
-- `readiness_timeout_ms`
-- `artifact_dir`
-- `output_format`
-- `evidence_requirements`
-
-`mabinogion-trials` owns trial definitions and pass criteria. `mabinogion`
-receives an execution spec, runs the protocol/session surface, and exports run
-evidence for later proof/report generation.

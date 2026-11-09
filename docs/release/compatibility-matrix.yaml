@@ -1,39 +1,38 @@
 schema_version: 1
 matrix_id: mabinogion-engine-compatibility
-matrix_version: compatibility-matrix-v1
+matrix_version: compatibility-matrix-v2
 current_engine_version: "1.7.1"
 engine_version_range: ">=1.7.1 <2.0.0"
 workspace_rust_version: "1.75"
 release_channel: source-build
-version_metadata_contract: version-metadata-contract-v1
-readiness_matrix_version: protocol-readiness-matrix-v1
-compatible_trial_suite_range: ">=0.1.0 <1.0.0"
+version_metadata_contract: version-metadata-contract-v2
+readiness_matrix_version: protocol-readiness-matrix-v2
 runner_policy_document: docs/release/release-checklist.md
 release_policy_document: docs/release/release-checklist.md
 changelog_policy_document: docs/release/changelog-policy.md
-compatibility_decision_owner: mabinogion-trials-or-external-consumer
+compatibility_decision_owner: external-consumer
 supported_contract_versions:
   - local-runner-contract-v1
   - cli-output-envelope-v1
   - runtime-contract-v1
   - snapshot-metadata-v1
-  - unified-readiness-contract-v1
-  - run-evidence-schema-v1
-  - trial-artifact-contract-v1
-  - version-metadata-contract-v1
+  - unified-readiness-contract-v2
+  - run-evidence-schema-v2
+  - replay-artifact-contract-v1
+  - version-metadata-contract-v2
 protocol_capabilities:
   - protocol_key: modbus
     capability_version: modbus-capabilities-v1
-    readiness_matrix_version: protocol-readiness-matrix-v1
-    readiness_contract_version: unified-readiness-contract-v1
-    trial_profile_ids:
-      - modbus.l1.function_code
-      - modbus.l1.register_map
-      - modbus.l1.exception_response
-      - modbus.l2.multi_unit
-      - modbus.l2.timeout
-      - modbus.l2.partial_response
-      - modbus.l2.slow_device
+    readiness_matrix_version: protocol-readiness-matrix-v2
+    readiness_contract_version: unified-readiness-contract-v2
+    profile_ids:
+      - function_code_core
+      - register_map
+      - exception_response
+      - multi_unit
+      - timeout
+      - partial_response
+      - slow_device
     breaking_change_scope:
       - config
       - runtime_contract
@@ -42,16 +41,16 @@ protocol_capabilities:
       - version_metadata_contract
   - protocol_key: opcua
     capability_version: opcua-capabilities-v1
-    readiness_matrix_version: protocol-readiness-matrix-v1
-    readiness_contract_version: unified-readiness-contract-v1
-    trial_profile_ids:
-      - opcua.l1.session_lifecycle
-      - opcua.l2.secure_channel_renewal
-      - opcua.l3.reconnect
-      - opcua.l2.subscription
-      - opcua.l3.timeout
-      - opcua.l3.malformed_service_response
-      - opcua.l2.operation_limit
+    readiness_matrix_version: protocol-readiness-matrix-v2
+    readiness_contract_version: unified-readiness-contract-v2
+    profile_ids:
+      - session_lifecycle
+      - secure_channel_renewal
+      - reconnect
+      - subscription
+      - timeout
+      - malformed_service_response
+      - operation_limit
     breaking_change_scope:
       - config
       - runtime_contract
@@ -60,15 +59,15 @@ protocol_capabilities:
       - version_metadata_contract
   - protocol_key: bacnet
     capability_version: bacnet-capabilities-v1
-    readiness_matrix_version: protocol-readiness-matrix-v1
-    readiness_contract_version: unified-readiness-contract-v1
-    trial_profile_ids:
-      - bacnet.l1.discovery
-      - bacnet.l1.property_io
-      - bacnet.l2.cov
-      - bacnet.l3.segmentation
-      - bacnet.l3.bbmd_fdr
-      - bacnet.l3.duplicate_handling
+    readiness_matrix_version: protocol-readiness-matrix-v2
+    readiness_contract_version: unified-readiness-contract-v2
+    profile_ids:
+      - basic_ip
+      - property_io
+      - cov_flow
+      - segmentation
+      - bbmd_fdr
+      - tsm_resilience
     breaking_change_scope:
       - config
       - runtime_contract
@@ -77,15 +76,15 @@ protocol_capabilities:
       - version_metadata_contract
   - protocol_key: knx
     capability_version: knx-capabilities-v1
-    readiness_matrix_version: protocol-readiness-matrix-v1
-    readiness_contract_version: unified-readiness-contract-v1
-    trial_profile_ids:
-      - knx.l1.discovery
-      - knx.l1.tunneling_lifecycle
-      - knx.l1.group_value_io
-      - knx.l2.dpt_codec
-      - knx.l2.sequence_validation
-      - knx.l2.heartbeat_connection_state
+    readiness_matrix_version: protocol-readiness-matrix-v2
+    readiness_contract_version: unified-readiness-contract-v2
+    profile_ids:
+      - basic_discovery
+      - tunnel_lifecycle
+      - group_io
+      - dpt_matrix
+      - tunnel_resilience
+      - heartbeat_timeout
     breaking_change_scope:
       - config
       - runtime_contract
@@ -98,6 +97,6 @@ ownership_boundary:
     - protocol_capability_metadata
     - contract_version_metadata
   not_owned_by_mabinogion:
-    - trial_suite_allow_deny_decision
+    - runner_admission_decision
     - scoring_policy
     - certification_issuance

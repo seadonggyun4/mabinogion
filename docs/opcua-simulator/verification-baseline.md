@@ -5,8 +5,7 @@ This baseline records the PHASE 2 readiness contract for `mabi-opcua`.
 The OPC UA simulator already has session-centric runtime support, secure
 channel renewal behavior, subscription surfaces, self-contained interop
 harnesses, and release-only transport perf policy. PHASE 2 normalizes that
-coverage into `unified-readiness-contract-v1` so Trials can target stable
-profiles.
+coverage into `unified-readiness-contract-v2` for stable protocol profiles.
 
 ## Contract Files
 
@@ -19,24 +18,24 @@ profiles.
 
 ## Unified Profiles
 
-| Profile | Level | Coverage | Lane |
-| --- | --- | --- | --- |
-| `session_lifecycle` | 1 | Implemented | Deterministic |
-| `secure_channel_renewal` | 2 | Implemented | Deterministic |
-| `subscription` | 2 | Implemented | Deterministic |
-| `operation_limit` | 2 | Implemented | Deterministic |
-| `reconnect` | 3 | Partial | Ignored interop |
-| `timeout` | 3 | Partial | Deterministic |
-| `malformed_service_response` | 3 | Partial | Deterministic |
+| Profile | Coverage | Lane |
+| --- | --- | --- |
+| `session_lifecycle` | Implemented | Deterministic |
+| `secure_channel_renewal` | Implemented | Deterministic |
+| `subscription` | Implemented | Deterministic |
+| `operation_limit` | Implemented | Deterministic |
+| `reconnect` | Partial | Ignored interop |
+| `timeout` | Partial | Deterministic |
+| `malformed_service_response` | Partial | Deterministic |
 
 ## Current Gaps
 
-- Reconnect evidence is intentionally tied to ignored/nightly interop until
-  Trials defines exact Level 3 pass criteria.
+- Reconnect evidence is tied to ignored/nightly interop because it depends on
+  optional peer verification.
 - Timeout and malformed-service-response profiles are `partial` because they
-  expose engine readiness without claiming a complete public corpus yet.
+  expose engine readiness with incomplete deterministic coverage.
 - Perf contracts remain release-only and do not enter the deterministic lane.
 
 `mabinogion` owns protocol/session execution and readiness evidence export. It
-does not own trial definitions, scoring policy, proof publication, or
+does not own scoring policy, proof publication, or
 certification issuance.

@@ -67,7 +67,7 @@ profiles:
     lane: deterministic
     capabilities:
       - function_code
-    notes: Covers the core Modbus function code contract for Trials Level 1.
+    notes: Covers the core Modbus function code contract for deterministic local verification.
   - id: register_map
     lane: deterministic
     capabilities:
@@ -100,7 +100,7 @@ profiles:
     notes: Covers configured delayed-response behavior without making perf thresholds default.
 
 unified_readiness:
-  contract_id: unified-readiness-contract-v1
+  contract_id: unified-readiness-contract-v2
   protocol: modbus
   baseline: docs/modbus-simulator/verification-baseline.md
   matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
@@ -110,8 +110,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: none
-      trial_profile_id: modbus.l1.function_code
-      trial_level: 1
       required_evidence:
         - protocol_exchange
         - report_field
@@ -128,8 +126,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: none
-      trial_profile_id: modbus.l1.register_map
-      trial_level: 1
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -147,8 +143,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: none
-      trial_profile_id: modbus.l1.exception_response
-      trial_level: 1
       required_evidence:
         - protocol_exchange
         - report_field
@@ -165,8 +159,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: none
-      trial_profile_id: modbus.l2.multi_unit
-      trial_level: 2
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -184,8 +176,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: partial
       optional_interop_policy: none
-      trial_profile_id: modbus.l2.timeout
-      trial_level: 2
       required_evidence:
         - log
         - runtime_snapshot
@@ -203,8 +193,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: partial
       optional_interop_policy: none
-      trial_profile_id: modbus.l2.partial_response
-      trial_level: 2
       required_evidence:
         - protocol_exchange
         - replay
@@ -223,8 +211,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: partial
       optional_interop_policy: release_only
-      trial_profile_id: modbus.l2.slow_device
-      trial_level: 2
       required_evidence:
         - metric
         - runtime_snapshot

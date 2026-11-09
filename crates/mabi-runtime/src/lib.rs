@@ -12,10 +12,10 @@ pub use driver::{
     ProtocolLaunchSpec,
 };
 pub use evidence::{
-    ArtifactVisibility, FailureReplayArtifact, PassCriteriaEvidence, ProtocolProfileEvidence,
+    ArtifactVisibility, FailureReplayArtifact, ProtocolProfileEvidence,
     PublicFailureReplayArtifact, PublicPrivateBoundary, PublicRunEvidenceSummary, RecoveryEvent,
     ResourceUsageSummary, RunEvidence, RunEvidenceBuilder, RunEvidenceMetrics,
-    RUN_EVIDENCE_SCHEMA_VERSION, TRIAL_ARTIFACT_CONTRACT_VERSION,
+    REPLAY_ARTIFACT_CONTRACT_VERSION, RUN_EVIDENCE_SCHEMA_VERSION,
 };
 pub use service::{
     ManagedService, RuntimeError, RuntimeErrorInfo, RuntimeErrorKind, RuntimeResult,

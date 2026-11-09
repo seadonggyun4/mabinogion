@@ -129,7 +129,7 @@ issuance.
 | `mabi validate` | Scenario and config validation with machine-readable output. |
 | `mabi scenario` | Declarative local scenario execution. |
 | `mabi chaos` | Fault orchestration over local protocol sessions. |
-| `mabi version` | Engine, protocol capability, contract, release, and trial compatibility metadata. |
+| `mabi version` | Engine, protocol capability, contract, release, and runner compatibility metadata. |
 
 Runner-facing commands support `--format json`, `--format yaml`, and
 `--format compact` envelopes for automation. Human table output remains
@@ -142,11 +142,11 @@ available for local operators.
 | Contract | Purpose |
 | --- | --- |
 | `runtime-contract-v1` | Runtime lifecycle, error taxonomy, readiness, and snapshot metadata. |
-| `unified-readiness-contract-v1` | Shared protocol capability/profile/lane mapping. |
+| `unified-readiness-contract-v2` | Shared protocol capability/profile/lane mapping. |
 | `local-runner-contract-v1` | Stable machine-readable CLI envelopes and exit categories. |
-| `run-evidence-schema-v1` | Execution evidence exported for proof report inputs. |
-| `trial-artifact-contract-v1` | Failure replay artifact metadata and visibility policy. |
-| `version-metadata-contract-v1` | Engine release, protocol capability, and trial compatibility metadata. |
+| `run-evidence-schema-v2` | Execution evidence exported for proof report inputs. |
+| `replay-artifact-contract-v1` | Failure replay artifact metadata and visibility policy. |
+| `version-metadata-contract-v2` | Engine release, protocol capability, and runner compatibility metadata. |
 
 See [docs/README.md](./docs/README.md) for the documentation map.
 
@@ -224,7 +224,7 @@ mabinogion/
 │   ├── mabi-scenario/   # Scenario parsing and execution
 │   ├── mabi-chaos/      # Fault orchestration
 │   └── mabi-cli/        # Installed mabi command
-├── docs/                # Product-family and protocol documentation
+├── docs/                # Engine and protocol documentation
 └── scripts/             # Release/version guardrails
 ```
 

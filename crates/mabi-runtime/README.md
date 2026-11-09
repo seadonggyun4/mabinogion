@@ -11,8 +11,8 @@ Runtime/session contract layer for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-runtime` is the shared execution substrate used by Modbus, OPC UA,
-BACnet/IP, KNXnet/IP, `mabi doctor`, `mabi serve`, and future Mabinogion trials
-runner surfaces. It lets Trials and other external consumers use a stable
+BACnet/IP, KNXnet/IP, `mabi doctor`, and `mabi serve`. It lets external
+consumers use a stable
 runtime shape without depending on protocol-specific internals.
 
 ## Versioning / contracts
@@ -25,9 +25,9 @@ mabi-runtime = "1.7.1"
 The crate follows the workspace release version. Runtime compatibility is
 tracked separately through `RUNTIME_CONTRACT_VERSION`,
 `SNAPSHOT_METADATA_VERSION`, `RUN_EVIDENCE_SCHEMA_VERSION`, and
-`TRIAL_ARTIFACT_CONTRACT_VERSION`.
+`REPLAY_ARTIFACT_CONTRACT_VERSION`.
 
 ## Not owned here
 
-`mabi-runtime` does not define trial suites, score trial results, publish proof
+`mabi-runtime` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

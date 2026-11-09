@@ -11,7 +11,7 @@ OPC UA runtime driver for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-opcua` provides OPC UA protocol execution for local simulator use and for
-Mabinogion trials that need stable session lifecycle and evidence-producing
+resilience scenarios that need stable session lifecycle and evidence-producing
 runtime behavior.
 
 ## Versioning / contracts
@@ -27,5 +27,5 @@ reported through `mabi --format json version` and documented in
 
 ## Not owned here
 
-`mabi-opcua` does not define trial suites, score trial results, publish proof
+`mabi-opcua` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

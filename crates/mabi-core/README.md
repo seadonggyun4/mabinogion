@@ -11,9 +11,8 @@ Shared domain kernel for the Mabinogion protocol resilience engine.
 ## How it fits in Mabinogion
 
 `mabi-core` is the protocol-agnostic foundation underneath runtime drivers,
-scenario execution, chaos orchestration, and Mabinogion trials. It supports
-local protocol simulator use while keeping shared types stable for Trials and
-other external consumers.
+scenario execution, and chaos orchestration. It supports local protocol
+simulator use while keeping shared types stable for external consumers.
 
 ## Versioning / contracts
 
@@ -27,5 +26,5 @@ owned by higher-level runtime, CLI, evidence, and release metadata documents.
 
 ## Not owned here
 
-`mabi-core` does not define trial suites, score trial results, publish proof
+`mabi-core` does not score results, publish proof
 reports, issue certification, or replace official certification programs.

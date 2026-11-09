@@ -1,31 +1,22 @@
 {
-  "run_evidence_schema_version": "run-evidence-schema-v1",
-  "trial_artifact_contract_version": "trial-artifact-contract-v1",
+  "run_evidence_schema_version": "run-evidence-schema-v2",
+  "replay_artifact_contract_version": "replay-artifact-contract-v1",
   "runtime_contract_version": "runtime-contract-v1",
   "snapshot_metadata_version": "snapshot-metadata-v1",
-  "run_id": "run-2026-05-19-modbus-l1-001",
+  "run_id": "run-2026-05-19-modbus-001",
   "engine_version": "1.7.1",
   "protocol_profile": {
     "protocol": "modbus",
-    "profile_id": "modbus.l1.function_code",
-    "capability_id": "modbus.function_code",
+    "profile_id": "function_code_core",
+    "capability_id": "function_code",
     "lane": "deterministic",
     "coverage_status": "implemented"
   },
-  "trial_suite_version": "mabinogion-trials-2026.05",
   "started_at": "2026-05-19T00:00:00Z",
   "ended_at": "2026-05-19T00:00:03Z",
-  "feature_flags": ["opcua-https-disabled"],
-  "pass_criteria": {
-    "owner": "mabinogion-trials",
-    "criteria_id": "modbus-l1-function-code-pass",
-    "summary": "All required Modbus function code checks complete without protocol errors.",
-    "machine_conditions": [
-      {
-        "kind": "all_required_checks_pass"
-      }
-    ]
-  },
+  "feature_flags": [
+    "opcua-https-disabled"
+  ],
   "failure_replay_artifacts": [
     {
       "artifact_id": "public-summary",
@@ -49,11 +40,9 @@
       "run_id",
       "engine_version",
       "protocol_profile",
-      "trial_suite_version",
       "started_at",
       "ended_at",
       "feature_flags",
-      "pass_criteria",
       "failure_replay_artifacts.public_summary",
       "metrics"
     ],

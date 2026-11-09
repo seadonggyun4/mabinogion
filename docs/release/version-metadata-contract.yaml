@@ -1,11 +1,11 @@
 schema_version: 1
 contract_id: mabinogion-version-metadata
-contract_version: version-metadata-contract-v1
+contract_version: version-metadata-contract-v2
 owner: mabinogion
 purpose: >
   Define the machine-readable release and compatibility metadata emitted by
-  `mabi --format json version` so mabinogion-trials and
-  external-runner can decide whether an installed engine is usable.
+  `mabi --format json version` so external runners can decide whether an
+  installed engine is usable.
 machine_output_command: mabi --format json version
 required_version_data_fields:
   - engine_version
@@ -13,17 +13,17 @@ required_version_data_fields:
   - registered_protocols
   - contract_versions
   - feature_flags
-  - trial_compatible_metadata
+  - runner_metadata
   - release_metadata
 required_contract_versions:
   - local-runner-contract-v1
   - cli-output-envelope-v1
   - runtime-contract-v1
   - snapshot-metadata-v1
-  - unified-readiness-contract-v1
-  - run-evidence-schema-v1
-  - trial-artifact-contract-v1
-  - version-metadata-contract-v1
+  - unified-readiness-contract-v2
+  - run-evidence-schema-v2
+  - replay-artifact-contract-v1
+  - version-metadata-contract-v2
 release_metadata_required_fields:
   - engine_version
   - workspace_rust_version
@@ -41,26 +41,21 @@ registered_protocol_required_fields:
   - capability_version
   - readiness_matrix_version
   - readiness_contract_version
-  - trial_profile_ids
+  - profile_ids
   - breaking_change_scope
-trial_compatible_metadata_required_fields:
-  - trial_definition_owner
-  - scoring_owner
+runner_metadata_required_fields:
   - supported_machine_formats
   - runner_facing_commands
-  - future_trial_run_contract_documented
-  - compatible_trial_suite_range
   - compatibility_decision_owner
   - runner_policy_document
 compatibility_policy:
-  decision_owner: mabinogion-trials-or-external-consumer
+  decision_owner: external-consumer
   mabinogion_role: >
     Emit release, protocol capability, and contract metadata. Do not make
-    allow/deny decisions for trial suites or external consumer runner admission.
+    allow/deny decisions for external consumer runner admission.
   source_of_truth: docs/release/compatibility-matrix.yaml
 non_goals:
   - publish crates
   - generate GitHub releases
-  - score trial results
   - certify engines
   - make external consumer allow/deny decisions

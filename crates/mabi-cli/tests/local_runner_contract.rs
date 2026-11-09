@@ -15,7 +15,6 @@ struct LocalRunnerContract {
     exit_code_policy: Vec<ExitCodePolicy>,
     runner_facing_commands: Vec<RunnerFacingCommand>,
     contract_versions_reported_by_version: Vec<String>,
-    future_trial_run_execution_spec: FutureTrialRunExecutionSpec,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,16 +39,6 @@ struct ExitCodePolicy {
 struct RunnerFacingCommand {
     command: String,
     stable_machine_output: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct FutureTrialRunExecutionSpec {
-    command_status: String,
-    command: String,
-    owner_of_trial_definition: String,
-    evidence_output_contract: String,
-    artifact_contract: String,
-    required_fields: Vec<String>,
 }
 
 fn repo_root() -> PathBuf {
@@ -186,10 +175,10 @@ fn local_runner_contract_yaml_defines_exit_codes_and_commands() {
         "cli-output-envelope-v1",
         "runtime-contract-v1",
         "snapshot-metadata-v1",
-        "unified-readiness-contract-v1",
-        "run-evidence-schema-v1",
-        "trial-artifact-contract-v1",
-        "version-metadata-contract-v1",
+        "unified-readiness-contract-v2",
+        "run-evidence-schema-v2",
+        "replay-artifact-contract-v1",
+        "version-metadata-contract-v2",
     ] {
         assert!(
             contract
@@ -197,38 +186,6 @@ fn local_runner_contract_yaml_defines_exit_codes_and_commands() {
                 .iter()
                 .any(|documented| documented == version),
             "{version} should be reported by mabi version"
-        );
-    }
-}
-
-#[test]
-fn future_trial_run_contract_is_documented_without_claiming_ownership() {
-    let contract = load_contract();
-    let spec = contract.future_trial_run_execution_spec;
-
-    assert_eq!(spec.command_status, "documented_future_contract_only");
-    assert_eq!(spec.command, "mabi trial run");
-    assert_eq!(spec.owner_of_trial_definition, "mabinogion-trials");
-    assert_eq!(spec.evidence_output_contract, "run-evidence-schema-v1");
-    assert_eq!(spec.artifact_contract, "trial-artifact-contract-v1");
-    for field in [
-        "execution_spec_version",
-        "run_id",
-        "trial_suite_version",
-        "protocol",
-        "profile_id",
-        "config_path",
-        "session",
-        "readiness_timeout_ms",
-        "artifact_dir",
-        "output_format",
-        "evidence_requirements",
-    ] {
-        assert!(
-            spec.required_fields
-                .iter()
-                .any(|documented| documented == field),
-            "future trial run field {field} should be documented"
         );
     }
 }
@@ -257,7 +214,7 @@ fn inspect_protocols_json_uses_local_runner_envelope() {
     );
     assert_eq!(
         envelope["data"]["contract_versions"]["unified_readiness_contract"],
-        "unified-readiness-contract-v1"
+        "unified-readiness-contract-v2"
     );
 }
 

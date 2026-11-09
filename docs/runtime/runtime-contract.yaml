@@ -4,8 +4,8 @@ contract_version: runtime-contract-v1
 snapshot_metadata_version: snapshot-metadata-v1
 owner: mabinogion
 purpose: >
-  Freeze the shared runtime contract used by the installed CLI, external consumer runners,
-  and Mabinogion Trials compatibility checks.
+  Freeze the shared runtime contract used by the installed CLI and external
+  runners.
 ownership:
   mabinogion_owns:
     - runtime lifecycle
@@ -13,7 +13,6 @@ ownership:
     - structured runtime errors
     - service snapshot metadata export
   not_owned_by_mabinogion:
-    - trial definition
     - scoring
     - certification issuance
     - public proof publication

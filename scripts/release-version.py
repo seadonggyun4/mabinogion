@@ -63,18 +63,18 @@ SURFACE_RULES = {
     },
 }
 
-VERSION_METADATA_CONTRACT_VERSION = "version-metadata-contract-v1"
-COMPATIBILITY_MATRIX_VERSION = "compatibility-matrix-v1"
-PROTOCOL_READINESS_MATRIX_VERSION = "protocol-readiness-matrix-v1"
+VERSION_METADATA_CONTRACT_VERSION = "version-metadata-contract-v2"
+COMPATIBILITY_MATRIX_VERSION = "compatibility-matrix-v2"
+PROTOCOL_READINESS_MATRIX_VERSION = "protocol-readiness-matrix-v2"
 PROTOCOL_KEYS = ["modbus", "opcua", "bacnet", "knx"]
 REQUIRED_RELEASE_CONTRACTS = [
     "local-runner-contract-v1",
     "cli-output-envelope-v1",
     "runtime-contract-v1",
     "snapshot-metadata-v1",
-    "unified-readiness-contract-v1",
-    "run-evidence-schema-v1",
-    "trial-artifact-contract-v1",
+    "unified-readiness-contract-v2",
+    "run-evidence-schema-v2",
+    "replay-artifact-contract-v1",
     VERSION_METADATA_CONTRACT_VERSION,
 ]
 
@@ -221,9 +221,9 @@ def check_release_docs(version: str) -> None:
     readiness_matrix = read_text(ROOT / "docs/protocol-readiness/protocol-readiness-matrix.yaml")
 
     if yaml_scalar(version_contract, "contract_version", ROOT / "docs/release/version-metadata-contract.yaml") != VERSION_METADATA_CONTRACT_VERSION:
-        fail("version metadata contract version is not version-metadata-contract-v1")
+        fail("version metadata contract version is not version-metadata-contract-v2")
     if yaml_scalar(matrix, "matrix_version", matrix_path) != COMPATIBILITY_MATRIX_VERSION:
-        fail("compatibility matrix version is not compatibility-matrix-v1")
+        fail("compatibility matrix version is not compatibility-matrix-v2")
     if yaml_scalar(matrix, "current_engine_version", matrix_path) != version:
         fail("compatibility matrix current_engine_version is out of sync with workspace.package.version")
     if yaml_scalar(matrix, "workspace_rust_version", matrix_path) != root_rust_version():
@@ -239,9 +239,9 @@ def check_release_docs(version: str) -> None:
             if contract not in text:
                 fail(f"{label} is missing required contract version {contract}")
     if VERSION_METADATA_CONTRACT_VERSION not in local_runner_contract:
-        fail("local runner contract does not report version-metadata-contract-v1")
+        fail("local runner contract does not report version-metadata-contract-v2")
     if VERSION_METADATA_CONTRACT_VERSION not in runner_contract or "version_metadata_contract" not in runner_contract:
-        fail("CLI version output source does not expose version-metadata-contract-v1")
+        fail("CLI version output source does not expose version-metadata-contract-v2")
 
     for protocol in PROTOCOL_KEYS:
         if f"protocol_key: {protocol}" not in matrix:

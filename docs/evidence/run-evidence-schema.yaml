@@ -1,11 +1,11 @@
 schema_version: 1
 schema_id: mabinogion-run-evidence
-contract_version: run-evidence-schema-v1
-trial_artifact_contract_version: trial-artifact-contract-v1
+contract_version: run-evidence-schema-v2
+replay_artifact_contract_version: replay-artifact-contract-v1
 owner: mabinogion
 purpose: >
   Define the execution evidence artifact that mabinogion exports so
-  mabinogion-trials and external-runner can build Proof Report inputs.
+  local runners and external consumers can inspect runtime facts.
 ownership_boundary:
   mabinogion_owns:
     - protocol_session_execution
@@ -13,7 +13,6 @@ ownership_boundary:
     - run_evidence_serialization
     - failure_replay_artifact_metadata
   not_owned_by_mabinogion:
-    - trial_definition_authoring
     - scoring_policy
     - proof_report_publication
     - certification_issuance
@@ -21,16 +20,14 @@ required_fields:
   - run_id
   - engine_version
   - protocol_profile
-  - trial_suite_version
   - started_at
   - ended_at
   - feature_flags
-  - pass_criteria
   - failure_replay_artifacts
   - public_private_boundary
 version_fields:
   - run_evidence_schema_version
-  - trial_artifact_contract_version
+  - replay_artifact_contract_version
   - runtime_contract_version
   - snapshot_metadata_version
 embedded_runtime_fields:
@@ -48,11 +45,9 @@ public_private_policy:
     - run_id
     - engine_version
     - protocol_profile
-    - trial_suite_version
     - started_at
     - ended_at
     - feature_flags
-    - pass_criteria
     - public failure replay summaries
     - report-friendly metrics
   private_only:
@@ -61,7 +56,6 @@ public_private_policy:
     - raw artifact digests
     - private replay artifacts
 non_goals:
-  - score trial results
   - issue certifications
   - publish public proof reports
   - collect raw logs automatically

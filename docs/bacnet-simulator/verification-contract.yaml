@@ -292,7 +292,7 @@ peers:
     notes: Packet-centric manual tool kept outside current CI automation and normalized into the seeded capture corpus lane.
 
 unified_readiness:
-  contract_id: unified-readiness-contract-v1
+  contract_id: unified-readiness-contract-v2
   protocol: bacnet
   baseline: docs/bacnet-simulator/verification-baseline.md
   matrix_ref: docs/protocol-readiness/protocol-readiness-matrix.yaml
@@ -302,8 +302,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: bacnet.l1.discovery
-      trial_level: 1
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -321,8 +319,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: bacnet.l1.property_io
-      trial_level: 1
       required_evidence:
         - protocol_exchange
         - report_field
@@ -339,8 +335,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: bacnet.l2.cov
-      trial_level: 2
       required_evidence:
         - protocol_exchange
         - log
@@ -358,8 +352,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: bacnet.l3.segmentation
-      trial_level: 3
       required_evidence:
         - protocol_exchange
         - replay
@@ -377,8 +369,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: nightly
-      trial_profile_id: bacnet.l3.bbmd_fdr
-      trial_level: 3
       required_evidence:
         - runtime_snapshot
         - protocol_exchange
@@ -396,8 +386,6 @@ unified_readiness:
       lane: deterministic
       coverage_status: implemented
       optional_interop_policy: capture_only
-      trial_profile_id: bacnet.l3.duplicate_handling
-      trial_level: 3
       required_evidence:
         - protocol_exchange
         - replay
